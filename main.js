@@ -1,5 +1,5 @@
 // Project HQ: full-page project dashboard for Obsidian. Each page is one entry in SECTIONS: {id, label, icon, render(view, el)}.
-const { Plugin, ItemView, PluginSettingTab, Setting, requestUrl, TFile, TFolder, setIcon, MarkdownRenderer, parseYaml } = require("obsidian");
+const { Plugin, Notice, ItemView, PluginSettingTab, Setting, requestUrl, TFile, TFolder, setIcon, MarkdownRenderer, parseYaml } = require("obsidian");
 const fs = require("fs"), path = require("path"), os = require("os");
 const { execFile } = require("child_process");
 const VIEW = "project-hq-view";
@@ -457,7 +457,7 @@ const SECTIONS = [
     render(v, el) {
       const tabs = el.createDiv({ cls: "lhq-tabs" });
       [["needs", "Needs review"], ["approved", "Approved"], ["all", "All"]].forEach(([k, l]) => {
-        const b = tabs.createEl("button", { cls: "lhq-btn" + (v.rfilter === k ? " on" : ""), text: l }); b.onclick = () => { v.rfilter = k; v.renderPage(); };
+        const b = tabs.createEl("button", { cls: "lhq-btn" + (v.rfilter === k ? " on" : ""), text: l }); b.onclick = () => { v.rfilter = k; v.renderPage(false, true); };
       });
       const items = v.review.filter((i) => v.rfilter === "all" || (v.rfilter === "approved" ? i.status === "approved" : i.status === "needs-review"));
       const g = el.createDiv({ cls: "lhq-rgrid" });
@@ -528,6 +528,8 @@ class HQView extends ItemView {
     this.resetData(); Object.assign(this, { rfilter: "needs", boardOpen: false, liveAt: 0, usage: null, err: "", at: null, slide: 0, showIdle: false });
     this.applyProject();
     const root = this.contentEl; root.empty(); root.addClass("lhq");
+    const touch = () => { this.touchedAt = Date.now(); };
+    this.registerDomEvent(root, "pointerdown", touch, true); this.registerDomEvent(root, "keydown", touch, true); this.registerDomEvent(root, "focusin", touch, true);
     if (this.app.loadLocalStorage && this.app.loadLocalStorage("lhq-alt")) root.addClass("lhq-warm");
     landscape(root.createDiv({ cls: "lhq-bg" }));
     const bar = root.createDiv({ cls: "lhq-bar" });
@@ -575,9 +577,12 @@ class HQView extends ItemView {
     this.contentEl.toggleClass("lhq-onhome", id === "home"); this.pageEl.toggleClass("fit", id === "home");
     Object.entries(this.dockBtns).forEach(([k, b]) => b.toggleClass("on", k === id));
     this.crumb.empty(); this.crumb.createSpan({ cls: "lhq-c1", text: this.project ? this.project.name : "Project HQ" }); this.crumb.createSpan({ cls: "lhq-c2", text: " / " + s.label });
-    this.renderPage(true);
+    this.renderPage(true, true);
   }
-  renderPage(anim) {
+  renderPage(anim, force) {
+    // The page redraws every few seconds (live agents, files). On the review page a redraw between press and release
+    // swallowed Approve/Changes/Reject clicks and wiped typed feedback, so hold redraws there while the user is interacting.
+    if (!force && this.page === "view" && Date.now() - (this.touchedAt || 0) < 20000) return;
     { const lv = (this.todo && this.todo.live) || "", b = /batch (\d+)/i.exec(lv), c = /[0-9a-f]{7,}/.exec(lv); this.chip.setText(lv ? "Live: " + (b ? "batch " + b[1] : "") + (b && c ? " · " : "") + (c ? c[0] : "") : ""); this.chip.toggle(!!lv); }
     if (!this.project) { this.pageEl.empty(); const e = this.pageEl.createDiv({ cls: "lhq-empty" }); e.createDiv({ cls: "lhq-big", text: "Welcome to Project HQ" }); e.createDiv({ cls: "lhq-sub", text: "Add your first project in Settings → Project HQ" }); const b = e.createEl("button", { cls: "lhq-btn", text: "Open settings" }); b.onclick = () => { this.app.setting.open(); this.app.setting.openTabById("project-hq"); }; return; }
     const s = SECTIONS.find((x) => x.id === this.page), keep = this.pageEl.scrollTop;
@@ -639,9 +644,14 @@ class HQView extends ItemView {
   }
   async decide(it, status, feedback) {
     const vt = this.app.vault; let sc = it.sidecar;
-    if (!sc) sc = await vt.create(it.sidecarPath, "---\n---\n");
-    await this.app.fileManager.processFrontMatter(sc, (fm) => { fm.status = status; fm.feedback = feedback || ""; fm.decided = new Date().toISOString(); if (!fm.title) fm.title = it.title; });
+    try {
+      if (!sc) sc = vt.getAbstractFileByPath(it.sidecarPath) || await vt.create(it.sidecarPath, "---\n---\n");
+      await this.app.fileManager.processFrontMatter(sc, (fm) => { fm.status = status; fm.feedback = feedback || ""; fm.decided = new Date().toISOString(); if (!fm.title) fm.title = it.title; });
+      new Notice((status === "approved" ? "Approved" : status === "rejected" ? "Rejected" : "Changes sent") + ": " + it.title);
+    } catch (e) { console.error("Project HQ review", e); new Notice("Could not save the review: " + (e && e.message || e)); }
+    this.touchedAt = 0;
     await this.loadReview();
+    this.renderPage(false, true);
   }
   async loadUsage() {
     // Cache the last good reading so a reload or a rate limit (429) never blanks the gauges; retry quietly.
