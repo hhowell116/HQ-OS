@@ -162,7 +162,8 @@ async function scanOne(metaFile, now) {
     if (js.size < off) { off = 0; count = 0; bgStarted.clear(); bgDone.clear(); }
     if (js.size > off) { const chunk = await readRange(jf, off, js.size - off); count += (chunk.match(/"type":"tool_use"/g) || []).length; off = js.size;
       // background shells (test runs): started IDs vs completion notices, so an agent waiting on tests still counts as running
-      for (const m of chunk.matchAll(/running in background with ID: ([a-z0-9]+)/g)) bgStarted.add(m[1]);
+      // Background shells ("running in background with ID: x") and Monitor watchers ("Monitor started (task x") both mean the agent is still waiting on work.
+      for (const m of chunk.matchAll(/(?:running in background with ID: |Monitor started \(task )([a-z0-9]+)/g)) bgStarted.add(m[1]);
       for (const m of chunk.matchAll(/task-id(?:>|\u003e)([a-z0-9]+)/g)) bgDone.add(m[1]); }
     const tailLen = Math.min(32768, js.size), tail = await readRange(jf, js.size - tailLen, tailLen);
     const lines = tail.split("\n"); if (js.size > tailLen) lines.shift();
