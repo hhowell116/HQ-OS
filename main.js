@@ -271,7 +271,7 @@ const SECTIONS = [
       };
       const openAt = (line) => { const f = v.app.vault.getAbstractFileByPath(TODO); if (f) v.app.workspace.getLeaf("tab").openFile(f, { eState: { line } }); };
       const c1 = col("c1"), c2 = col("c2"), c3 = col("c3");
-      v.fixCols = () => { const cs = [c1, c2, c3]; cs.filter((c) => !c.children.length).forEach((c) => c.remove()); const n = cs.filter((c) => c.parentElement).length; if (n < 3) dash.style.setProperty("--cols", "repeat(" + Math.max(n, 1) + ", 1fr)"); };
+      v.fixCols = () => { const cs = [c1, c2, c3]; cs.filter((c) => !c.children.length).forEach((c) => c.remove()); const n = cs.filter((c) => c.parentElement).length; if (!c1.parentElement) dash.addClass("noplan"); if (n < 3) dash.style.setProperty("--cols", "repeat(" + Math.max(n, 1) + ", 1fr)"); };
       // PLAN
       if (TODO) {
         const P = pane(c1, "plan", "Plan", "todo"), items = v.todo.next, now = items.find((n) => !n.done);
