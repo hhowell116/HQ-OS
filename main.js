@@ -671,7 +671,7 @@ class HQView extends ItemView {
   }
 }
 
-const DEFAULTS = { projects: [], last: "", claudeDir: "", excludeRe: "personal", person: "", chatView: "claudian-view" };
+const DEFAULTS = { projects: [], last: "", claudeDir: "", excludeRe: "personal", person: "", chatView: "claudian-view", filesBesideHQ: true };
 const PFIELDS = [
   ["todo", "To-Do note path", "Vault path to a note with a numbered list under the Next heading, and checkboxes under Waiting on.", "Notes/To-Do.md"],
   ["nextHead", "Next heading", "Heading text (prefix match) of the numbered plan list. Default: Next", "Next"],
@@ -708,6 +708,8 @@ class ProjectHQSettings extends PluginSettingTab {
     g("excludeRe", "Exclude folders (regex)", "Session folders whose name matches are skipped when scanning agents.", "personal");
     g("person", "Your name", "Used in 'Waiting on <name>'. Empty matches any 'Waiting on' heading.", "");
     g("chatView", "Chat view type", "Used by the Command center layout. Default: claudian-view", "claudian-view");
+    new Setting(el).setName("Open files beside Project HQ").setDesc("Notes and files never open in the chat pane; they move to Project HQ's side.")
+      .addToggle((t) => t.setValue(st.filesBesideHQ !== false).onChange((v) => { st.filesBesideHQ = v; p.changed(); }));
   }
 }
 
@@ -720,6 +722,28 @@ module.exports = class ProjectHQ extends Plugin {
     this.addCommand({ id: "open", name: "Open Project HQ", callback: () => this.open() });
     this.addRibbonIcon("monitor", "Project HQ command center (HQ + chat)", () => this.commandCenter());
     this.addCommand({ id: "command-center", name: "Command center layout (HQ + chat)", callback: () => this.commandCenter() });
+    // Keep the chat pane for chat only: any note or file that opens in the chat's tab group moves to Project HQ's tab group.
+    this.registerEvent(this.app.workspace.on("active-leaf-change", (leaf) => this.keepFilesBesideHQ(leaf)));
+  }
+  keepFilesBesideHQ(leaf) {
+    if (!this.settings.filesBesideHQ || !leaf || this._moving) return;
+    const ws = this.app.workspace, type = (this.settings.chatView || "claudian-view").trim();
+    const vt = leaf.view && leaf.view.getViewType && leaf.view.getViewType();
+    if (!vt || vt === type || vt === VIEW || vt === "empty") return;
+    const chat = ws.getLeavesOfType(type).find((l) => l.parent === leaf.parent);
+    const hq = ws.getLeavesOfType(VIEW)[0];
+    if (!chat || !hq || hq.parent === leaf.parent || leaf.getRoot() !== ws.rootSplit) return;
+    this._moving = true;
+    setTimeout(async () => {
+      try {
+        const state = leaf.getViewState(), eState = leaf.getEphemeralState ? leaf.getEphemeralState() : undefined;
+        const target = ws.createLeafInParent(hq.parent, hq.parent.children.length);
+        await target.setViewState({ ...state, active: true }, eState);
+        leaf.detach();
+        ws.setActiveLeaf(target, { focus: true });
+      } catch (e) { console.error("Project HQ: could not move the file tab", e); }
+      finally { this._moving = false; }
+    }, 0);
   }
   async saveSettings() { await this.saveData(this.settings); }
   // Debounced: save and refresh every open HQ view after a settings change.
