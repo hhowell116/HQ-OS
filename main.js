@@ -236,10 +236,18 @@ function reviewCard(v, p, it) {
   const bar = c.createDiv({ cls: "lhq-acts" });
   const act = (label, cls, fn) => { const b = bar.createEl("button", { cls: "lhq-btn " + cls, text: label }); b.onclick = fn; return b; };
   act("Approve", "ok", () => v.decide(it, "approved", ""));
-  const ta = c.createEl("textarea", { cls: "lhq-fb", attr: { placeholder: "What should change?", rows: "2" } }); ta.hide();
-  const send = c.createEl("button", { cls: "lhq-btn", text: "Send changes" }); send.hide();
-  act("Changes", "ch", () => { ta.toggle(); send.toggle(); ta.focus(); });
-  send.onclick = () => v.decide(it, "changes", ta.value);
+  // The Changes box keeps its open state and typed text across redraws (v.fbOpen / v.fbText, keyed per item),
+  // and keystrokes stay inside it so Obsidian hotkeys don't swallow them.
+  const key = it.key || it.title; v.fbOpen = v.fbOpen || new Set(); v.fbText = v.fbText || {};
+  const ta = c.createEl("textarea", { cls: "lhq-fb", attr: { placeholder: "What should change?", rows: "3" } });
+  const send = c.createEl("button", { cls: "lhq-btn", text: "Send changes" });
+  ta.value = v.fbText[key] || "";
+  const showFb = (on) => { ta.style.display = on ? "" : "none"; send.style.display = on ? "" : "none"; };
+  showFb(v.fbOpen.has(key));
+  ta.addEventListener("input", () => { v.fbText[key] = ta.value; v.touchedAt = Date.now(); });
+  ta.addEventListener("keydown", (e) => e.stopPropagation());
+  act("Changes", "ch", () => { const on = !v.fbOpen.has(key); on ? v.fbOpen.add(key) : v.fbOpen.delete(key); showFb(on); if (on) setTimeout(() => ta.focus(), 0); });
+  send.onclick = async () => { await v.decide(it, "changes", ta.value); v.fbOpen.delete(key); delete v.fbText[key]; };
   act("Reject", "no", () => v.decide(it, "rejected", ""));
 }
 
@@ -582,7 +590,7 @@ class HQView extends ItemView {
   renderPage(anim, force) {
     // The page redraws every few seconds (live agents, files). On the review page a redraw between press and release
     // swallowed Approve/Changes/Reject clicks and wiped typed feedback, so hold redraws there while the user is interacting.
-    if (!force && this.page === "view" && Date.now() - (this.touchedAt || 0) < 20000) return;
+    if (!force && this.page === "view" && (Date.now() - (this.touchedAt || 0) < 20000 || (document.activeElement && document.activeElement.tagName === "TEXTAREA" && this.contentEl.contains(document.activeElement)))) return;
     { const lv = (this.todo && this.todo.live) || "", b = /batch (\d+)/i.exec(lv), c = /[0-9a-f]{7,}/.exec(lv); this.chip.setText(lv ? "Live: " + (b ? "batch " + b[1] : "") + (b && c ? " · " : "") + (c ? c[0] : "") : ""); this.chip.toggle(!!lv); }
     if (!this.project) { this.pageEl.empty(); const e = this.pageEl.createDiv({ cls: "lhq-empty" }); e.createDiv({ cls: "lhq-big", text: "Welcome to Project HQ" }); e.createDiv({ cls: "lhq-sub", text: "Add your first project in Settings → Project HQ" }); const b = e.createEl("button", { cls: "lhq-btn", text: "Open settings" }); b.onclick = () => { this.app.setting.open(); this.app.setting.openTabById("project-hq"); }; return; }
     const s = SECTIONS.find((x) => x.id === this.page), keep = this.pageEl.scrollTop;
