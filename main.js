@@ -595,7 +595,7 @@ class HQView extends ItemView {
   async onOpen() {
     this.resetData(); Object.assign(this, { rfilter: "needs", boardOpen: false, liveAt: 0, usage: null, err: "", at: null, slide: 0, showIdle: false });
     this.applyProject();
-    const root = this.contentEl; root.empty(); root.addClass("lhq");
+    const root = this.contentEl; root.empty(); root.addClass("lhq"); root.style.zoom = String((this.plugin.settings.textScale || 125) / 100); // text size setting (Hayden: text was too small)
     const touch = () => { this.touchedAt = Date.now(); };
     this.registerDomEvent(root, "pointerdown", touch, true); this.registerDomEvent(root, "keydown", touch, true); this.registerDomEvent(root, "focusin", touch, true);
     landscape(root.createDiv({ cls: "lhq-bg" }));
@@ -749,7 +749,7 @@ class HQView extends ItemView {
   }
 }
 
-const DEFAULTS = { projects: [], last: "", claudeDir: "", excludeRe: "personal", person: "", chatView: "claudian-view", filesBesideHQ: true };
+const DEFAULTS = { projects: [], last: "", claudeDir: "", excludeRe: "personal", person: "", chatView: "claudian-view", filesBesideHQ: true, textScale: 125 };
 const PFIELDS = [
   ["todo", "To-Do note path", "Vault path to a note with a numbered list under the Next heading, and checkboxes under Waiting on.", "Notes/To-Do.md"],
   ["nextHead", "Next heading", "Heading text (prefix match) of the numbered plan list. Default: Next", "Next"],
@@ -786,6 +786,8 @@ class ProjectHQSettings extends PluginSettingTab {
     g("excludeRe", "Exclude folders (regex)", "Session folders whose name matches are skipped when scanning agents.", "personal");
     g("person", "Your name", "Used in 'Waiting on <name>'. Empty matches any 'Waiting on' heading.", "");
     g("chatView", "Chat view type", "Used by the Command center layout. Default: claudian-view", "claudian-view");
+    new Setting(el).setName("Text size").setDesc("Scales all of Project HQ. 100% = original size.")
+      .addSlider((s) => s.setLimits(90, 175, 5).setValue(st.textScale || 125).setDynamicTooltip().onChange((v) => { st.textScale = v; p.changed(); p.app.workspace.getLeavesOfType(VIEW).forEach((l) => { l.view.contentEl.style.zoom = String(v / 100); }); }));
     new Setting(el).setName("Open files beside Project HQ").setDesc("Notes and files never open in the chat pane; they move to Project HQ's side.")
       .addToggle((t) => t.setValue(st.filesBesideHQ !== false).onChange((v) => { st.filesBesideHQ = v; p.changed(); }));
   }
