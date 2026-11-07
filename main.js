@@ -207,12 +207,12 @@ const stepText = (x) => x.kind === "tool" ? x.name + (x.hint ? " · " + x.hint :
 const svgNS = "http://www.w3.org/2000/svg";
 function landscape(el) {
   const s = document.createElementNS(svgNS, "svg"); s.setAttribute("viewBox", "0 0 800 300"); s.setAttribute("preserveAspectRatio", "xMidYMax slice"); s.classList.add("lhq-land");
-  s.innerHTML = '<defs><radialGradient id="lhqsun" cx="72%" cy="38%" r="55%"><stop offset="0" stop-color="#ffd27a" stop-opacity=".85"/><stop offset=".35" stop-color="#f5b83d" stop-opacity=".3"/><stop offset="1" stop-color="#f5b83d" stop-opacity="0"/></radialGradient>' +
-    '<linearGradient id="lhqsky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0b2a2e"/><stop offset="1" stop-color="#1d4a48"/></linearGradient></defs>' +
+  s.innerHTML = '<defs><radialGradient id="lhqsun" cx="72%" cy="38%" r="55%"><stop offset="0" style="stop-color:color-mix(in srgb,var(--amber) 60%,#fff)" stop-opacity=".85"/><stop offset=".35" style="stop-color:var(--amber)" stop-opacity=".3"/><stop offset="1" style="stop-color:var(--amber)" stop-opacity="0"/></radialGradient>' +
+    '<linearGradient id="lhqsky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--sky1)"/><stop offset="1" style="stop-color:var(--sky2)"/></linearGradient></defs>' +
     '<rect width="800" height="300" fill="url(#lhqsky)"/><rect width="800" height="300" fill="url(#lhqsun)"/>' +
-    '<path d="M0 200 L90 140 L170 190 L270 110 L380 195 L470 130 L580 200 L680 120 L800 190 V300 H0Z" fill="#17413f" opacity=".75"/>' +
-    '<path d="M0 235 L110 185 L210 230 L320 170 L440 235 L560 180 L690 240 L800 205 V300 H0Z" fill="#0f2f31" opacity=".9"/>' +
-    '<path d="M0 270 L130 240 L260 275 L400 240 L540 280 L680 245 L800 270 V300 H0Z" fill="#0a1d20"/>';
+    '<path d="M0 200 L90 140 L170 190 L270 110 L380 195 L470 130 L580 200 L680 120 L800 190 V300 H0Z" style="fill:var(--m1)" opacity=".75"/>' +
+    '<path d="M0 235 L110 185 L210 230 L320 170 L440 235 L560 180 L690 240 L800 205 V300 H0Z" style="fill:var(--m2)" opacity=".9"/>' +
+    '<path d="M0 270 L130 240 L260 275 L400 240 L540 280 L680 245 L800 270 V300 H0Z" style="fill:var(--m3)"/>';
   el.appendChild(s);
 }
 
@@ -493,6 +493,18 @@ const SECTIONS = [
   },
 ];
 
+// Whole-dashboard colour themes: page gradient (bg), panels (teal), muted text (tx2), landscape sky + 3 mountain layers (m), matching accent.
+const THEMES = [
+  { id: "teal", name: "Teal", bg: ["#0a1f22", "#102e30", "#0c2124"], teal: ["#0d2a2d", "#14393b"], tx2: "#9db5b1", sky: ["#0b2a2e", "#1d4a48"], m: ["#17413f", "#0f2f31", "#0a1d20"], accent: "#f5b83d" },
+  { id: "ember", name: "Ember", bg: ["#1c1510", "#2b1f14", "#1a130d"], teal: ["#24190d", "#3a2812"], tx2: "#c4b49a", sky: ["#2a1a0e", "#4a2e16"], m: ["#3d2814", "#2a1b0d", "#1a1008"], accent: "#ff8a3d" },
+  { id: "midnight", name: "Midnight", bg: ["#0b1022", "#141c3a", "#0a0f1f"], teal: ["#111833", "#1b2550"], tx2: "#9fa8cc", sky: ["#0d1430", "#25305e"], m: ["#1e2850", "#141c3a", "#0a0f20"], accent: "#748ffc" },
+  { id: "ocean", name: "Ocean", bg: ["#071a2a", "#0c2a42", "#061624"], teal: ["#0a2236", "#12324e"], tx2: "#9cb8cc", sky: ["#082238", "#1a4a6e"], m: ["#144060", "#0c2c44", "#061826"], accent: "#3bc9db" },
+  { id: "forest", name: "Forest", bg: ["#0d1a12", "#15291c", "#0b160f"], teal: ["#102016", "#183222"], tx2: "#a3bfa9", sky: ["#102418", "#244a32"], m: ["#1d3d28", "#13291b", "#0a1810"], accent: "#69db7c" },
+  { id: "plum", name: "Plum", bg: ["#1a0f1f", "#2a1733", "#160c1a"], teal: ["#22132a", "#33203f"], tx2: "#c0a8c8", sky: ["#22112c", "#4a2a58"], m: ["#3a2246", "#27162f", "#160c1b"], accent: "#e599f7" },
+  { id: "wine", name: "Wine", bg: ["#1f0d10", "#331419", "#1a0b0d"], teal: ["#281114", "#3d1a20"], tx2: "#c9a6aa", sky: ["#2a0f14", "#55242c"], m: ["#45202a", "#2e141a", "#1a0a0d"], accent: "#ff6b6b" },
+  { id: "graphite", name: "Graphite", bg: ["#121314", "#1d1f21", "#101112"], teal: ["#1a1c1e", "#26292c"], tx2: "#a8adb2", sky: ["#16181a", "#33373b"], m: ["#2c3034", "#1f2225", "#111314"], accent: "#4dabf7" },
+  { id: "dusk", name: "Dusk", bg: ["#1e1020", "#3a1a2e", "#160d1a"], teal: ["#2a1426", "#3e1e36"], tx2: "#d0aec0", sky: ["#2a1230", "#7a3a4a"], m: ["#4a2236", "#2e1524", "#170b14"], accent: "#ffa94d" },
+];
 const ACCENTS = [["Amber", "#f5b83d"], ["Orange", "#ff8a3d"], ["Coral", "#ff6b6b"], ["Rose", "#f06595"], ["Orchid", "#e599f7"], ["Violet", "#9775fa"], ["Indigo", "#748ffc"], ["Sky", "#4dabf7"], ["Cyan", "#3bc9db"], ["Mint", "#38d9a9"], ["Green", "#69db7c"], ["Lime", "#c0eb75"]];
 class HQView extends ItemView {
   constructor(leaf, plugin) { super(leaf); this.plugin = plugin; }
@@ -502,39 +514,49 @@ class HQView extends ItemView {
     const st = this.plugin.settings; BASE = this.app.vault.adapter.basePath || "";
     const pr = st.projects.find((p) => p.id === st.last) || st.projects[0] || null;
     this.project = pr; setConfig(pr, st);
-    this.setAccent(pr && pr.accent);
+    this.setTheme(this.themeId()); this.setAccent(pr && pr.accent);
+  }
+  themeId() { const pr = this.project; return (pr && pr.theme) || (this.app.loadLocalStorage && this.app.loadLocalStorage("lhq-alt") ? "ember" : "teal"); }
+  setTheme(id) {
+    const t = THEMES.find((x) => x.id === id) || THEMES[0], r = this.contentEl;
+    const v = { "--bg1": t.bg[0], "--bg2": t.bg[1], "--bg3": t.bg[2], "--teal": t.teal[0], "--teal2": t.teal[1], "--tx2": t.tx2, "--sky1": t.sky[0], "--sky2": t.sky[1], "--m1": t.m[0], "--m2": t.m[1], "--m3": t.m[2] };
+    Object.entries(v).forEach(([k, c]) => r.style.setProperty(k, c));
   }
   setAccent(c) {
     const r = this.contentEl; r.style.removeProperty("--amber"); r.style.removeProperty("--amber2");
     if (c) { r.style.setProperty("--amber", c); r.style.setProperty("--amber2", "color-mix(in srgb, " + c + " 75%, #ff5a1f)"); }
   }
-  // Theme button: a small popover with accent swatches, a custom colour, and the background choice.
-  // The accent is saved on the current project (same value as Settings → Accent colour); the background is per device.
+  // Colours button: a popover of whole-dashboard themes (background, panels, landscape + matching accent),
+  // then accent swatches and a custom colour to fine-tune. Both save on the current project (theme, accent).
   openPicker(anchor) {
     if (this.pick && this.pick.isConnected) return this.closePicker();
     const root = this.contentEl, pr = this.project, pop = root.createDiv({ cls: "lhq-pick" }); this.pick = pop;
     const a = anchor.getBoundingClientRect(), rr = root.getBoundingClientRect();
     pop.style.top = (a.bottom - rr.top + 8) + "px"; pop.style.right = Math.max(8, rr.right - a.right) + "px";
-    const cur = ((pr && pr.accent) || ACCENTS[0][1]).toLowerCase();
-    const mark = (c) => pop.querySelectorAll(".lhq-sw8").forEach((el) => el.toggleClass("on", el.dataset.c === c));
-    const pick = (c, save) => {
+    const save = () => { if (pr) this.plugin.saveSettings(); };
+    const mark = (sel, attr, val) => pop.querySelectorAll(sel).forEach((el) => el.toggleClass("on", el.dataset[attr] === val));
+    let ci = null;
+    const accent = (c, keep) => {
       c = c.toLowerCase(); const def = c === ACCENTS[0][1];
-      this.setAccent(def ? null : c); mark(c);
-      if (pr) { if (def) delete pr.accent; else pr.accent = c; if (save) this.plugin.saveSettings(); }
+      this.setAccent(def ? null : c); mark(".lhq-sw8", "c", c); if (ci) ci.value = c;
+      if (pr) { if (def) delete pr.accent; else pr.accent = c; if (keep) save(); }
     };
-    pop.createDiv({ cls: "lhq-pk", text: pr ? "Accent · " + (pr.name || "this project") : "Accent" });
-    const g = pop.createDiv({ cls: "lhq-pgrid" });
-    ACCENTS.forEach(([name, c]) => { const b = g.createEl("button", { cls: "lhq-sw8", attr: { "aria-label": name, title: name, "data-c": c } }); b.style.background = c; b.onclick = () => pick(c, true); });
-    const lab = g.createEl("label", { cls: "lhq-swc", attr: { title: "Custom colour", "aria-label": "Custom colour" } });
-    const ci = lab.createEl("input", { type: "color" }); ci.value = cur;
-    ci.oninput = () => pick(ci.value, false); ci.onchange = () => pick(ci.value, true);
-    mark(cur);
-    pop.createDiv({ cls: "lhq-pk", text: "Background" });
-    const row = pop.createDiv({ cls: "lhq-prow" });
-    [["Teal", false], ["Warm", true]].forEach(([t, warm]) => {
-      const b = row.createEl("button", { cls: "lhq-btn" + (root.hasClass("lhq-warm") === warm ? " on" : ""), text: t });
-      b.onclick = () => { root.toggleClass("lhq-warm", warm); if (this.app.saveLocalStorage) this.app.saveLocalStorage("lhq-alt", warm ? "1" : null); row.querySelectorAll("button").forEach((x) => x.toggleClass("on", x === b)); };
+    pop.createDiv({ cls: "lhq-pk", text: pr ? "Theme · " + (pr.name || "this project") : "Theme" });
+    const tg = pop.createDiv({ cls: "lhq-tgrid" });
+    THEMES.forEach((t) => {
+      const b = tg.createEl("button", { cls: "lhq-tile", attr: { "aria-label": t.name + " theme", "data-t": t.id } });
+      b.createDiv({ cls: "lhq-tprev" }).style.background = "radial-gradient(60% 70% at 75% 30%, " + t.accent + "55, transparent 70%), linear-gradient(180deg, " + t.sky[1] + ", " + t.bg[1] + " 60%, " + t.m[2] + ")";
+      b.createSpan({ text: t.name });
+      b.onclick = () => { this.setTheme(t.id); mark(".lhq-tile", "t", t.id); if (pr) pr.theme = t.id; accent(t.accent, true); };
     });
+    mark(".lhq-tile", "t", this.themeId());
+    pop.createDiv({ cls: "lhq-pk", text: "Accent" });
+    const g = pop.createDiv({ cls: "lhq-pgrid" });
+    ACCENTS.forEach(([name, c]) => { const b = g.createEl("button", { cls: "lhq-sw8", attr: { "aria-label": name, title: name, "data-c": c } }); b.style.background = c; b.onclick = () => accent(c, true); });
+    const lab = g.createEl("label", { cls: "lhq-swc", attr: { title: "Custom colour", "aria-label": "Custom colour" } });
+    ci = lab.createEl("input", { type: "color" });
+    ci.oninput = () => accent(ci.value, false); ci.onchange = () => accent(ci.value, true);
+    const cur = ((pr && pr.accent) || ACCENTS[0][1]).toLowerCase(); ci.value = cur; mark(".lhq-sw8", "c", cur);
     const out = (e) => { if (!pop.contains(e.target) && !anchor.contains(e.target)) this.closePicker(); };
     const esc = (e) => { if (e.key === "Escape") { e.stopPropagation(); this.closePicker(); } };
     document.addEventListener("pointerdown", out, true); pop.addEventListener("keydown", esc);
@@ -576,7 +598,6 @@ class HQView extends ItemView {
     const root = this.contentEl; root.empty(); root.addClass("lhq");
     const touch = () => { this.touchedAt = Date.now(); };
     this.registerDomEvent(root, "pointerdown", touch, true); this.registerDomEvent(root, "keydown", touch, true); this.registerDomEvent(root, "focusin", touch, true);
-    if (this.app.loadLocalStorage && this.app.loadLocalStorage("lhq-alt")) root.addClass("lhq-warm");
     landscape(root.createDiv({ cls: "lhq-bg" }));
     const bar = root.createDiv({ cls: "lhq-bar" });
     this.crumb = bar.createDiv({ cls: "lhq-crumb" });
