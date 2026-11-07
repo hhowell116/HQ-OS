@@ -493,6 +493,7 @@ const SECTIONS = [
   },
 ];
 
+const ACCENTS = [["Amber", "#f5b83d"], ["Orange", "#ff8a3d"], ["Coral", "#ff6b6b"], ["Rose", "#f06595"], ["Orchid", "#e599f7"], ["Violet", "#9775fa"], ["Indigo", "#748ffc"], ["Sky", "#4dabf7"], ["Cyan", "#3bc9db"], ["Mint", "#38d9a9"], ["Green", "#69db7c"], ["Lime", "#c0eb75"]];
 class HQView extends ItemView {
   constructor(leaf, plugin) { super(leaf); this.plugin = plugin; }
   getViewType() { return VIEW; }
@@ -501,9 +502,46 @@ class HQView extends ItemView {
     const st = this.plugin.settings; BASE = this.app.vault.adapter.basePath || "";
     const pr = st.projects.find((p) => p.id === st.last) || st.projects[0] || null;
     this.project = pr; setConfig(pr, st);
-    const r = this.contentEl; r.style.removeProperty("--amber"); r.style.removeProperty("--amber2");
-    if (pr && pr.accent) { r.style.setProperty("--amber", pr.accent); r.style.setProperty("--amber2", "color-mix(in srgb, " + pr.accent + " 75%, #ff5a1f)"); }
+    this.setAccent(pr && pr.accent);
   }
+  setAccent(c) {
+    const r = this.contentEl; r.style.removeProperty("--amber"); r.style.removeProperty("--amber2");
+    if (c) { r.style.setProperty("--amber", c); r.style.setProperty("--amber2", "color-mix(in srgb, " + c + " 75%, #ff5a1f)"); }
+  }
+  // Theme button: a small popover with accent swatches, a custom colour, and the background choice.
+  // The accent is saved on the current project (same value as Settings → Accent colour); the background is per device.
+  openPicker(anchor) {
+    if (this.pick && this.pick.isConnected) return this.closePicker();
+    const root = this.contentEl, pr = this.project, pop = root.createDiv({ cls: "lhq-pick" }); this.pick = pop;
+    const a = anchor.getBoundingClientRect(), rr = root.getBoundingClientRect();
+    pop.style.top = (a.bottom - rr.top + 8) + "px"; pop.style.right = Math.max(8, rr.right - a.right) + "px";
+    const cur = ((pr && pr.accent) || ACCENTS[0][1]).toLowerCase();
+    const mark = (c) => pop.querySelectorAll(".lhq-sw8").forEach((el) => el.toggleClass("on", el.dataset.c === c));
+    const pick = (c, save) => {
+      c = c.toLowerCase(); const def = c === ACCENTS[0][1];
+      this.setAccent(def ? null : c); mark(c);
+      if (pr) { if (def) delete pr.accent; else pr.accent = c; if (save) this.plugin.saveSettings(); }
+    };
+    pop.createDiv({ cls: "lhq-pk", text: pr ? "Accent · " + (pr.name || "this project") : "Accent" });
+    const g = pop.createDiv({ cls: "lhq-pgrid" });
+    ACCENTS.forEach(([name, c]) => { const b = g.createEl("button", { cls: "lhq-sw8", attr: { "aria-label": name, title: name, "data-c": c } }); b.style.background = c; b.onclick = () => pick(c, true); });
+    const lab = g.createEl("label", { cls: "lhq-swc", attr: { title: "Custom colour", "aria-label": "Custom colour" } });
+    const ci = lab.createEl("input", { type: "color" }); ci.value = cur;
+    ci.oninput = () => pick(ci.value, false); ci.onchange = () => pick(ci.value, true);
+    mark(cur);
+    pop.createDiv({ cls: "lhq-pk", text: "Background" });
+    const row = pop.createDiv({ cls: "lhq-prow" });
+    [["Teal", false], ["Warm", true]].forEach(([t, warm]) => {
+      const b = row.createEl("button", { cls: "lhq-btn" + (root.hasClass("lhq-warm") === warm ? " on" : ""), text: t });
+      b.onclick = () => { root.toggleClass("lhq-warm", warm); if (this.app.saveLocalStorage) this.app.saveLocalStorage("lhq-alt", warm ? "1" : null); row.querySelectorAll("button").forEach((x) => x.toggleClass("on", x === b)); };
+    });
+    const out = (e) => { if (!pop.contains(e.target) && !anchor.contains(e.target)) this.closePicker(); };
+    const esc = (e) => { if (e.key === "Escape") { e.stopPropagation(); this.closePicker(); } };
+    document.addEventListener("pointerdown", out, true); pop.addEventListener("keydown", esc);
+    this.pickOff = () => document.removeEventListener("pointerdown", out, true);
+  }
+  async onClose() { this.closePicker(); }
+  closePicker() { if (this.pickOff) this.pickOff(); this.pickOff = null; if (this.pick) this.pick.remove(); this.pick = null; }
   resetData() { Object.assign(this, { planOpen: new Set(), days: [], dsig: "", metricsRunning: false, review: [], rsig: "", live: [], liveSig: "", agents: [], todo: { live: "", next: [], wait: [] }, commits: {}, cAt: 0, sig: "", openSet: new Set(), page: "home" }); liveCache.clear(); }
   buildSwitcher() {
     const st = this.plugin.settings; this.sw.empty();
@@ -546,8 +584,8 @@ class HQView extends ItemView {
     this.chip = bar.createDiv({ cls: "lhq-livechip" });
     const right = bar.createDiv({ cls: "lhq-right" });
     const tm = right.createDiv({ cls: "lhq-time" }); this.clockEl = tm.createDiv({ cls: "lhq-clock" }); this.dateEl = tm.createDiv({ cls: "lhq-date" });
-    const ib = (icon, label, fn) => { const b = right.createEl("button", { cls: "lhq-ib" }); setIcon(b, icon); b.setAttr("aria-label", label); b.title = label; b.onclick = fn; };
-    ib("refresh-cw", "Refresh", () => this.refreshAll()); ib("palette", "Theme", () => { const w = root.toggleClass("lhq-warm", !root.hasClass("lhq-warm")); if (this.app.saveLocalStorage) this.app.saveLocalStorage("lhq-alt", root.hasClass("lhq-warm") ? "1" : null); });
+    const ib = (icon, label, fn) => { const b = right.createEl("button", { cls: "lhq-ib" }); setIcon(b, icon); b.setAttr("aria-label", label); b.title = label; b.onclick = () => fn(b); return b; };
+    ib("refresh-cw", "Refresh", () => this.refreshAll()); ib("palette", "Colours", (b) => this.openPicker(b));
     this.pageEl = root.createDiv({ cls: "lhq-page" });
     this.dock = root.createDiv({ cls: "lhq-dock" }); this.buildSwitcher(); this.buildDock();
     this.registerEvent(this.app.vault.on("modify", (f) => { if (f.path === ACT || f.path === TODO) this.loadFiles(); }));
