@@ -722,7 +722,19 @@ class HQView extends ItemView {
     const vt = this.app.vault; let sc = it.sidecar;
     try {
       if (!sc) sc = vt.getAbstractFileByPath(it.sidecarPath) || await vt.create(it.sidecarPath, "---\n---\n");
-      await this.app.fileManager.processFrontMatter(sc, (fm) => { fm.status = status; fm.feedback = feedback || ""; fm.decided = new Date().toISOString(); if (!fm.title) fm.title = it.title; });
+      const setFm = () => this.app.fileManager.processFrontMatter(sc, (fm) => { fm.status = status; fm.feedback = feedback || ""; fm.decided = new Date().toISOString(); if (!fm.title) fm.title = it.title; });
+      try { await setFm(); }
+      catch (e1) {
+        // Agent-written frontmatter sometimes has an unquoted colon or quotes inside quotes, which breaks YAML.
+        // Repair every top-level value into a safe JSON-quoted string, then try once more.
+        await this.app.vault.process(sc, (t) => t.replace(/^---\r?\n([\s\S]*?)\r?\n---/, (all, body) => "---\n" + body.split(/\r?\n/).map((l) => {
+          const k = /^([A-Za-z_]+):\s+(.*)$/.exec(l); if (!k) return l;
+          let v = k[2].trim(); if (/^[|>[{]/.test(v) || v === "") return l;
+          if (v.length > 1 && v.startsWith('"') && v.endsWith('"')) v = v.slice(1, -1); else if (v.length > 1 && v.startsWith("'") && v.endsWith("'")) v = v.slice(1, -1);
+          return k[1] + ": " + JSON.stringify(v.replace(/\\"/g, "'").replace(/"/g, "'"));
+        }).join("\n") + "\n---"));
+        await setFm();
+      }
       new Notice((status === "approved" ? "Approved" : status === "rejected" ? "Rejected" : "Changes sent") + ": " + it.title);
     } catch (e) { console.error("Project HQ review", e); new Notice("Could not save the review: " + (e && e.message || e)); }
     this.touchedAt = 0;
