@@ -617,7 +617,16 @@ class HQView extends ItemView {
     ["create", "delete", "rename", "modify"].forEach((e) => this.registerEvent(this.app.vault.on(e, rv)));
     this.registerInterval(window.setInterval(() => this.loadUsage(), 5 * 60 * 1000));
     this.registerInterval(window.setInterval(() => this.loadCommits(), 10 * 60 * 1000));
-    this.registerInterval(window.setInterval(() => { if (Date.now() - this.liveAt >= (this.page === "agents" ? 2900 : 29900)) this.loadLive(); }, 1000));
+    // Agents show up instantly: watch the Claude projects folder (recursive; Windows and macOS) and rescan as soon as any
+    // subagent file appears or changes. The interval stays as a fallback (5 s on Home, 3 s on the Agents page).
+    this.registerInterval(window.setInterval(() => { if (Date.now() - this.liveAt >= (this.page === "agents" ? 2900 : 4900)) this.loadLive(); }, 1000));
+    try {
+      const w = fs.watch(PROJ, { recursive: true }, (_e, f) => {
+        if (!f || !/subagents[\\/]agent-.*\.(meta\.json|jsonl)$/.test(String(f)) || /personal/i.test(String(f))) return;
+        clearTimeout(this.watchT); this.watchT = setTimeout(() => { this.liveAt = 0; this.loadLive(); }, 400);
+      });
+      this.register(() => { try { w.close(); } catch (e) {} clearTimeout(this.watchT); });
+    } catch (e) { /* no recursive watch on this platform: the interval still covers it */ }
     this.registerInterval(window.setInterval(() => this.clock(), 1000));
     this.registerInterval(window.setInterval(() => { if (this.page === "home" && !this.hover && this.go && this.slideCount > 1) this.go(this.slide + 1); }, 8000));
     this.clock(); this.show("home");
