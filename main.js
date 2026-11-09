@@ -1459,7 +1459,7 @@ Object.assign(HQView.prototype, {
   // ---- the Claude input: toolbar (target, model, effort, hint, counter, expand), drag grip, auto-growing textarea, attachments ----
   osBuildInput(M, ui) {
     const lsGet = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k) || "null"); return v === null ? d : v; } catch (e) { return d; } }, lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
-    ui.userH = lsGet("hqos-in-h", 0); ui.imgs = []; ui.hi = -1; ui.histVal = ""; this.osHist = lsGet("hqos-hist", []);
+    ui.userH = 0; lsSet("hqos-in-h", 0); ui.imgs = []; ui.hi = -1; ui.histVal = ""; this.osHist = lsGet("hqos-hist", []);
     const cmd = ui.cmd = M.createDiv({ cls: "os-cmd" }), tb = cmd.createDiv({ cls: "os-ctool" });
     ui.tbtn = tb.createEl("button", { cls: "os-sel os-tbtn", attr: { "aria-haspopup": "listbox", "aria-label": "Choose which chat to send to" } }); ui.tbtn.onclick = (e) => { e.stopPropagation(); this.osTargetMenu(); };
     ui.target = tb.createEl("select", { cls: "os-sel os-hide", attr: { "aria-label": "Send to HQ chat or a Claudian session", "aria-hidden": "true", tabindex: "-1" } });
