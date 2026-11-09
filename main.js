@@ -833,7 +833,7 @@ const MOD_DEFAULTS = {
   rules: { on: true, triggers: RULE_TRIGGERS.slice(), days: 7, targets: [{ label: "Rules.md", path: "Claude'sWorkspace/Rules.md", kind: "rules" }, { label: "Marketing Playbook", path: "", kind: "playbook" }] },
   actions: { on: true, need: true, money: true, sec: true, fail: true, keywords: "" },
   orb: { on: true, particles: 900, fps: 32, arcs: true, audio: true, audioK: 100, nowPlaying: true },
-  chat: { on: false, model: "", effort: "", tools: true, cost: true }, // HQ's own chat is off by default (2026-11-08): the box talks to Claudian chats
+  chat: { on: false, model: "", effort: "", tools: false, cost: true }, // HQ's own chat is off by default (2026-11-08): the box talks to Claudian chats
   guard: { on: true, folders: GUARD_FOLDERS.slice() },
 };
 const cloneJ = (o) => JSON.parse(JSON.stringify(o));
