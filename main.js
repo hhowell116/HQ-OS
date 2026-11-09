@@ -2575,10 +2575,10 @@ const HQ_SCENES = [
 ];
 // Pixel animations for the spare space in the left column (swordfight + HQ_SCENES). Drawn in code (no assets), theme coloured, ~10 fps, idle when hidden.
 function hqDuel(host, key = "hq-fill-scene", def = 0) {
-  const cv = host.createEl("canvas", { cls: "os-duel", attr: { "aria-hidden": "true" } }), ctx = cv.getContext("2d"), W = 64, H = 30;
+  const wr = host.createDiv({ cls: "os-duelw" }), cv = wr.createEl("canvas", { cls: "os-duel", attr: { "aria-hidden": "true" } }), ctx = cv.getContext("2d"), W = 64, H = 30;
   let tick = 0, round = 0, st = {}, scene = Math.min(HQ_SCENES.length - 1, Math.max(0, parseInt(localStorage.getItem(key) ?? String(def), 10) || 0));
-  const swb = host.createEl("button", { cls: "os-fillsw", attr: { "aria-label": "Swap animation", title: "Swap animation" } });
-  const lbl = () => swb.setText("⇄ " + HQ_SCENES[scene].name);
+  const swb = wr.createEl("button", { cls: "os-fillsw", text: "⇄" });
+  const lbl = () => swb.setAttr("aria-label", "Swap animation (" + HQ_SCENES[scene].name.toLowerCase() + ")");
   lbl();
   swb.addEventListener("click", (e) => { e.stopPropagation(); scene = (scene + 1) % HQ_SCENES.length; localStorage.setItem(key, String(scene)); st = {}; tick = 0; round = 0; lbl(); draw(); });
   const rgb = (v, a) => "rgba(" + (v || "25,227,208") + "," + a + ")";
@@ -2627,7 +2627,7 @@ function hqDuel(host, key = "hq-fill-scene", def = 0) {
       if (ch && ch.offsetParent) { const cr = ch.getBoundingClientRect(), gy = (cr.bottom - r.top) / z;
         if (cr.height && gy > 0) { sc = Math.max(1, Math.floor(Math.min(hw / W, (gy - 4) / (H - 1)))); mt = Math.round(gy - (H - 1) * sc); if (mt < 0 || mt + (H - 1) * sc > hh + 1) mt = null; } } }
     if (cv.width !== W * sc || cv.height !== H * sc) { cv.width = W * sc; cv.height = H * sc; }
-    { const v = mt != null ? mt + "px" : ""; if (cv.style.marginTop !== v) { cv.style.marginTop = v; host.style.alignItems = mt != null ? "flex-start" : ""; } }
+    { const v = mt != null ? mt + "px" : ""; if (wr.style.marginTop !== v) { wr.style.marginTop = v; host.style.alignItems = mt != null ? "flex-start" : ""; } }
     const cs = getComputedStyle(host), A = cs.getPropertyValue("--os-acrgb").trim(), B = cs.getPropertyValue("--os-amrgb").trim();
     ctx.setTransform(sc, 0, 0, sc, 0, 0); ctx.imageSmoothingEnabled = false; ctx.clearRect(0, 0, W, H);
     ctx.fillStyle = rgb(A, 0.35); for (let x = 2; x < W - 2; x += 2) ctx.fillRect(x, H - 2, 1, 1);
