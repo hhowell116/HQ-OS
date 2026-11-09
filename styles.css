@@ -868,3 +868,6 @@
 .hqos .os-msg{font-size:1.11em}
 /* Hayden 2026-11-09: Inter again */
 .hqos .os-cbody,.hqos .os-cbody *:not(code):not(pre):not(kbd):not(code *):not(pre *){font-family:Inter,"Segoe UI",system-ui,sans-serif!important}
+/* Hayden 2026-11-09: Segoe UI, -2% (1.11em -> 1.09em) */
+.hqos .os-msg{font-size:1.09em}
+.hqos .os-cbody,.hqos .os-cbody *:not(code):not(pre):not(kbd):not(code *):not(pre *){font-family:"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif!important}
