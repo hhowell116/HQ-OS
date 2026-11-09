@@ -1753,7 +1753,7 @@ Object.assign(HQView.prototype, {
     const u = this.osUI, cp = this.claudian(); if (!u || u.target.value === "hq" || !cp || !cp.chatHost || !cp.sessionMessaging || this.osClaudBusy) return;
     const id = u.target.value, meta = cp.chatHost.getConversationList().find((x) => x.id === id);
     if (!meta) { if (u.claudKey !== "none:" + id) { u.claudKey = "none:" + id; u.chatBody.empty(); u.chatBody.createDiv({ cls: "os-muted os-chint", text: "No chats in " + (this.project ? this.project.name : "this project") + " yet. Type below to start one." }); u.chatTitle.setText(this.project ? this.project.name.toUpperCase() : "NEW CHAT"); u.chatCost.setText("NEW"); u.queue.addClass("os-hide"); } return; }
-    const st = cp.sessionMessaging.status(id), key = [id, meta.lastActivityAt, meta.messageCount, st, this.osAsks(id).length].join("|"); if (!force && key === u.claudKey) return;
+    const st = cp.sessionMessaging.status(id), key = [id, meta.lastActivityAt, meta.messageCount, st, this.claudBusy(id), this.osAsks(id).length].join("|"); if (!force && key === u.claudKey) return;
     this.osClaudBusy = true;
     try {
       const t = await cp.sessionMessaging.loadTranscript(id); if (u.target.value !== id) return; u.claudKey = key;
@@ -1763,7 +1763,14 @@ Object.assign(HQView.prototype, {
       msgs.forEach((m) => this.osChatMsg(b, m, false));
       const P = this.osPend || {}, seen = msgs.filter((m) => m.r === "user").slice(-8).map((m) => m.text); P[id] = (P[id] || []).filter((p) => Date.now() - p.t < 900000 && !seen.some((x) => x.includes(p.text.slice(0, 60)))); P[id].forEach((p) => this.osChatMsg(b, { r: "user", text: p.text }, false));
       { const Q = this.osQ && this.osQ[id]; if (Q) for (let i = Q.length - 1; i >= 0; i--) if (Q[i].sent && (Date.now() - Q[i].sent > 900000 || seen.some((x) => x.includes(Q[i].text.slice(0, 60))))) Q.splice(i, 1); }
-      if (P[id].length && !(st === "running" && this.claudBusy(id))) b.createDiv({ cls: "os-think os-working", text: "Sent. Waiting for Claude…" });
+      if (P[id].length && !(st === "running" && this.claudBusy(id))) {
+        // Claudian holds queued messages while the chat is "running" even if Claude is only waiting on background agents (no reply streaming).
+        // Say so, and offer SEND NOW (interrupt with no text: Claudian then delivers the queued message first; background agents keep running).
+        const bg = st === "running", w = b.createDiv({ cls: "os-think os-working" + (bg ? " os-live" : "") });
+        w.createDiv({ cls: "os-live-t", text: bg ? "Queued: Claude is waiting on background agents, so your message is held until they finish." : "Sent. Waiting for Claude…" });
+        if (bg) { const nb = w.createEl("button", { cls: "os-chb os-stop", text: "SEND NOW", attr: { title: "Interrupt the wait and deliver your queued message now (background agents keep running)" } });
+          nb.onclick = () => { nb.disabled = true; nb.setText("SENDING…"); this.osClaudStop(id).then(() => setTimeout(() => { if (this.osUI) this.osUI.claudKey = ""; this.osClaudRender(true); }, 800)); }; }
+      }
       if (st === "running" && this.claudBusy(id)) { const since = meta.lastActivityAt ? Math.max(0, Math.round((Date.now() - meta.lastActivityAt) / 60000)) : 0;
         const w = b.createDiv({ cls: "os-think os-working os-live" }), lv = this.osLiveMsgs(id), step = this.osStepLabel(lv || msgs); u.liveLine = w.createDiv({ cls: "os-live-t", text: step ? step + "…" : "Claude is working…" });
         const sb = w.createEl("button", { cls: "os-chb os-stop", text: "STOP", attr: { title: "Stop Claude now (your queued messages stay queued)" } }); sb.onclick = () => { sb.disabled = true; sb.setText("STOPPING…"); this.osClaudStop(id).then(() => setTimeout(() => { if (this.osUI) this.osUI.claudKey = ""; this.osClaudRender(true); }, 800)); }; }
