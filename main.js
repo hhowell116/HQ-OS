@@ -2618,16 +2618,10 @@ function hqDuel(host, key = "hq-fill-scene", def = 0) {
   };
   const draw = () => {
     if (!host.isConnected) { clearInterval(iv); return; }
-    const r = host.getBoundingClientRect(); if (r.height < 30 || document.hidden || !host.offsetParent) return;
-    // work in CSS px (HQ may be zoomed, which scales getBoundingClientRect but not offset sizes)
-    const z = host.offsetHeight ? r.height / host.offsetHeight : 1, hw = host.clientWidth, hh = host.clientHeight;
-    let sc = Math.max(1, Math.floor(Math.min(hw / W, (hh * 0.8) / H))), mt = null;
-    { // line the ground up with the bottom edge of the chat input box: shrink the scale until it fits above that edge
-      const hq = host.closest(".hqos"), ch = hq && (hq.querySelector(".os-mid .os-cbox") || hq.querySelector(".os-mid"));
-      if (ch && ch.offsetParent) { const cr = ch.getBoundingClientRect(), gy = (cr.bottom - r.top) / z;
-        if (cr.height && gy > 0) { sc = Math.max(1, Math.floor(Math.min(hw / W, (gy - 4) / (H - 1)))); mt = Math.round(gy - (H - 1) * sc); if (mt < 0 || mt + (H - 1) * sc > hh + 1) mt = null; } } }
-    if (cv.width !== W * sc || cv.height !== H * sc) { cv.width = W * sc; cv.height = H * sc; }
-    { const v = mt != null ? mt + "px" : ""; if (wr.style.marginTop !== v) { wr.style.marginTop = v; host.style.alignItems = mt != null ? "flex-start" : ""; } }
+    const r = host.getBoundingClientRect(); if (r.height < 10 || document.hidden || !host.offsetParent) return;
+    // fixed size: the box shrinks to fit the animation and the panels above take the spare room (width in CSS px, HQ may be zoomed)
+    const sc = Math.max(1, Math.min(3, Math.floor(host.clientWidth / W)));
+    if (cv.width !== W * sc || cv.height !== H * sc) { cv.width = W * sc; cv.height = H * sc; wr.style.marginBottom = -sc + "px"; }
     const cs = getComputedStyle(host), A = cs.getPropertyValue("--os-acrgb").trim(), B = cs.getPropertyValue("--os-amrgb").trim();
     ctx.setTransform(sc, 0, 0, sc, 0, 0); ctx.imageSmoothingEnabled = false; ctx.clearRect(0, 0, W, H);
     ctx.fillStyle = rgb(A, 0.35); for (let x = 2; x < W - 2; x += 2) ctx.fillRect(x, H - 2, 1, 1);

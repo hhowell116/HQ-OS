@@ -711,8 +711,8 @@
 .hqos .os-upic{max-width:260px;max-height:180px;border:1px solid var(--os-am);cursor:zoom-in;object-fit:contain;background:rgba(0,0,0,.3)}
 
 /* side columns: panels hug their content; leftover space gets an ambient filler */
-@media (min-width:1101px){.hqos .os-left>.os-p{flex:0 1 auto!important}}
-.hqos .os-right>.os-fill{min-height:96px;flex:0 0 34%}
+/* (removed: left panels sized to content) */
+.hqos .os-right>.os-fill{flex:0 0 auto}
 .hqos .os-fill{flex:1 1 0;min-height:0;position:relative;overflow:hidden;order:99;margin-top:-4px;
   background:radial-gradient(ellipse at 50% 55%,rgba(var(--os-acrgb),.08),transparent 70%),
   repeating-linear-gradient(0deg,rgba(var(--os-acrgb),.06) 0 1px,transparent 1px 18px),
@@ -732,7 +732,7 @@
 .hqos .os-fill{display:flex;align-items:center;justify-content:center}
 .hqos .os-fill::before{display:none}
 .hqos .os-duel{image-rendering:pixelated;display:block}
-.hqos .os-left>.os-fill{min-height:96px;flex-shrink:0}
+.hqos .os-fill{flex:0 0 auto!important;min-height:0!important}
 .hqos .os-fillsw{position:absolute;top:4px;left:4px;z-index:2;height:auto;padding:1px 6px;font-family:var(--os-mono);font-size:9px;letter-spacing:.15em;line-height:1.4;background:rgba(var(--os-bgrgb,0,0,0),.4);border:1px solid rgba(var(--os-acrgb),.6);border-radius:2px;color:rgba(var(--os-acrgb),1);box-shadow:none;cursor:pointer;opacity:.95;transition:opacity .15s}
 .hqos .os-fillsw:hover,.hqos .os-fillsw:focus-visible{opacity:1;border-color:rgba(var(--os-acrgb),.8)}
 .hqos .os-q-sent{font-family:var(--os-mono);font-size:9px;letter-spacing:.15em;color:var(--os-am);opacity:.85;white-space:nowrap;padding:0 6px}
