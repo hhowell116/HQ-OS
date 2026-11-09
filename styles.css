@@ -664,3 +664,7 @@
 .hqos .os-ctool .os-handoff{margin-left:6px}
 .hqos .os-ctool .os-handoff.hot{border-color:var(--os-am);color:var(--os-am);box-shadow:0 0 8px rgba(var(--os-amrgb),.45)}
 .hqos .os-ctool .os-handoff.busy{opacity:.7;pointer-events:none}
+.hqos .os-ctool .os-sel{flex:0 1 auto;min-width:0;max-width:none}
+.hqos .os-ctool .os-sel:first-child{flex:1 1 140px;max-width:220px}
+.hqos .os-ctool .os-sp{flex:1 1 0}
+.hqos .os-ctool>*{margin-left:0!important;margin-right:0!important}
