@@ -845,3 +845,5 @@
 .hqos .os-msg{font-size:1.08em}
 .hqos .os-cbody,.hqos .os-cbody *:not(code):not(pre):not(kbd):not(code *):not(pre *){font-family:"Segoe UI Variable Text","Segoe UI",Inter,system-ui,sans-serif!important}
 .hqos .os-msg.asst .os-mt{font-weight:400;letter-spacing:.005em}
+/* Hayden 2026-11-09: Inter (bundled with Obsidian) */
+.hqos .os-cbody,.hqos .os-cbody *:not(code):not(pre):not(kbd):not(code *):not(pre *){font-family:Inter,"Segoe UI",system-ui,sans-serif!important}
