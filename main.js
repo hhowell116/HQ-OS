@@ -1375,7 +1375,8 @@ class Orb {
     for (let c = 0; c < cols; c++) {
       const d = Math.abs(c - half) / half, f = Math.max(0, 1 - d / 0.85) * 23, i0 = Math.floor(f), i1 = Math.min(23, i0 + 1), v = N[i0] + (N[i1] - N[i0]) * (f - i0);
       const env = (0.45 + 0.55 * sm(0, 0.22, d)) * (1 - sm(0.6, 1, d)); // dip in the centre, taper to nothing at the ends
-      const raw = Math.pow(v * ak, 1.25) * env, tgt = Math.min(0.85, 0.85 * (1 - Math.exp(-1.6 * raw)) / (1 - Math.exp(-1.6))); // soft ceiling: columns top out at 85% height this.eqH[c] += (tgt - this.eqH[c]) * (tgt > this.eqH[c] ? 0.55 : 0.16);
+      const raw = Math.pow(v * ak, 1.25) * env, tgt = Math.min(0.85, 0.85 * (1 - Math.exp(-1.6 * raw)) / (1 - Math.exp(-1.6))); // soft ceiling: columns top out at 85% height
+      this.eqH[c] += (tgt - this.eqH[c]) * (tgt > this.eqH[c] ? 0.55 : 0.16);
       const h = this.eqH[c] * maxN, n = Math.max(1, Math.ceil(h)), x = cx - span / 2 + c * cw + (cw - cell) / 2, m = Math.pow(d, 0.8);
       const r = Math.round(A[0] + (B[0] - A[0]) * m), g = Math.round(A[1] + (B[1] - A[1]) * m), b = Math.round(A[2] + (B[2] - A[2]) * m);
       for (let k = 0; k < n; k++) { // crisp pixels: no random dropout or flicker
