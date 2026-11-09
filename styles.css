@@ -780,3 +780,8 @@
 .hqos .os-modcol .os-chb{height:16px!important;min-height:0!important;padding:0 8px!important;line-height:1;font-size:9px}
 .hqos .os-minb.on{color:var(--os-am);border-color:var(--os-am)}
 .hqos.os-min .os-fill,.hqos.os-min .os-orbw .os-ring,.hqos.os-min .os-orbw .os-cv{display:none!important}
+/* MINIMAL: no glow anywhere, thicker flat borders */
+.hqos.os-min,.hqos.os-min *,.hqos.os-min *::before,.hqos.os-min *::after{box-shadow:none!important;text-shadow:none!important}
+.hqos.os-min .os-p,.hqos.os-min .os-chat,.hqos.os-min .os-cmd,.hqos.os-min .os-chb,.hqos.os-min .os-sel,.hqos.os-min .os-go,.hqos.os-min .os-in{border-width:2px!important}
+.hqos.os-min .os-p{border-color:rgba(var(--os-acrgb),.6)!important}
+.hqos.os-min .os-p::before{inset:-2px}
