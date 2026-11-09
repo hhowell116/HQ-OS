@@ -1437,7 +1437,7 @@ Object.assign(HQView.prototype, {
     wrap.createDiv({ cls: "os-sweep" }); ui.top = wrap.createDiv({ cls: "os-top" }); ui.run = wrap.createDiv({ cls: "os-run os-hide", attr: { role: "status", "aria-live": "polite", "aria-label": "Running agents" } });
     const grid = ui.grid = wrap.createDiv({ cls: "os-grid" }), modsEl = ui.modsEl = wrap.createDiv({ cls: "os-mods os-hide" }), L = grid.createDiv({ cls: "os-col os-left" }), M = grid.createDiv({ cls: "os-col os-mid" }), Rt = grid.createDiv({ cls: "os-col os-right" });
     ui.vit = osPanel(L, "SYSTEM VITALS", "os-vit"); ui.sess = osPanel(L, "AGENTS & CHATS", "os-sess"); ui.next = osPanel(L, "NEXT UP", "os-next"); ui.files = osPanel(L, "FILES IN PLAY", "os-files");
-    Rt.prepend(ui.next.p); ui.tasks = osPanel(Rt, "TOP TASKS", "os-tasks"); ui.rev = osPanel(Rt, "REVIEW QUEUE", "os-rev");
+    ui.tasks = osPanel(Rt, "TOP TASKS", "os-tasks"); ui.rev = osPanel(Rt, "REVIEW QUEUE", "os-rev"); ui.rev.p.after(ui.next.p);
     { const f = L.createDiv({ cls: "os-fill" }); hqDuel(f); const g = Rt.createDiv({ cls: "os-fill" }); hqDuel(g, "hq-fill-scene-r", 5, "r"); }
     this.osColl = this.osColl || new Set(MODS.files.collapsed ? ["files"] : []);
     [["files", ui.files]].forEach(([k, p]) => { p.p.addClass("os-coll"); p.p.toggleClass("collapsed", this.osColl.has(k)); p.h.setAttr("role", "button"); p.h.setAttr("tabindex", "0"); p.h.setAttr("aria-expanded", String(!this.osColl.has(k)));
