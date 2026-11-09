@@ -2048,7 +2048,7 @@ Object.assign(HQView.prototype, {
     const P = this.plugin, cur = (hl ? P.settings.theme.highlight : P.settings.theme.accent) || "", wrap = r.createDiv({ cls: "os-accw" + (hl ? " hl" : ""), attr: { style: "position:relative;display:inline-flex" } });
     const btn = wrap.createEl("button", { cls: "os-chb os-accb", attr: { "aria-label": hl ? "Highlight colour (your messages, HANDOFF, YOLO, warnings)" : "Accent colour (sphere and secondary highlights)", title: hl ? "Highlight colour: your messages, HANDOFF, YOLO and warnings" : "Accent: sphere and secondary highlights", "aria-expanded": "false" } });
     btn.style.display = "inline-flex"; btn.style.alignItems = "center"; btn.style.gap = "6px";
-    const dot = btn.createSpan({ attr: { "aria-hidden": "true", style: "width:11px;height:11px;border-radius:50%;display:inline-block;box-shadow:0 0 6px currentColor" } }); { const dc = hl ? P.curTheme().warn : P.curTheme().accent; dot.style.background = dc; dot.style.color = dc; }
+    const dot = btn.createSpan({ attr: { "aria-hidden": "true", style: "width:11px;height:11px;border-radius:50%;display:inline-block;box-shadow:0 0 6px currentColor" } }); { const ct = P.curTheme(), dc = hl ? ct.warn : (ct.orb || ct.accent); dot.style.background = dc; dot.style.color = dc; }
 
     const tray = wrap.createDiv({ attr: { role: "listbox", "aria-label": "Accent colours", style: "position:absolute;top:calc(100% + 6px);right:0;z-index:50;display:none;flex-wrap:wrap;gap:6px;width:236px;padding:8px;background:var(--os-solid,#071217);border:1px solid var(--os-cy,#19e3d0);box-shadow:0 0 14px rgba(0,0,0,.6)" } });
     const close = () => { tray.style.display = "none"; btn.setAttr("aria-expanded", "false"); document.removeEventListener("mousedown", outside, true); };
