@@ -834,3 +834,5 @@
 .hqos.os-min .os-p,.hqos.os-min .os-chat,.hqos.os-min .os-cmd,.hqos.os-min .os-cbody,.hqos.os-min .os-p .os-pb,.hqos.os-min textarea.os-in{background:#000!important}
 .hqos .os-cmd .os-atts{position:absolute;left:0;right:0;bottom:100%;z-index:6;padding:6px 8px;background:var(--os-solid);border:1px solid rgba(var(--os-acrgb),.5);border-bottom:0}
 .hqos .os-cmd .os-atts.os-hide{display:none}
+/* Typing box matches the chat text (Hayden 2026-11-09). */
+.hqos textarea.os-in{font-family:"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;font-size:1.09em;line-height:1.6;color:#f4ece0;-webkit-font-smoothing:antialiased}
