@@ -793,3 +793,7 @@
 .hqos.os-min .os-p::before{inset:-3px}
 .hqos.os-min .os-chb,.hqos.os-min .os-sel,.hqos.os-min .os-go,.hqos.os-min .os-in,.hqos.os-min .os-mt{border-width:2px!important}
 .hqos.os-min .os-top,.hqos.os-min .lhq-top{border-bottom-width:2px!important}
+/* Font: Georgia everywhere (Hayden 2026-11-09, same face Claudian falls back to); code stays monospace */
+.hqos.hqos{--os-mono:Copernicus,"Tiempos Headline",Tiempos,Georgia,"Times New Roman",serif;--os-code:ui-monospace,"Cascadia Mono",Consolas,monospace}
+.hqos *:not(code):not(pre):not(kbd):not(code *):not(pre *){font-family:var(--os-mono)!important}
+.hqos code,.hqos pre,.hqos kbd,.hqos code *,.hqos pre *{font-family:var(--os-code)!important}
