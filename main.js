@@ -1587,7 +1587,9 @@ Object.assign(HQView.prototype, {
       if (this.osMenuOpen) {
         const menu = pw.createDiv({ cls: "os-menu", attr: { role: "menu", "aria-label": "Projects" } });
         vis.forEach((p) => { const it = menu.createEl("button", { cls: "os-mi" + (this.project && p.id === this.project.id ? " cur" : ""), attr: { role: "menuitemradio", "aria-checked": String(!!(this.project && p.id === this.project.id)) } }); it.createSpan({ text: (p.pinned ? "\u2605 " : "") + (p.name || "Untitled") }); it.onclick = () => { this.osMenuOpen = false; if (!this.project || p.id !== this.project.id) this.reload(p.id); else closeM(); }; });
-        if (!vis.length) menu.createDiv({ cls: "os-muted", text: "No projects. Add one in Settings." });
+        if (!vis.length) menu.createDiv({ cls: "os-muted", text: "No projects yet." });
+        { const nb = menu.createEl("button", { cls: "os-mi os-minew", text: "+ NEW PROJECT", attr: { role: "menuitem" } }); nb.onclick = (e) => { e.stopPropagation(); const inp = createEl("input", { cls: "os-ren", attr: { type: "text", placeholder: "Project name, Enter to create", "aria-label": "New project name" } }); nb.replaceWith(inp); inp.focus();
+            inp.addEventListener("keydown", async (ev) => { ev.stopPropagation(); if (ev.key === "Escape") { closeM(); return; } if (ev.key !== "Enter") return; const nm = inp.value.replace(/[\\/:*?"<>|#^[\]]/g, "").replace(/\s+/g, " ").trim().slice(0, 40); if (!nm) return; inp.disabled = true; try { const id = await this.osNewProject(nm); this.osMenuOpen = false; await this.reload(id); } catch (x) { new Notice("Could not create the project: " + (x && x.message || x)); inp.disabled = false; } }); }; }
         menu.addEventListener("keydown", (e) => { const its = [...menu.querySelectorAll(".os-mi")], i = its.indexOf(document.activeElement); if (e.key === "Escape") { e.stopPropagation(); closeM(); } else if (e.key === "ArrowDown") { e.preventDefault(); (its[i + 1] || its[0]).focus(); } else if (e.key === "ArrowUp") { e.preventDefault(); (its[i - 1] || its[its.length - 1]).focus(); } });
         setTimeout(() => { const c = menu.querySelector(".cur") || menu.querySelector(".os-mi"); if (c) c.focus(); }, 0);
         const off = (e) => { if (!pw.contains(e.target)) { document.removeEventListener("pointerdown", off, true); if (this.osMenuOpen) closeM(); } }; setTimeout(() => document.addEventListener("pointerdown", off, true), 0);
@@ -1617,7 +1619,7 @@ Object.assign(HQView.prototype, {
   osProjSwitch() {
     const u = this.osUI, hq = this.hq(); if (!u) return;
     const c = hq && hq.get(hq.activeId); if (c && hq.projOf(c) !== (this.project && this.project.id)) { hq.activeId = ""; u.chatOpen = false; this.osChatWas = false; }
-    if (u.chatList) u.chatList.addClass("os-hide"); this.osChatLayout(); this.osChatRender(true); this.osTopRender(); this.osCtxHint();
+    if (u.chatList) u.chatList.addClass("os-hide"); u.tsig = ""; this.osSessData(true); this.osChatLayout(); this.osChatRender(true); this.osTopRender(); this.osCtxHint();
   },
   osCtxHint() { const u = this.osUI; if (u && u.cmdMsg && !u.cmdMsg.hasClass("bad")) u.cmdMsg.setText(this.project ? "Project: " + this.project.name + (this.project.folder ? "  ·  " + this.project.folder : "") : ""); },
   osFocusInsights() { const u = this.osUI; if (u && u.acts) u.acts.p.scrollIntoView({ behavior: "smooth", block: "nearest" }); },
@@ -1639,7 +1641,8 @@ Object.assign(HQView.prototype, {
     try {
       const cp = this.claudian(), rows = [], reads = []; this.osSnip = this.osSnip || {};
       if (cp && cp.chatHost && cp.sessionMessaging) {
-        const list = cp.chatHost.getConversationList().filter((c) => !c.isArchived && !OS_PERSONAL.test((c.linkedContentPath || "") + " " + (c.title || ""))).sort((a, b) => (b.lastActivityAt || 0) - (a.lastActivityAt || 0)).slice(0, 15);
+        const cpid = this.claudProjId();
+        const list = cp.chatHost.getConversationList().filter((c) => !c.isArchived && c.projectId === cpid && cpid && !OS_PERSONAL.test((c.linkedContentPath || "") + " " + (c.title || ""))).sort((a, b) => (b.lastActivityAt || 0) - (a.lastActivityAt || 0)).slice(0, 15);
         for (const c of list) {
           const st = cp.sessionMessaging.status(c.id), key = [c.lastActivityAt, c.messageCount, st].join("|"), sn = this.osSnip[c.id];
           if (rows.length < 4 && cp.api && (!sn || (sn.key !== key && Date.now() - sn.at > 8000))) reads.push([c.id, key, sn]);
@@ -1728,7 +1731,8 @@ Object.assign(HQView.prototype, {
   // read-only view of the picked Claudian chat (last 40 messages), refreshed when it changes
   async osClaudRender(force) {
     const u = this.osUI, cp = this.claudian(); if (!u || u.target.value === "hq" || !cp || !cp.chatHost || !cp.sessionMessaging || this.osClaudBusy) return;
-    const id = u.target.value, meta = cp.chatHost.getConversationList().find((x) => x.id === id); if (!meta) return;
+    const id = u.target.value, meta = cp.chatHost.getConversationList().find((x) => x.id === id);
+    if (!meta) { if (u.claudKey !== "none:" + id) { u.claudKey = "none:" + id; u.chatBody.empty(); u.chatBody.createDiv({ cls: "os-muted os-chint", text: "No chats in " + (this.project ? this.project.name : "this project") + " yet. Type below to start one." }); u.chatTitle.setText(this.project ? this.project.name.toUpperCase() : "NEW CHAT"); u.chatCost.setText("NEW"); u.queue.addClass("os-hide"); } return; }
     const st = cp.sessionMessaging.status(id), key = [id, meta.lastActivityAt, meta.messageCount, st].join("|"); if (!force && key === u.claudKey) return;
     this.osClaudBusy = true;
     try {
@@ -1768,6 +1772,28 @@ Object.assign(HQView.prototype, {
     for (const id of Object.keys(this.osQ)) { const q = this.osQ[id]; if (!q.length || this.claudBusy(id)) continue;
       this.osCQBusy = true; const m = q.shift(); try { await cp.api.send(id, { text: m.text }); } catch (e) { q.unshift(m); } this.osCQBusy = false; this.osCQRender(); setTimeout(() => this.osClaudRender(true), 800); break; }
   },
+  claudProjId() { const cp = this.claudian(), nm = String(this.project ? this.project.name : "").toLowerCase(); try { const p = cp.chatHost.domains.projects.list().find((x) => !x.isArchived && String(x.name).toLowerCase() === nm); return p ? p.id : ""; } catch (e) { return ""; } },
+  async claudEnsureProject() { // the Claudian project for this HQ project, created on first use
+    let id = this.claudProjId(); if (id || !this.project) return id; const cp = this.claudian(), nm = this.project.name, sl = String(nm).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "project";
+    try { const p = await cp.chatHost.domains.projects.create({ name: nm, instructions: "", memoryPath: ".claudian/projects/" + sl + "/MEMORY.md" }); id = p && p.id || this.claudProjId(); } catch (e) { console.error("Project HQ claudian project", e); }
+    return id;
+  },
+  async osNewClaudChat(firstText) { // new Claudian chat inside this project; optionally sends the first message
+    const cp = this.claudian(), u = this.osUI; if (!cp || !cp.chatHost) throw new Error("Claudian is not available.");
+    const pid = await this.claudEnsureProject(), any = cp.chatHost.getConversationList()[0] || {};
+    const nc = await cp.chatHost.createConversation(Object.assign({ providerId: any.providerId || "claude" }, any.selectedModel ? { selectedModel: any.selectedModel } : {}, pid ? { projectId: pid } : {}));
+    u.pendTarget = nc.id; if (firstText) await cp.api.send(nc.id, { text: firstText }); await this.osSessData(true); this.osTargetPick(nc.id); return nc.id;
+  },
+  async osNewProject(nm) { // folder + Notes/To-Do note in Claude'sWorkspace, an HQ project, and a matching Claudian project
+    const P = this.plugin, folder = WS + "/" + nm, todo = folder + "/Notes/" + nm + " To-Do.md", V = this.app.vault;
+    if (V.getAbstractFileByPath(folder)) throw new Error("A folder named " + nm + " already exists.");
+    await V.createFolder(folder); await V.createFolder(folder + "/Notes");
+    await V.create(todo, "# " + nm + " To-Do\n\n## Now\n\n## Next\n1. \n\n## Waiting on " + (P.settings.person || "me") + "\n\n## Done\n");
+    P.syncProjects(); const p = P.settings.projects.find((x) => x.folder === folder); if (!p) throw new Error("project not registered"); p.todo = todo; await P.saveSettings();
+    const cp = this.claudian(), sl = nm.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "project";
+    try { if (cp && cp.chatHost && !cp.chatHost.domains.projects.list().some((x) => String(x.name).toLowerCase() === nm.toLowerCase())) await cp.chatHost.domains.projects.create({ name: nm, instructions: "", memoryPath: ".claudian/projects/" + sl + "/MEMORY.md" }); } catch (e) { console.error("Project HQ claudian project", e); }
+    new Notice("Project " + nm + " created"); return p.id;
+  },
   osTargetLabel() { const u = this.osUI; if (!u || !u.tbtn) return; const o = u.target.options[u.target.selectedIndex]; u.tbtn.setText((o ? o.text : "HQ CHAT") + "  \u25BE"); },
   osTargetPick(v) { const u = this.osUI; u.target.value = v; this.osChatLayout(); this.osTargetLabel(); this.osTargetClose(); u.cmdIn.focus(); },
   osTargetClose() { const u = this.osUI; if (!u || !u.tpop) return; u.tpop.addClass("os-hide"); if (u.tpopOff) { document.removeEventListener("pointerdown", u.tpopOff, true); document.removeEventListener("keydown", u.tpopKey, true); u.tpopOff = null; } },
@@ -1777,6 +1803,8 @@ Object.assign(HQView.prototype, {
     P.empty(); P.removeClass("os-hide"); const cur = u.target.value, convs = this.osConvs || [];
     const row = (val, label, sub) => { const r = P.createDiv({ cls: "os-tro" + (val === cur ? " cur" : ""), attr: { role: "option", "aria-selected": String(val === cur) } }); const n = r.createDiv({ cls: "os-trn" }); n.createSpan({ cls: "os-trt", text: label }); if (sub) n.createSpan({ cls: "os-trs", text: sub }); n.onclick = () => this.osTargetPick(val); return r; };
     if (MODS.chat.on) { const hr = row("hq", "HQ CHAT", "built-in"); const lb = hr.createEl("button", { cls: "os-chb", text: "CHATS", attr: { title: "HQ chat list: open, pin, rename, delete" } }); lb.onclick = (e) => { e.stopPropagation(); this.osTargetClose(); this.osChatList(); }; }
+    { const nr = P.createDiv({ cls: "os-tro os-trnew" }), nb = nr.createDiv({ cls: "os-trn" }); nb.createSpan({ cls: "os-trt", text: "+ NEW CHAT" }); nb.createSpan({ cls: "os-trs", text: "in " + (this.project ? this.project.name : "this project") }); nb.onclick = async () => { this.osTargetClose(); try { await this.osNewClaudChat(); } catch (x) { new Notice(String(x && x.message || x)); } }; }
+    if (!convs.length) P.createDiv({ cls: "os-muted", text: "No chats in " + (this.project ? this.project.name : "this project") + " yet." });
     if (convs.length && MODS.chat.on) P.createDiv({ cls: "os-trh", text: "CLAUDIAN" });
     convs.forEach(([id, title, act]) => {
       const r = row(id, title, act ? "open now" : "");
@@ -1798,15 +1826,17 @@ Object.assign(HQView.prototype, {
   },
   osFillTarget() {
     const u = this.osUI; if (!u || !u.target) return; const prev = u.target.value || "hq", convs = this.osConvs || [], sig = JSON.stringify(convs); if (u.tsig === sig) return; u.tsig = sig; u.target.empty();
-    const hqOn = MODS.chat.on || !convs.length; if (hqOn) u.target.createEl("option", { value: "hq", text: "HQ CHAT" }); convs.forEach(([id, t, act]) => u.target.createEl("option", { value: id, text: (MODS.chat.on ? "CLAUDIAN: " : "") + t.slice(0, 40) }));
+    const hqOn = MODS.chat.on; if (!convs.length && !hqOn) u.target.createEl("option", { value: "new", text: "NEW CHAT" }); if (hqOn) u.target.createEl("option", { value: "hq", text: "HQ CHAT" }); convs.forEach(([id, t, act]) => u.target.createEl("option", { value: id, text: (MODS.chat.on ? "CLAUDIAN: " : "") + t.slice(0, 40) }));
     const act = (convs.find((c) => c[2]) || convs[0] || [])[0];
-    u.target.value = convs.some((c) => c[0] === prev) || (prev === "hq" && hqOn) ? prev : (act || "hq"); this.osChatLayout(); this.osTargetLabel(); if (!u.tpop.hasClass("os-hide")) this.osTargetMenu(true);
+    const pend = u.pendTarget && convs.some((c) => c[0] === u.pendTarget) ? u.pendTarget : ""; if (pend) u.pendTarget = "";
+    u.target.value = pend || (convs.some((c) => c[0] === prev) || (prev === "hq" && hqOn) ? prev : (act || (hqOn ? "hq" : "new"))); this.osChatLayout(); this.osTargetLabel(); if (!u.tpop.hasClass("os-hide")) this.osTargetMenu(true);
   },
   // ---- Claudian path (only when a Claudian session is picked in the target list; HQ chat is the default) ----
   claudBusy(id) { const cp = this.claudian(); try { return !!(cp && cp.sessionMessaging && cp.sessionMessaging.status(id) === "running"); } catch (e) { return false; } },
   async osSend(text, target) {
     const u = this.osUI; text = String(text || "").trim(); if (!target || target === "hq") return;
     if (!text) { if (this.claudBusy(target)) this.osClaudStop(target); return; }
+    if (target === "new") { u.cmdIn.value = ""; this.osAutoGrow(); try { u.cmdMsg.setText("Starting a new chat in " + (this.project ? this.project.name : "this project") + "\u2026"); await this.osNewClaudChat(text); this.osRemember(text); u.cmdMsg.setText("Sent."); } catch (e) { u.cmdIn.value = text; u.cmdMsg.setText("Could not start a chat: " + (e && e.message || e)); } return; }
     this.osQ = this.osQ || {}; const q = this.osQ[target] = this.osQ[target] || [];
     if (this.claudBusy(target) || q.length) { q.push({ text }); this.osRemember(text); u.cmdIn.value = ""; this.osAutoGrow(); this.osGoLabel(); this.osCQRender(); return; } const say = (m, bad) => { u.cmdMsg.setText(m); u.cmdMsg.toggleClass("bad", !!bad); };
     const cp = this.claudian(); if (!(cp && cp.api && cp.api.send)) { say("Claudian is not available.", true); return; }
