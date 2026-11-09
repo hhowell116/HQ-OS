@@ -1747,7 +1747,7 @@ Object.assign(HQView.prototype, {
     const u = this.osUI, cp = this.claudian(); if (!u || u.target.value === "hq" || !cp || !cp.chatHost || !cp.sessionMessaging || this.osClaudBusy) return;
     const id = u.target.value, meta = cp.chatHost.getConversationList().find((x) => x.id === id);
     if (!meta) { if (u.claudKey !== "none:" + id) { u.claudKey = "none:" + id; u.chatBody.empty(); u.chatBody.createDiv({ cls: "os-muted os-chint", text: "No chats in " + (this.project ? this.project.name : "this project") + " yet. Type below to start one." }); u.chatTitle.setText(this.project ? this.project.name.toUpperCase() : "NEW CHAT"); u.chatCost.setText("NEW"); u.queue.addClass("os-hide"); } return; }
-    const st = cp.sessionMessaging.status(id), key = [id, meta.lastActivityAt, meta.messageCount, st].join("|"); if (!force && key === u.claudKey) return;
+    const st = cp.sessionMessaging.status(id), key = [id, meta.lastActivityAt, meta.messageCount, st, this.osAsks(id).length].join("|"); if (!force && key === u.claudKey) return;
     this.osClaudBusy = true;
     try {
       const t = await cp.sessionMessaging.loadTranscript(id); if (u.target.value !== id) return; u.claudKey = key;
@@ -1769,6 +1769,7 @@ Object.assign(HQView.prototype, {
       if (P[id].length && !(st === "running" && this.claudBusy(id))) b.createDiv({ cls: "os-think os-working", text: "Sent. Waiting for Claude…" });
       if (st === "running" && this.claudBusy(id)) { const since = meta.lastActivityAt ? Math.max(0, Math.round((Date.now() - meta.lastActivityAt) / 60000)) : 0;
         const w = b.createDiv({ cls: "os-think os-working" }); w.createDiv({ text: "Claude is replying…" + (since ? " (last update " + since + " min ago)" : "") }); }
+      this.osAskRender(b, id);
       if (near) b.scrollTop = b.scrollHeight;
       this.osCQRender(); u.chatTitle.setText("CLAUDIAN \u00B7 " + (meta.title || "Untitled")); const act = st === "running" && this.claudBusy(id); u.chatCost.setText(act ? "WORKING" : st === "awaiting-user" ? "NEEDS YOU" : "READY"); u.chatCost.toggleClass("run", act); this.osPermLabel(); this.osTidyLabel();
     } catch (e) { console.error("Project HQ claudian view", e); } finally { this.osClaudBusy = false; }
@@ -1806,6 +1807,34 @@ Object.assign(HQView.prototype, {
     if (u.perm.textContent !== L[0]) u.perm.setText(L[0]); u.perm.toggleClass("yolo", m === "yolo"); if (u.perm.isShown() !== !!cp) u.perm.toggle(!!cp); const tip = "Now: " + L[0] + " (" + L[1].toLowerCase() + ")\n\nASK: Claude asks before every file edit and command.\nEDITS: file edits go through on their own; commands still ask.\nYOLO: everything runs without asking.\n\nClick to switch. Applies to all Claudian chats."; if (u.permTip !== tip) { u.permTip = tip; u.perm.setAttr("aria-label", tip); u.perm.setAttr("data-tooltip-position", "top"); u.perm.setAttr("title", tip); } },
   async osPermCycle() { const cp = this.claudian(); if (!(cp && cp.settingsCoordinator)) return; const order = ["normal", "acceptEdits", "yolo"], cur = cp.settings.permissionMode, nx = order[(order.indexOf(cur) + 1) % order.length];
     try { await cp.settingsCoordinator.mutate((st) => { st.permissionMode = nx; st.savedProviderPermissionMode = Object.assign({}, st.savedProviderPermissionMode, { claude: nx }); }); } catch (e) { new Notice("Could not change permissions: " + (e && e.message || e)); } this.osPermLabel(); },
+  // ---- questions from Claude (AskUserQuestion / permission prompts) answered right in HQ ----
+  osAsks(id) { const cp = this.claudian(); try { const rt = [...cp.chatHost.sessionRuntimes.getAll()].find((r) => r.conversationId === id), ip = rt && rt.currentModel && rt.currentModel.inlinePrompts; return ip ? [...ip.pending.entries()].filter(([, d]) => d && !d.state.resolved && d.input && Array.isArray(d.input.questions)) : []; } catch (e) { return []; } },
+  async osAnswer(id, d, ans) {
+    try { if (d.config && d.config.onSubmit) await d.config.onSubmit(ans); if (d.inline && d.inline.resolveCallback) { d.state.resolved = true; try { d.inline.disposePresentation(); } catch (e) {} d.inline.resolveCallback(ans); } else { d.resolve(ans); d.abort(); } }
+    catch (e) { new Notice("Could not send your answer: " + (e && e.message || e)); }
+    if (this.osUI) this.osUI.claudKey = ""; setTimeout(() => this.osClaudRender(true), 300);
+  },
+  osAskRender(b, id) {
+    for (const [, d] of this.osAsks(id)) {
+      const card = b.createDiv({ cls: "os-ask" }), qs = d.input.questions, picks = qs.map(() => new Set()), other = qs.map(() => "");
+      card.createDiv({ cls: "os-ask-h", text: qs.length > 1 ? "CLAUDE HAS " + qs.length + " QUESTIONS" : "CLAUDE IS ASKING" });
+      const key = (q) => q.id ?? q.question, val = (o) => o.value ?? o.label;
+      const ready = () => qs.every((q, i) => picks[i].size || other[i].trim());
+      const submit = () => { const ans = {}; qs.forEach((q, i) => { const o = other[i].trim(); ans[key(q)] = q.multiSelect ? [...picks[i]].concat(o ? [o] : []) : (o || [...picks[i]][0] || ""); }); card.addClass("sent"); this.osAnswer(id, d, ans); };
+      let sendBtn = null; const upd = () => { if (sendBtn) sendBtn.disabled = !ready(); };
+      qs.forEach((q, i) => {
+        const qe = card.createDiv({ cls: "os-ask-q" }); if (q.header) qe.createSpan({ cls: "os-ask-tag", text: q.header }); qe.createDiv({ cls: "os-ask-t", text: q.question || "" });
+        const ops = qe.createDiv({ cls: "os-ask-ops" });
+        (q.options || []).forEach((o) => { const bt = ops.createEl("button", { cls: "os-ask-o" }); bt.createDiv({ cls: "l", text: o.label }); if (o.description) bt.createDiv({ cls: "d", text: o.description });
+          bt.onclick = () => { const v = val(o); if (q.multiSelect) { picks[i].has(v) ? picks[i].delete(v) : picks[i].add(v); bt.toggleClass("on", picks[i].has(v)); upd(); return; }
+            picks[i] = new Set([v]); ops.querySelectorAll(".os-ask-o").forEach((x) => x.removeClass("on")); bt.addClass("on"); if (qs.length === 1 && !other[i].trim()) submit(); else upd(); }; });
+        if (q.isOther !== false) { const inp = qe.createEl("input", { cls: "os-ask-other", attr: { type: "text", placeholder: "Or type your own answer…" } }); inp.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Enter" && ready()) submit(); }; inp.oninput = () => { other[i] = inp.value; upd(); }; }
+      });
+      const row = card.createDiv({ cls: "os-ask-row" });
+      if (qs.length > 1 || qs.some((q) => q.multiSelect) || qs.some((q) => q.isOther !== false)) { sendBtn = row.createEl("button", { cls: "os-chb os-ask-send", text: "SEND ANSWER" }); sendBtn.onclick = () => ready() && submit(); upd(); }
+      const sk = row.createEl("button", { cls: "os-chb", text: "SKIP", attr: { title: "Dismiss without answering" } }); sk.onclick = () => { card.addClass("sent"); try { d.abort(); } catch (e) {} if (this.osUI) this.osUI.claudKey = ""; setTimeout(() => this.osClaudRender(true), 300); };
+    }
+  },
   osPendAdd(id, text) { this.osPend = this.osPend || {}; (this.osPend[id] = this.osPend[id] || []).push({ text, t: Date.now() }); if (this.osUI) this.osUI.claudKey = ""; },
   async osClaudStop(id) { const cp = this.claudian(); try { await cp.api.send(id, { mode: "interrupt" }); } catch (e) { new Notice("Could not stop: " + (e && e.message || e)); } },
   // queued messages for the picked Claudian chat: SEND NOW interrupts Claude and sends it immediately
