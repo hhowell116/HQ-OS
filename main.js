@@ -1267,6 +1267,12 @@ function nextSlot(slots, now) {
 function osPanel(parent, title, cls) {
   const p = parent.createDiv({ cls: "os-p " + (cls || "") }), h = p.createDiv({ cls: "os-ph" });
   h.createSpan({ cls: "os-pt", text: title }); const meta = h.createSpan({ cls: "os-pm" });
+  // expand: the panel fills the dashboard so everything in it is readable at once; Esc, the button or a click outside closes it
+  const x = h.createEl("button", { cls: "os-pmax", text: "⤢", attr: { "aria-label": "Expand " + title, title: "Expand", "aria-pressed": "false" } });
+  const close = () => { p.removeClass("os-max"); x.setText("⤢"); x.setAttr("aria-pressed", "false"); x.setAttr("aria-label", "Expand " + title); document.removeEventListener("keydown", esc, true); document.removeEventListener("pointerdown", out, true); const g = p.closest(".os-grid"); if (g && !g.querySelector(".os-max")) g.removeClass("has-max"); };
+  const esc = (e) => { if (e.key === "Escape") { e.stopPropagation(); close(); } }, out = (e) => { if (!p.contains(e.target)) close(); };
+  x.onclick = (e) => { e.stopPropagation(); if (p.hasClass("os-max")) return close(); const g = p.closest(".os-grid"); if (g) { g.querySelectorAll(".os-max .os-pmax").forEach((b) => b !== x && b.click()); g.addClass("has-max"); }
+    p.addClass("os-max"); x.setText("✕"); x.setAttr("aria-pressed", "true"); x.setAttr("aria-label", "Close expanded " + title); setTimeout(() => { document.addEventListener("keydown", esc, true); document.addEventListener("pointerdown", out, true); }, 0); };
   return { p, h, meta, body: p.createDiv({ cls: "os-pb" }) };
 }
 // ----- the particle orb (2D canvas, projected sphere; ~30 fps; paused when HQ is not visible) -----
@@ -1695,7 +1701,7 @@ Object.assign(HQView.prototype, {
       this.touchedAt = Date.now(); r.toggleClass("done", cb.checked); clearTimeout(r._t);
       if (cb.checked) r._t = setTimeout(() => { r._wrote = true; onTick(true); }, 4000); else if (r._wrote) { r._wrote = false; onTick(false); }
     };
-    const lb = r.createEl("span", { cls: "os-tlb", text: text.slice(0, 130) }); lb.title = (tip ? tip + ": " : "") + text + (ro ? "" : "\nClick to open in the note"); if (tag) r.createSpan({ cls: "os-tag", text: tag });
+    const lb = r.createEl("span", { cls: "os-tlb", text: text }); lb.title = (tip ? tip + ": " : "") + text + (ro ? "" : "\nClick to open in the note"); if (tag) r.createSpan({ cls: "os-tag", text: tag });
     if (!ro && lineNo !== undefined) { lb.addClass("click"); lb.onclick = () => this.osOpenTodoAt(lineNo); }
   },
   osOpenTodoAt(line) { const f = this.app.vault.getAbstractFileByPath(TODO); if (!(f instanceof TFile)) return; this.app.workspace.getLeaf("tab").openFile(f, { eState: { line } }); },
