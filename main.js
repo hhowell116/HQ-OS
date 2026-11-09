@@ -1437,7 +1437,7 @@ Object.assign(HQView.prototype, {
     const npShow = (d) => { if (this.osUI !== ui) return; const x = HQNow.pick(d); ui.np.toggleClass("os-hide", !x); if (!x) return; const t = String(x.title).slice(0, 120), a = [x.artist, HQNow.appName(x.app)].filter(Boolean).join("  ·  ").slice(0, 100); if (ui.npT.textContent !== "\u266A " + t) ui.npT.setText("\u266A " + t); if (ui.npS.textContent !== a) ui.npS.setText(a); };
     HQNow.subs.add(npShow); this.osNpUnsub = () => HQNow.subs.delete(npShow); npShow(HQNow.data);
     ui.status = M.createDiv({ cls: "os-status", attr: { role: "status", "aria-live": "polite" } });
-    ui.mid = M; ui.chatBox = M.createDiv({ cls: "os-chat os-hide" }); ui.showChat = M.createEl("button", { cls: "os-showchat os-hide", text: "SHOW CHAT", attr: { title: "Show chat" } }); ui.showChat.onclick = () => { ui.chatHidden = false; this.osChatLayout(); ui.claudKey = ""; setTimeout(() => this.osClaudRender(true), 0); }; this.osChatHeader(ui.chatBox); ui.chatList = ui.chatBox.createDiv({ cls: "os-clist os-hide" }); ui.chatBody = ui.chatBox.createDiv({ cls: "os-cbody", attr: { role: "log", "aria-live": "polite", "aria-label": "Claude Code conversation" } }); ui.queue = ui.chatBox.createDiv({ cls: "os-queue os-hide", attr: { "aria-label": "Queued messages" } });
+    ui.mid = M; ui.chatBox = M.createDiv({ cls: "os-chat os-hide" }); ui.showChat = M.createEl("button", { cls: "os-showchat os-hide", text: "SHOW CHAT", attr: { title: "Show chat" } }); ui.showChat.onclick = () => { ui.chatHidden = false; this.osChatLayout(); ui.claudKey = ""; setTimeout(() => this.osClaudRender(true), 0); }; this.osChatHeader(ui.chatBox); ui.chatList = ui.chatBox.createDiv({ cls: "os-clist os-hide" }); ui.chatBody = ui.chatBox.createDiv({ cls: "os-cbody", attr: { role: "log", "aria-live": "polite" } }); ui.queue = ui.chatBox.createDiv({ cls: "os-queue os-hide", attr: { "aria-label": "Queued messages" } });
     { const tip = ui.tip = wrap.createDiv({ cls: "os-tip os-hide", attr: { "aria-hidden": "true" } });
       // follows the cursor; screen px are divided by the HQ text-scale zoom so it lands right under the pointer
       const place = (e) => { const w = wrap.getBoundingClientRect(), z = (w.width / wrap.offsetWidth) || 1, W = wrap.offsetWidth, H = wrap.offsetHeight, tw = tip.offsetWidth, th = tip.offsetHeight;
@@ -1479,7 +1479,7 @@ Object.assign(HQView.prototype, {
     ui.grip = cmd.createDiv({ cls: "os-grip", attr: { role: "separator", "aria-orientation": "horizontal", "aria-label": "Resize message box (drag, or Up and Down arrows). Double-click resets.", tabindex: "0", title: "Drag to resize the message box" } });
     const box = cmd.createDiv({ cls: "os-cbox" }), left = box.createDiv({ cls: "os-cleft" });
     ui.chips = left.createDiv({ cls: "os-atts os-hide" });
-    ui.cmdIn = left.createEl("textarea", { cls: "os-in", attr: { rows: "1", placeholder: "Message Claude Code… (type / for commands)", "aria-label": "Message for Claude Code", autocomplete: "off", spellcheck: "false" } });
+    ui.cmdIn = left.createEl("textarea", { cls: "os-in", attr: { rows: "1", placeholder: "Message Claude Code… (type / for commands)", autocomplete: "off", spellcheck: "false" } });
     ui.slash = cmd.createDiv({ cls: "os-slash os-hide", attr: { role: "listbox", "aria-label": "Commands" } });
     ui.go = box.createEl("button", { cls: "os-go", text: "SEND", attr: { "aria-label": "Send message" } }); ui.cmdMsg = M.createDiv({ cls: "os-cmdmsg" });
     const t = ui.cmdIn, zoom = () => (this.plugin.settings.textScale || 125) / 100;
