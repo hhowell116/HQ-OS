@@ -1370,8 +1370,8 @@ Object.assign(HQView.prototype, {
     const page = this.pageEl; page.empty(); page.addClass("os"); const ui = this.osUI = { sig: {}, inView: true }, wrap = page.createDiv({ cls: "os-wrap" });
     wrap.createDiv({ cls: "os-sweep" }); ui.top = wrap.createDiv({ cls: "os-top" }); ui.run = wrap.createDiv({ cls: "os-run os-hide", attr: { role: "status", "aria-live": "polite", "aria-label": "Running agents" } });
     const grid = ui.grid = wrap.createDiv({ cls: "os-grid" }), modsEl = ui.modsEl = wrap.createDiv({ cls: "os-mods os-hide" }), L = grid.createDiv({ cls: "os-col os-left" }), M = grid.createDiv({ cls: "os-col os-mid" }), Rt = grid.createDiv({ cls: "os-col os-right" });
-    ui.vit = osPanel(L, "SYSTEM VITALS", "os-vit"); ui.sess = osPanel(L, "AGENTS & CHATS", "os-sess"); ui.next = osPanel(L, "NEXT UP", "os-next");
-    ui.tasks = osPanel(Rt, "TOP TASKS", "os-tasks"); ui.rev = osPanel(Rt, "REVIEW QUEUE", "os-rev"); ui.acts = osPanel(Rt, "ACTION ITEMS", "os-acts"); ui.files = osPanel(Rt, "FILES IN PLAY", "os-files");
+    ui.vit = osPanel(L, "SYSTEM VITALS", "os-vit"); ui.sess = osPanel(L, "AGENTS & CHATS", "os-sess"); ui.next = osPanel(L, "NEXT UP", "os-next"); ui.files = osPanel(L, "FILES IN PLAY", "os-files");
+    ui.tasks = osPanel(Rt, "TOP TASKS", "os-tasks"); ui.rev = osPanel(Rt, "REVIEW QUEUE", "os-rev"); ui.acts = osPanel(Rt, "ACTION ITEMS", "os-acts");
     this.osColl = this.osColl || new Set(MODS.files.collapsed ? ["files"] : []);
     [["files", ui.files]].forEach(([k, p]) => { p.p.addClass("os-coll"); p.p.toggleClass("collapsed", this.osColl.has(k)); p.h.setAttr("role", "button"); p.h.setAttr("tabindex", "0"); p.h.setAttr("aria-expanded", String(!this.osColl.has(k)));
       const tg = () => { this.osColl.has(k) ? this.osColl.delete(k) : this.osColl.add(k); p.p.toggleClass("collapsed", this.osColl.has(k)); p.h.setAttr("aria-expanded", String(!this.osColl.has(k))); }; p.h.onclick = tg; p.h.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); tg(); } }); });
