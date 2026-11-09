@@ -2342,7 +2342,10 @@ Object.assign(HQView.prototype, {
     const nw = createDiv(); this.osChatMsg(nw, c.cur, true); last.replaceWith(nw.firstChild); if (near) b.scrollTop = b.scrollHeight;
   },
   osChatMsg(parent, m, live) {
-    if (m.r === "user") { const d = parent.createDiv({ cls: "os-msg user" }); if (m.ctx) d.createDiv({ cls: "os-ctx", text: "PROJECT CONTEXT SENT", attr: { title: redact(m.ctx) } }); if (m.imgs) d.createDiv({ cls: "os-ctx", text: "[" + m.imgs + " image" + (m.imgs > 1 ? "s" : "") + " attached]" }); d.createDiv({ cls: "os-mt", text: redact(m.text) }); return; }
+    if (m.r === "user") { const d = parent.createDiv({ cls: "os-msg user" }); if (m.ctx) d.createDiv({ cls: "os-ctx", text: "PROJECT CONTEXT SENT", attr: { title: redact(m.ctx) } }); if (m.imgs) d.createDiv({ cls: "os-ctx", text: "[" + m.imgs + " image" + (m.imgs > 1 ? "s" : "") + " attached]" }); const pics = []; let tx = String(m.text || "").replace(/\s*\[Attached image: ([^\]]+)\]/g, (_, p) => { pics.push(p.trim()); return ""; }).trim(); if (pics.length && /^See the attached images?\.$/.test(tx)) tx = "";
+      if (tx) d.createDiv({ cls: "os-mt", text: redact(tx) });
+      if (pics.length) { const g = d.createDiv({ cls: "os-upics" }); this.osImgCache = this.osImgCache || new Map(); pics.forEach((p) => { let src = this.osImgCache.get(p); if (!src) { try { const ext = (p.split(".").pop() || "png").toLowerCase(); src = "data:image/" + (ext === "jpg" ? "jpeg" : ext) + ";base64," + require("fs").readFileSync(p).toString("base64"); this.osImgCache.set(p, src); } catch (e) { src = ""; } } if (src) { const im = g.createEl("img", { cls: "os-upic", attr: { src, alt: "Attached image" } }); im.onclick = () => window.open(src); } else g.createDiv({ cls: "os-ctx", text: "[image no longer available]" }); }); }
+      return; }
     if (m.r === "sys") { parent.createDiv({ cls: "os-msg sys" }).insertAdjacentHTML("beforeend", mdSafe(m.text)); return; }
     const d = parent.createDiv({ cls: "os-msg asst" + (live ? " live" : "") });
     (m.blocks || []).forEach((bl, i) => {

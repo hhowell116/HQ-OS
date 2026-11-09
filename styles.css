@@ -707,3 +707,5 @@
 .hqos .os-showchat::before{transform:translateY(2px) rotate(-135deg)}
 .hqos .os-showchat{top:10px;right:auto;left:50%;transform:translateX(-50%);width:auto;height:24px;padding:0 12px;gap:8px;letter-spacing:.18em;font-size:11px;white-space:nowrap}
 .hqos .os-showchat::before{display:none}
+.hqos .os-upics{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+.hqos .os-upic{max-width:260px;max-height:180px;border:1px solid var(--os-am);cursor:zoom-in;object-fit:contain;background:rgba(0,0,0,.3)}
