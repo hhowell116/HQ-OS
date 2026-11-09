@@ -1750,7 +1750,9 @@ Object.assign(HQView.prototype, {
       const b = u.chatBody, near = b.scrollHeight - b.scrollTop - b.clientHeight < 80 || force; b.empty(); u.liveEl = null;
       if (all.length > 40) b.createDiv({ cls: "os-muted os-chint", text: "Showing the last 40 messages. Open it in Claudian for the full chat." });
       msgs.forEach((m) => this.osChatMsg(b, m, false));
-      if (st === "running") b.createDiv({ cls: "os-think", text: "Claude is working\u2026 (the reply appears here when it finishes)" });
+      if (st === "running") { const since = meta.lastActivityAt ? Math.max(0, Math.round((Date.now() - meta.lastActivityAt) / 60000)) : 0;
+        const w = b.createDiv({ cls: "os-think os-working" }); w.createDiv({ text: "Claude is working on your message" + (since ? " (last update " + since + " min ago)" : "") + ". The full reply shows here when the turn finishes." });
+        w.createDiv({ cls: "os-wsub", text: "STOP interrupts it. Messages you send now wait in the queue and go out when it's done." }); }
       if (near) b.scrollTop = b.scrollHeight;
       this.osCQRender(); u.chatTitle.setText("CLAUDIAN \u00B7 " + (meta.title || "Untitled")); u.chatCost.setText(st === "running" ? "WORKING" : st === "awaiting-user" ? "NEEDS YOU" : "READY"); u.chatCost.toggleClass("run", st === "running");
     } catch (e) { console.error("Project HQ claudian view", e); } finally { this.osClaudBusy = false; }
