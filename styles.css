@@ -535,3 +535,54 @@
 .hqos .os-q-n{flex:none;width:1.6em;text-align:center;color:var(--os-cy)}
 .hqos .os-q-t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .hqos .os-go.queue{background:rgba(var(--os-cyrgb),.25)}
+
+/* ===== 2026-11-08 declutter: agents in one place, chat as the centre, commands, accent on frames ===== */
+.hqos{--os-ac:var(--os-cy);--os-acrgb:var(--os-cyrgb)}
+/* chat takes the centre: wider middle column, orb becomes a corner badge, status/ticker hidden */
+.hqos .os-grid:has(.os-mid.chatting){grid-template-columns:minmax(210px,.75fr) minmax(460px,2.4fr) minmax(230px,.85fr)}
+.hqos .os-mid.chatting{position:relative}
+.hqos .os-mid.chatting .os-orbw{position:absolute;top:4px;right:6px;width:46px;height:46px;min-height:0;z-index:4;pointer-events:none;opacity:.9}
+.hqos .os-mid.chatting .os-status,.hqos .os-mid.chatting .os-ticker{display:none}
+.hqos .os-mid.chatting .os-chh{padding-right:60px}
+.hqos .os-msg{font-size:1.12em;line-height:1.6}
+.hqos .os-cbody{padding:12px 14px;gap:14px}
+.hqos textarea.os-in{font-size:1.18em}
+.hqos .os-msg.sys{border-left:2px solid rgba(var(--os-acrgb),.6);padding:4px 10px;color:var(--os-dim);font-size:1em;background:rgba(var(--os-acrgb),.05)}
+/* command lines, like the Claude Code terminal */
+.hqos .os-tool{border-left:2px solid rgba(var(--os-acrgb),.45);font-size:.9em}
+.hqos .os-tool summary{display:block;white-space:normal;padding:2px 8px;color:var(--tx)}
+.hqos .os-tl{display:flex;gap:8px;min-width:0}
+.hqos .os-tn{flex:none;color:var(--os-ac);font-weight:700}
+.hqos .os-tt{flex:1;min-width:0;overflow-wrap:anywhere;color:var(--tx)}
+.hqos .os-tr{color:var(--os-dim);white-space:pre-wrap;overflow-wrap:anywhere;font-size:.92em;margin:1px 0 0 14px;max-height:3.2em;overflow:hidden}
+.hqos .os-tool[open] .os-tr{display:none}
+/* slash menu */
+.hqos .os-cmd{position:relative}
+.hqos .os-slash{position:absolute;left:0;right:0;bottom:100%;z-index:20;max-height:280px;overflow-y:auto;background:var(--os-solid);border:1px solid var(--os-ac);box-shadow:0 -8px 24px rgba(0,0,0,.55)}
+.hqos .os-sli{display:flex;gap:12px;align-items:baseline;padding:6px 10px;cursor:pointer;border-bottom:1px solid var(--os-line)}
+.hqos .os-sli.cur,.hqos .os-sli:hover{background:rgba(var(--os-acrgb),.16)}
+.hqos .os-sln{flex:none;color:var(--os-ac);font-weight:700}.hqos .os-sld{flex:1;min-width:0;color:var(--os-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* chat list: pin/rename/delete */
+.hqos .os-cli .os-chb.on{color:var(--os-am)}.hqos .os-cli .os-chb.sure{background:var(--os-red);color:var(--os-bg0);border-color:var(--os-red)}
+.hqos input.os-ren{flex:1;min-width:0;background:rgba(var(--os-bgrgb),.9);border:1px solid var(--os-ac);color:var(--tx);font:inherit;padding:2px 6px;border-radius:0}
+/* agents & chats panel: one line per row */
+.hqos .os-srow.one{flex-direction:row;padding:4px 8px}
+.hqos .os-srow.one .os-sh{flex:1;min-width:0}
+.hqos .os-sk{flex:none;font-size:.72em;letter-spacing:.1em;color:var(--os-dim);border:1px solid var(--os-line);padding:0 4px}
+.hqos .os-srow.agent .os-sk{color:var(--os-ac);border-color:rgba(var(--os-acrgb),.5)}
+.hqos .os-srow.agent{cursor:default}
+/* top bar chips */
+.hqos .os-chip.os-acct .v{text-transform:none;letter-spacing:.02em;max-width:26ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hqos .os-chip.run{border-color:var(--os-ac);color:var(--os-ac)}.hqos .os-chip.run .v{color:var(--os-ac)}
+/* accent now colours frames: panel borders, corner brackets, titles, chat and input frames */
+.hqos .os-p{border-color:rgba(var(--os-acrgb),.42);box-shadow:0 0 0 1px rgba(0,0,0,.4),inset 0 0 24px rgba(var(--os-acrgb),.05),0 0 14px rgba(var(--os-acrgb),.1)}
+.hqos .os-p::before{--c:var(--os-ac)}
+.hqos .os-pt{color:var(--os-ac)}
+.hqos .os-ph{border-bottom-color:rgba(var(--os-acrgb),.3);background:linear-gradient(90deg,rgba(var(--os-acrgb),.16),transparent)}
+.hqos .os-chat,.hqos .os-cmd{border-color:rgba(var(--os-acrgb),.5);box-shadow:0 0 14px rgba(var(--os-acrgb),.12)}
+.hqos .os-chh{border-bottom-color:rgba(var(--os-acrgb),.35)}.hqos .os-cht{color:var(--os-ac)}
+.hqos .os-top{border-bottom-color:rgba(var(--os-acrgb),.4)}
+.hqos .os-logo{color:var(--os-ac);text-shadow:0 0 12px rgba(var(--os-acrgb),.55)}
+.hqos .os-ring circle,.hqos .os-ring path{stroke:var(--os-ac)}
+/* theme box fits its name */
+.hqos .os-modsw{max-width:none;width:auto;min-width:12ch;padding:0 26px 0 10px;height:28px;border:1px solid var(--os-line)}

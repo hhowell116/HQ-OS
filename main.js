@@ -226,7 +226,7 @@ async function scanAgents() {
     }
   }
   const res = (await Promise.all(files.map((f) => scanOne(f, now).catch(() => null)))).filter(Boolean);
-  res.forEach((a) => { const fresh = now - a.mtime < 3 * 3600000; if (a.waiting && fresh) { a.status = "running"; a.text = "Waiting on " + a.waiting + " background run(s) (tests/build)"; } else a.status = a.finished ? "done" : now - a.mtime < 3600000 ? "running" : "stalled"; }); // agents waiting on long test runs write nothing for many minutes; only call them stalled after an hour of silence
+  res.forEach((a) => { const fresh = now - a.mtime < 3 * 3600000; if (a.waiting && fresh) { a.status = "running"; a.text = "Waiting on " + a.waiting + " background run(s) (tests/build)"; } else a.status = a.finished ? "done" : now - a.mtime < 15 * 60000 ? "running" : "stalled"; }); // agents waiting on test runs are caught by a.waiting above; any other agent silent for 15 min has almost always died with its chat
   return res.sort((a, b) => b.mtime - a.mtime);
 }
 const dur = (ms) => { const s = Math.max(0, Math.round(ms / 1000)), m = Math.floor(s / 60); return m >= 60 ? Math.floor(m / 60) + "h " + (m % 60) + "m" : m ? m + "m " + (s % 60) + "s" : s + "s"; };
@@ -898,7 +898,7 @@ function themeChecks(t) {
 function themeVars(t) {
   const d = themeDerive(t), rg = (c) => hex2rgb(c).join(",");
   return {
-    "--os-cy": t.accent, "--os-teal": t.accent2, "--os-am": t.warn, "--os-red": t.danger, "--os-dim": d.dim, "--os-bg0": t.bg, "--os-solid": mixC(t.bg, t.panel, 0.9),
+    "--os-cy": t.accent, "--os-teal": t.accent2, "--os-ac": t.orb || t.accent, "--os-acrgb": rg(t.orb || t.accent), "--os-am": t.warn, "--os-red": t.danger, "--os-dim": d.dim, "--os-bg0": t.bg, "--os-solid": mixC(t.bg, t.panel, 0.9),
     "--os-cyrgb": rg(t.accent), "--os-amrgb": rg(t.warn), "--os-redrgb": rg(t.danger), "--os-bgrgb": rg(mixC(t.bg, "#000000", 0.2)), "--os-panelrgb": rg(t.panel),
     "--os-glowk": String(t.glow), "--os-gridk": String(t.grid), "--os-scank": String(t.scanOn ? t.scan : 0),
     "--tx": d.tx, "--tx2": d.dim, "--amber": t.accent, "--amber2": t.accent2, "--bg1": t.bg, "--bg2": t.panel, "--bg3": t.bg, "--teal": t.panel, "--teal2": mixC(t.panel, t.accent, 0.1),
@@ -1348,10 +1348,10 @@ Object.assign(HQView.prototype, {
     const page = this.pageEl; page.empty(); page.addClass("os"); const ui = this.osUI = { sig: {}, inView: true }, wrap = page.createDiv({ cls: "os-wrap" });
     wrap.createDiv({ cls: "os-sweep" }); ui.top = wrap.createDiv({ cls: "os-top" }); ui.run = wrap.createDiv({ cls: "os-run os-hide", attr: { role: "status", "aria-live": "polite", "aria-label": "Running agents" } });
     const grid = ui.grid = wrap.createDiv({ cls: "os-grid" }), modsEl = ui.modsEl = wrap.createDiv({ cls: "os-mods os-hide" }), L = grid.createDiv({ cls: "os-col os-left" }), M = grid.createDiv({ cls: "os-col os-mid" }), Rt = grid.createDiv({ cls: "os-col os-right" });
-    ui.vit = osPanel(L, "SYSTEM VITALS", "os-vit"); ui.sess = osPanel(L, "ACTIVE AI SESSIONS", "os-sess"); ui.next = osPanel(L, "NEXT UP", "os-next");
-    ui.tasks = osPanel(Rt, "TOP TASKS", "os-tasks"); ui.rev = osPanel(Rt, "REVIEW QUEUE", "os-rev"); ui.acts = osPanel(Rt, "ACTION ITEMS", "os-acts"); ui.rules = osPanel(Rt, "SAVE AS RULE", "os-rules"); ui.ap = osPanel(Rt, "AGENT PROGRESS", "os-ap"); ui.files = osPanel(Rt, "FILES IN PLAY", "os-files");
+    ui.vit = osPanel(L, "SYSTEM VITALS", "os-vit"); ui.sess = osPanel(L, "AGENTS & CHATS", "os-sess"); ui.next = osPanel(L, "NEXT UP", "os-next");
+    ui.tasks = osPanel(Rt, "TOP TASKS", "os-tasks"); ui.rev = osPanel(Rt, "REVIEW QUEUE", "os-rev"); ui.acts = osPanel(Rt, "ACTION ITEMS", "os-acts"); ui.rules = osPanel(Rt, "SAVE AS RULE", "os-rules"); ui.files = osPanel(Rt, "FILES IN PLAY", "os-files");
     this.osColl = this.osColl || new Set(MODS.files.collapsed ? ["files"] : []);
-    [["ap", ui.ap], ["files", ui.files]].forEach(([k, p]) => { p.p.addClass("os-coll"); p.p.toggleClass("collapsed", this.osColl.has(k)); p.h.setAttr("role", "button"); p.h.setAttr("tabindex", "0"); p.h.setAttr("aria-expanded", String(!this.osColl.has(k)));
+    [["files", ui.files]].forEach(([k, p]) => { p.p.addClass("os-coll"); p.p.toggleClass("collapsed", this.osColl.has(k)); p.h.setAttr("role", "button"); p.h.setAttr("tabindex", "0"); p.h.setAttr("aria-expanded", String(!this.osColl.has(k)));
       const tg = () => { this.osColl.has(k) ? this.osColl.delete(k) : this.osColl.add(k); p.p.toggleClass("collapsed", this.osColl.has(k)); p.h.setAttr("aria-expanded", String(!this.osColl.has(k))); }; p.h.onclick = tg; p.h.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); tg(); } }); });
     const orbw = M.createDiv({ cls: "os-orbw" }); ui.cv = orbw.createEl("canvas", { cls: "os-cv", attr: { "aria-hidden": "true" } });
     orbw.insertAdjacentHTML("beforeend", '<svg class="os-ring" viewBox="0 0 200 200" aria-hidden="true"><circle cx="100" cy="100" r="96" class="r1"/><circle cx="100" cy="100" r="88" class="r2"/><path class="r3" d="M100 2v10M100 188v10M2 100h10M188 100h10"/></svg>');
@@ -1380,15 +1380,22 @@ Object.assign(HQView.prototype, {
     ui.grip = cmd.createDiv({ cls: "os-grip", attr: { role: "separator", "aria-orientation": "horizontal", "aria-label": "Resize message box (drag, or Up and Down arrows). Double-click resets.", tabindex: "0", title: "Drag to resize the message box" } });
     const box = cmd.createDiv({ cls: "os-cbox" }), left = box.createDiv({ cls: "os-cleft" });
     ui.chips = left.createDiv({ cls: "os-atts os-hide" });
-    ui.cmdIn = left.createEl("textarea", { cls: "os-in", attr: { rows: "3", placeholder: "Message Claude Code…", "aria-label": "Message for Claude Code", autocomplete: "off", spellcheck: "false" } });
+    ui.cmdIn = left.createEl("textarea", { cls: "os-in", attr: { rows: "3", placeholder: "Message Claude Code… (type / for commands)", "aria-label": "Message for Claude Code", autocomplete: "off", spellcheck: "false" } });
+    ui.slash = cmd.createDiv({ cls: "os-slash os-hide", attr: { role: "listbox", "aria-label": "Commands" } });
     ui.go = box.createEl("button", { cls: "os-go", text: "SEND", attr: { "aria-label": "Send message" } }); ui.cmdMsg = M.createDiv({ cls: "os-cmdmsg" });
     const t = ui.cmdIn, zoom = () => (this.plugin.settings.textScale || 125) / 100;
-    const go = () => { const c = this.hq().get(this.hq().activeId); if (ui.target.value === "hq" && c && c.busy) return (t.value.trim() || ui.imgs.length) ? this.osChatQueue(t.value) : this.hq().stop(c); if (ui.target.value === "hq") return this.osChatSend(t.value); this.osSend(t.value, ui.target.value); };
+    const go = () => { if (ui.target.value === "hq" && /^\/\S/.test(t.value.trim()) && !ui.imgs.length) return this.osChatSend(t.value); const c = this.hq().get(this.hq().activeId); if (ui.target.value === "hq" && c && c.busy) return (t.value.trim() || ui.imgs.length) ? this.osChatQueue(t.value) : this.hq().stop(c); if (ui.target.value === "hq") return this.osChatSend(t.value); this.osSend(t.value, ui.target.value); };
     ui.go.onclick = go; ui.target.onchange = () => this.osChatLayout();
-    t.addEventListener("input", () => { if (t.value !== ui.histVal) ui.hi = -1; this.osAutoGrow(); this.osGoLabel(); });
+    t.addEventListener("input", () => { if (t.value !== ui.histVal) ui.hi = -1; this.osAutoGrow(); this.osGoLabel(); this.osSlashMenu(); });
+    t.addEventListener("blur", () => setTimeout(() => { if (ui.slash) ui.slash.addClass("os-hide"); }, 150));
     const setVal = (v) => { t.value = v; ui.histVal = v; this.osAutoGrow(); t.setSelectionRange(v.length, v.length); };
     t.addEventListener("keydown", (e) => {
       e.stopPropagation();
+      if (ui.slashItems && !ui.slash.hasClass("os-hide")) {
+        if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); this.osSlashMenu(e.key === "ArrowDown" ? 1 : -1); return; }
+        if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) { e.preventDefault(); this.osSlashPick(); return; }
+        if (e.key === "Escape") { e.preventDefault(); ui.slash.addClass("os-hide"); ui.slashItems = null; return; }
+      }
       if (e.key === "Escape" && ui.full) { e.preventDefault(); this.osSetFull(false); return; }
       if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); const c = this.hq().get(this.hq().activeId); if (c && c.busy && ui.target.value === "hq" && !t.value.trim() && !ui.imgs.length) return; go(); return; }
       const H = this.osHist || [], mine = ui.hi >= 0 && t.value === ui.histVal;
@@ -1442,6 +1449,7 @@ Object.assign(HQView.prototype, {
   // ---- running agents strip (top of page, hidden when none): name, type/model, current step, elapsed time ----
   osRunRender() {
     const u = this.osUI; if (!u || !u.run) return;
+    u.run.addClass("os-hide"); return; // agents now show in one place only: the AGENTS & CHATS panel (plus a RUNNING chip in the top bar)
     const live = this.live || [], run = live.filter((a) => a.status === "running");
     const items = run.map((a) => { const row = run.filter((x) => x.type === a.type).length === 1 ? (this.agents || []).find((x) => x.name === a.type && x.state !== "idle") : null;
       return { a, step: redact(a.waiting ? a.text : row && row.task ? clean(row.task) : a.tool ? stepText(a.tool) : "starting…").replace(/\s+/g, " ").slice(0, 120) }; });
@@ -1460,10 +1468,15 @@ Object.assign(HQView.prototype, {
   },
   osReg(name, sig, fn) { const u = this.osUI; if (u.sig[name] === sig) return; u.sig[name] = sig; fn(); },
   osPlanName() { if (this.osPlan === undefined) { this.osPlan = ""; try { const c = JSON.parse(fs.readFileSync(path.join(os.homedir(), ".claude", ".credentials.json"), "utf8")); this.osPlan = String((c.claudeAiOauth && c.claudeAiOauth.subscriptionType) || "").slice(0, 12); } catch (e) {} } return this.osPlan; },
+  osAccount() { // the Claude account Claude Code is logged in as (re-read every 5 min in case of a /login switch)
+    if (!this.osAcct || Date.now() - this.osAcct.at > 300000) { let a = {}; try { a = JSON.parse(fs.readFileSync(path.join(os.homedir(), ".claude.json"), "utf8")).oauthAccount || {}; } catch (e) {} this.osAcct = { at: Date.now(), email: String(a.emailAddress || ""), org: String(a.organizationName || ""), name: String(a.displayName || "") }; }
+    return this.osAcct;
+  },
+  osRunCount() { return (this.live || []).filter((a) => a.status === "running").length + (this.hq() && this.hq().isBusy() ? 1 : 0); },
   osTopRender() {
     const u = this.osUI, ci = cacheInfo(), us = this.usage, wk = us && us.seven_day, se = us && us.five_hour, model = shortModel(mainState.model);
     const pc = (x) => x && x.utilization !== undefined && x.utilization !== null ? Math.round(x.utilization) : null, wv = pc(wk), sv = pc(se), cl = (p) => p === null ? "" : p >= 90 ? "bad" : p >= 75 ? "warn" : "";
-    const vis = this.plugin.visibleProjects(), sig = JSON.stringify([this.project && this.project.id, vis.map((p) => [p.id, p.name, !!p.pinned]), this.osMenuOpen, model, this.osPlanName(), wv, sv, ci && ci.state, ci && Math.floor(ci.age / 3), this.err, vit.cpu > 85, wk && wk.resets_at, se && se.resets_at, this.plugin.settings.theme.id, Object.keys(this.plugin.settings.theme.saved).join(), MODS.guard.on, this.osPage]);
+    const vis = this.plugin.visibleProjects(), sig = JSON.stringify([this.project && this.project.id, vis.map((p) => [p.id, p.name, !!p.pinned]), this.osMenuOpen, model, this.osAccount().email, this.osRunCount(), wv, sv, ci && ci.state, ci && Math.floor(ci.age / 3), this.err, vit.cpu > 85, wk && wk.resets_at, se && se.resets_at, this.plugin.settings.theme.id, Object.keys(this.plugin.settings.theme.saved).join(), MODS.guard.on, this.osPage]);
     this.osReg("top", sig, () => {
       const t = u.top; t.empty(); const brand = t.createDiv({ cls: "os-brand" }); brand.createSpan({ cls: "os-logo", text: "HQ_OS" });
       const pw = brand.createDiv({ cls: "os-pw" }), pb = pw.createEl("button", { cls: "os-proj os-pbtn", attr: { "aria-haspopup": "menu", "aria-expanded": String(!!this.osMenuOpen), "aria-label": "Switch project (current: " + (this.project ? this.project.name : "none") + ")" } });
@@ -1480,7 +1493,9 @@ Object.assign(HQView.prototype, {
       }
       const on = brand.createSpan({ cls: "os-online" }); on.createSpan({ cls: "os-dot" }); on.createSpan({ text: "ONLINE" });
       const chips = t.createDiv({ cls: "os-chips" }), chip = (k, v, c, tip) => { const e = chips.createSpan({ cls: "os-chip " + (c || "") }); e.createSpan({ cls: "k", text: k }); e.createSpan({ cls: "v", text: v }); if (tip) e.title = tip; return e; };
-      if (model) chip("MODEL", model.toUpperCase()); if (this.osPlanName()) chip("PLAN", this.osPlanName().toUpperCase());
+      const acct = this.osAccount(); if (acct.email) chip("ACCOUNT", acct.email, "os-acct", [acct.name, acct.email, acct.org, this.osPlanName() ? "plan: " + this.osPlanName() : ""].filter(Boolean).join("  ·  "));
+      if (model) chip("MODEL", model.toUpperCase());
+      { const n = this.osRunCount(); if (n) { const e = chip("RUNNING", String(n), "run click", "Agents and chats working now. Click to see them."); e.onclick = () => { const s = u.sess && u.sess.p; if (s) s.scrollIntoView({ behavior: "smooth", block: "nearest" }); }; } }
       chip("WEEK", wv === null ? "N/A" : wv + "%", cl(wv), wk && wk.resets_at ? "Resets " + when(wk.resets_at) + " (in " + left(wk.resets_at) + ")" : this.err || "");
       chip("SESSION", sv === null ? "N/A" : sv + "%", cl(sv), se && se.resets_at ? "Resets " + when(se.resets_at) + " (in " + left(se.resets_at) + ")" : this.err || "");
       if (ci) { const e = chip("CACHE", ci.state === "cold" ? "COLD" : ci.state === "warn" ? "COOLING" : "WARM", ci.state === "cold" ? "bad" : ci.state === "warn" ? "warn" : "", ci.msg); e.addClass("click"); e.onclick = () => this.osFocusInsights(); }
@@ -1532,8 +1547,9 @@ Object.assign(HQView.prototype, {
         this.osConvs = list.map((c) => [c.id, clean(c.title || "Untitled"), !!(cp.api && cp.api.getActiveSessionId && cp.api.getActiveSessionId() === c.id)]);
       } else this.osConvs = [];
       const now = Date.now();
-      this.live.filter((a) => a.status === "running" || (a.status === "done" && now - a.mtime < 3600000)).slice(0, 8).forEach((a) => rows.push({ kind: "agent", id: a.id, title: clean(a.title), st: a.status === "running" ? "running in background" : "done", ts: a.mtime, snip: redact(a.tool ? stepText(a.tool) : a.text || "").replace(/\s+/g, " ").slice(0, 180), type: a.type }));
-      if (this.hq()) this.hq().list().slice(0, 3).forEach((c) => rows.unshift({ kind: "hq", id: c.id, title: "HQ: " + clean(c.title), st: c.busy ? "thinking" : "idle", ts: c.updated, snip: (() => { const m = c.msgs.filter((x) => x.r === "asst").pop(); const t = m && m.blocks.filter((b) => b.k === "text").map((b) => b.text).join(" "); return clean(redact(t || "")).replace(/\s+/g, " ").slice(0, 180); })() }));
+      this.live.filter((a) => a.status === "running").slice(0, 8).forEach((a) => rows.push({ kind: "agent", id: a.id, title: clean(a.title), st: "running in background", ts: a.mtime, snip: redact(a.tool ? stepText(a.tool) : a.text || "").replace(/\s+/g, " ").slice(0, 180), type: a.type }));
+      if (this.hq()) this.hq().list(this.project && this.project.id).slice(0, 3).reverse().forEach((c) => rows.unshift({ kind: "hq", id: c.id, title: (c.pinned ? "★ " : "") + clean(c.title), st: c.busy ? "thinking" : "idle", ts: c.updated, snip: (() => { const m = c.msgs.filter((x) => x.r === "asst").pop(); const t = m && m.blocks.filter((b) => b.k === "text").map((b) => b.text).join(" "); return clean(redact(t || "")).replace(/\s+/g, " ").slice(0, 180); })() }));
+      { let n = 0; const keep = []; rows.forEach((r) => { if (r.kind !== "chat" || r.st !== "idle" || n++ < 3) keep.push(r); }); rows.length = 0; keep.forEach((r) => rows.push(r)); }
       this.osRows = rows; this.osFillTarget(); this.osSessRender();
       for (const [id, key, sn] of reads) { let t = ""; try { t = String(await cp.api.read(id) || ""); } catch (e) {} this.osSnip[id] = { key, at: Date.now(), text: /^.no reply.$/.test(t) ? (sn && sn.text || "") : clean(redact(t)).replace(/\s+/g, " ").trim().slice(0, 180) }; const r = rows.find((x) => x.id === id); if (r) r.snip = this.osSnip[id].text; }
       if (reads.length) this.osSessRender();
@@ -1542,12 +1558,13 @@ Object.assign(HQView.prototype, {
   osSessRender() {
     const u = this.osUI; if (!u) return; const rows = this.osRows || [];
     this.osReg("sess", JSON.stringify(rows.map((r) => [r.id, r.st, r.snip, r.title])), () => {
-      const b = u.sess.body; b.empty(); u.sess.meta.setText(rows.filter((r) => r.st === "thinking" || r.st === "running in background").length + " ACTIVE");
+      const b = u.sess.body; b.empty(); u.sess.meta.setText(rows.filter((r) => r.st === "thinking" || r.st === "running in background").length + " RUNNING");
       if (!rows.length) b.createDiv({ cls: "os-muted", text: "No sessions yet." });
       rows.forEach((r) => {
         const c = b.createDiv({ cls: "os-srow " + r.kind + " s-" + r.st.replace(/\s+/g, "-"), attr: r.kind !== "agent" ? { role: "button", tabindex: "0", "aria-label": "Open session " + r.title } : {} });
-        const h = c.createDiv({ cls: "os-sh" }); h.createSpan({ cls: "os-sd" }); h.createSpan({ cls: "os-sn", text: r.title }).title = r.title; h.createSpan({ cls: "os-ss", text: r.st.toUpperCase() });
-        c.createDiv({ cls: "os-sm", text: (r.kind === "agent" ? r.type + " · " : "") + (r.snip || "(no messages yet)") });
+        const h = c.createDiv({ cls: "os-sh" }); h.createSpan({ cls: "os-sd" }); h.createSpan({ cls: "os-sn", text: r.title }).title = r.title; h.createSpan({ cls: "os-ss", text: r.st === "running in background" ? "RUNNING" : r.st.toUpperCase() });
+        c.title = r.title + " — " + (r.kind === "agent" ? r.type + " · " : "") + (r.snip || "(no messages yet)"); c.addClass("one");
+        h.insertBefore(createSpan({ cls: "os-sk", text: r.kind === "agent" ? "AGENT" : r.kind === "hq" ? "HQ" : "CLAUDIAN" }), h.children[1]);
         if (r.kind !== "agent") { const open = () => r.kind === "hq" ? this.osChatOpenConv(r.id) : this.osOpenSession(r.id); c.onclick = open; c.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } }); }
       });
     });
@@ -1848,6 +1865,21 @@ function u_checks(v, b) { const u = v.osUI; u.checks = b.createDiv({ cls: "os-mo
 // One long-lived child process per conversation. User turns go in as stream-json lines; session ids persist for --resume.
 // Safety: text typed into HQ is only ever sent to Claude as a message (never run as a command). Permission mode matches Claudian's "yolo" (= bypassPermissions);
 // the vault's .claude/settings.json deny rules and PreToolUse delete-guard hook still apply because the CLI runs with cwd = vault root and default setting sources.
+const HQ_SLASH = [
+  ["compact", "Shrink this chat's history so each message costs less (Claude Code does it)", ""],
+  ["clear", "Start a fresh conversation", ""],
+  ["model", "Switch model", "sonnet|opus|haiku|default"],
+  ["effort", "Set thinking effort", "low|medium|high|xhigh|max|default"],
+  ["usage", "Weekly and session usage, and the account in use", ""],
+  ["cost", "This chat's turns and estimated cost", ""],
+  ["rename", "Rename this chat", "<name>"],
+  ["pin", "Pin or unpin this chat at the top of the list", ""],
+  ["chats", "Open the chat list", ""],
+  ["delete", "Delete this chat", "yes"],
+  ["stop", "Stop Claude", ""],
+  ["tools", "Show or hide the command lines Claude runs", ""],
+  ["help", "List all commands", ""],
+];
 const HQ_MODELS = ["", "sonnet", "opus", "haiku"], HQ_EFFORTS = ["", "low", "medium", "high", "xhigh", "max"];
 const toolTarget = (name, inp) => {
   inp = inp || {}; const v = inp.file_path || inp.path || inp.command || inp.pattern || inp.url || inp.query || inp.description || inp.prompt || inp.skill || "";
@@ -1896,10 +1928,10 @@ class HQChats {
     this.loaded = true;
   }
   save(c) {
-    clearTimeout(c._st); c._st = setTimeout(() => { try { const o = {}; for (const k of ["id", "sessionId", "title", "model", "effort", "created", "updated", "turns", "proj", "projName", "projFolder", "projExtra", "primed"]) o[k] = c[k]; o.msgs = c.msgs.slice(-200); fs.mkdirSync(this.chats, { recursive: true }); fs.writeFileSync(path.join(this.chats, c.id + ".json"), redact(JSON.stringify(o))); } catch (e) { this.log("save " + e.message); } }, 400);
+    clearTimeout(c._st); c._st = setTimeout(() => { try { const o = {}; for (const k of ["id", "sessionId", "title", "model", "effort", "created", "updated", "turns", "proj", "projName", "projFolder", "projExtra", "primed", "pinned"]) o[k] = c[k]; o.msgs = c.msgs.slice(-200); fs.mkdirSync(this.chats, { recursive: true }); fs.writeFileSync(path.join(this.chats, c.id + ".json"), redact(JSON.stringify(o))); } catch (e) { this.log("save " + e.message); } }, 400);
   }
   projOf(c) { return c.proj || "lumen"; }
-  list(proj) { return [...this.convs.values()].filter((c) => !proj || this.projOf(c) === proj).sort((a, b) => (b.updated || 0) - (a.updated || 0)); }
+  list(proj) { return [...this.convs.values()].filter((c) => !proj || this.projOf(c) === proj).sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || (b.updated || 0) - (a.updated || 0)); }
   get(id) { return this.convs.get(id); }
   create(model, effort, pr) {
     const id = "hq-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -1938,12 +1970,13 @@ class HQChats {
     if (c.busy) return; text = String(text || "").trim(); imgs = imgs || []; if (!text && !imgs.length) return; if (!text) text = "(see the attached image" + (imgs.length > 1 ? "s" : "") + ")";
     if (c.proc && (c.procModel !== c.model || c.procEffort !== c.effort)) this.kill(c, "settings changed");
     let p = c.proc; if (!p) { try { p = this.spawnProc(c); } catch (e) { this.addMsgs(c, text, e.message); return; } }
-    if (c.title === "New conversation") c.title = text.replace(/\s+/g, " ").slice(0, 48);
+    const slash = /^\/\S/.test(text);
+    if (c.title === "New conversation" && !slash) c.title = text.replace(/\s+/g, " ").slice(0, 48);
     let wire = text, ctx = "";
-    if (!c.primed && c.proj) { ctx = "Project: " + c.projName + (c.projFolder ? ", folder " + c.projFolder + ". Notes in " + c.projFolder + "/Notes." : ".");
+    if (!c.primed && c.proj && !slash) { ctx = "Project: " + c.projName + (c.projFolder ? ", folder " + c.projFolder + ". Notes in " + c.projFolder + "/Notes." : ".");
     const ex = String(c.projExtra || "").split(",").map((x) => x.trim()).filter(Boolean);
     if (ex.length) { const nm = (f) => String(f).split("/").pop() + "\\"; ctx = "Project: " + c.projName + " (one project, folders under Claude'sWorkspace). " + nm(c.projFolder) + " is the app/code; " + ex.map((x) => nm(x) + " is " + (/ads/i.test(x) ? "marketing/ads" : "part of the project")).join("; ") + ". Notes live in each folder's Notes/."; } wire = "[Project context] " + ctx + "\n\n" + text; }
-    c.primed = true;
+    if (!slash) c.primed = true;
     c.msgs.push({ r: "user", text: redact(text), ctx, imgs: imgs.length }); c.cur = { r: "asst", blocks: [], at: Date.now() }; c.msgs.push(c.cur); c.idx = {}; c.busy = true; c.stopping = false; c.lastUse = Date.now(); c.updated = Date.now();
     try { const content = imgs.length ? imgs.map((i) => ({ type: "image", source: { type: "base64", media_type: i.media, data: i.data } })).concat([{ type: "text", text: wire }]) : wire; p.stdin.write(JSON.stringify({ type: "user", message: { role: "user", content } }) + "\n"); } catch (e) { this.finish(c, "Could not write to Claude Code: " + e.message); return; }
     this.save(c); this.emit(c, "turn");
@@ -1962,7 +1995,7 @@ class HQChats {
   onLine(c, line) {
     let j; try { j = JSON.parse(line); } catch (e) { this.log("bad line " + line.slice(0, 120)); return; }
     const t = j.type; c.lastUse = Date.now();
-    if (t === "system") { if (j.subtype === "init" && j.session_id) { c.sessionId = j.session_id; this.save(c); } return; }
+    if (t === "system") { if (j.subtype === "init" && j.session_id) { c.sessionId = j.session_id; this.save(c); } if (j.subtype === "compact_boundary" && c.cur) { c.cur.blocks.push({ k: "text", text: "*Chat history compacted.*" }); this.emit(c, "stream"); } return; }
     if (j.parent_tool_use_id) return; // subagent chatter stays out of the transcript
     const cur = c.cur;
     if (t === "stream_event" && cur) {
@@ -2014,7 +2047,7 @@ Object.assign(HQView.prototype, {
     const u = this.osUI, hq = this.hq(), c = hq && hq.get(hq.activeId), open = !!(u.chatOpen && c);
     u.mid.toggleClass("chatting", open); u.chatBox.toggleClass("os-hide", !open);
     this.osGoLabel();
-    const hqT = u.target.value === "hq"; u.cmdIn.placeholder = hqT ? "Message Claude Code" + (this.project ? " about " + this.project.name : "") + "…" : "Message the selected Claudian session…"; u.hint.setText(hqT ? "ENTER sends · SHIFT+ENTER new line · UP recalls last" : "ENTER sends to Claudian · SHIFT+ENTER new line");
+    const hqT = u.target.value === "hq"; u.cmdIn.placeholder = hqT ? "Message Claude Code" + (this.project ? " about " + this.project.name : "") + "…  (type / for commands)" : "Message the selected Claudian session…"; u.hint.setText(hqT ? "ENTER sends · SHIFT+ENTER new line · / commands · UP recalls last" : "ENTER sends to Claudian · SHIFT+ENTER new line");
     u.model.toggleClass("os-hide", !hqT); u.effort.toggleClass("os-hide", !hqT);
     if (c && hqT) { u.model.value = c.model || ""; u.effort.value = c.effort || ""; }
   },
@@ -2037,6 +2070,7 @@ Object.assign(HQView.prototype, {
   },
   osChatMsg(parent, m, live) {
     if (m.r === "user") { const d = parent.createDiv({ cls: "os-msg user" }); if (m.ctx) d.createDiv({ cls: "os-ctx", text: "PROJECT CONTEXT SENT", attr: { title: redact(m.ctx) } }); if (m.imgs) d.createDiv({ cls: "os-ctx", text: "[" + m.imgs + " image" + (m.imgs > 1 ? "s" : "") + " attached]" }); d.createDiv({ cls: "os-mt", text: redact(m.text) }); return; }
+    if (m.r === "sys") { parent.createDiv({ cls: "os-msg sys" }).insertAdjacentHTML("beforeend", mdSafe(m.text)); return; }
     const d = parent.createDiv({ cls: "os-msg asst" + (live ? " live" : "") });
     (m.blocks || []).forEach((bl, i) => {
       if (bl.k === "text") { if (!bl.text.trim()) return; const t = d.createDiv({ cls: "os-mt os-md" }); t.insertAdjacentHTML("beforeend", mdSafe(redact(bl.text))); }
@@ -2044,7 +2078,8 @@ Object.assign(HQView.prototype, {
       else if (bl.k === "error") d.createDiv({ cls: "os-err", text: redact(bl.text) });
       else if (bl.k === "tool" && MODS.chat.tools) {
         const det = d.createEl("details", { cls: "os-tool" + (bl.isErr ? " err" : "") + (bl.open ? " run" : "")}), s = det.createEl("summary");
-        s.createSpan({ cls: "os-tn", text: bl.name }); s.createSpan({ cls: "os-tt", text: redact(bl.target || "").replace(/\s+/g, " ").slice(0, 110) });
+        const l1 = s.createDiv({ cls: "os-tl" }); l1.createSpan({ cls: "os-tn", text: (bl.isErr ? "\u2716 " : bl.open ? "\u25CF " : "\u2713 ") + bl.name }); l1.createSpan({ cls: "os-tt", text: redact(bl.target || "").replace(/\s+/g, " ").slice(0, 400) });
+        if (bl.result) { const rl = bl.result.split("\n").filter((x) => x.trim()); s.createDiv({ cls: "os-tr", text: "\u23BF " + rl.slice(0, 2).join("\n").slice(0, 240) + (rl.length > 2 ? "  (+" + (rl.length - 2) + " lines)" : "") }); }
         const body = det.createDiv({ cls: "os-tb" }); const inp = bl.input ? redact(JSON.stringify(bl.input, null, 1)).slice(0, 1200) : ""; if (inp) body.createEl("pre", { text: inp }); if (bl.result) body.createEl("pre", { text: bl.result.slice(0, 800) });
       }
     });
@@ -2066,7 +2101,9 @@ Object.assign(HQView.prototype, {
     list.slice(0, 30).forEach((c) => {
       const r = L.createDiv({ cls: "os-cli" + (c.id === hq.activeId ? " cur" : ""), attr: { role: "button", tabindex: "0" } }), tot = (c.turns || []).reduce((n, t) => n + (t.cost || 0), 0);
       r.createSpan({ cls: "os-clt", text: c.title }); r.createSpan({ cls: "os-cld", text: (c.busy ? "WORKING · " : "") + (all ? (c.projName || "Lumen") + " · " : "") + new Date(c.updated).toLocaleDateString([], { day: "2-digit", month: "short" }) + (tot && MODS.chat.cost ? " · ~" + usd(tot) : "") });
-      const del = r.createEl("button", { cls: "os-chb", text: "DEL", attr: { "aria-label": "Delete conversation " + c.title } }); del.onclick = (e) => { e.stopPropagation(); hq.remove(c); u.chatList.addClass("os-hide"); this.osChatLayout(); this.osChatRender(true); };
+      const pin = r.createEl("button", { cls: "os-chb" + (c.pinned ? " on" : ""), text: c.pinned ? "\u2605" : "\u2606", attr: { "aria-label": (c.pinned ? "Unpin " : "Pin ") + c.title, title: c.pinned ? "Unpin" : "Pin to top" } }); pin.onclick = (e) => { e.stopPropagation(); this.osChatPin(c); L.addClass("os-hide"); this.osChatList(); };
+      const ren = r.createEl("button", { cls: "os-chb", text: "RENAME", attr: { "aria-label": "Rename " + c.title } }); ren.onclick = (e) => { e.stopPropagation(); this.osChatRenameInline(r, c); };
+      const del = r.createEl("button", { cls: "os-chb", text: "DELETE", attr: { "aria-label": "Delete conversation " + c.title } }); del.onclick = (e) => { e.stopPropagation(); if (!del.hasClass("sure")) { del.addClass("sure"); del.setText("SURE?"); setTimeout(() => { del.removeClass("sure"); del.setText("DELETE"); }, 3000); return; } hq.remove(c); L.addClass("os-hide"); this.osChatList(); this.osChatLayout(); this.osChatRender(true); };
       const open = () => this.osChatOpenConv(c.id); r.onclick = open; r.addEventListener("keydown", (e) => { if (e.target === r && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); open(); } });
     });
   },
@@ -2080,10 +2117,55 @@ Object.assign(HQView.prototype, {
   },
   osChatSend(text) {
     const u = this.osUI, hq = this.hq(); if (!MODS.chat.on) { new Notice("The HQ chat mod is off. Switch it on in MODS."); return; } text = String(text || "").trim(); const imgs = u.imgs.slice(); if (!text && !imgs.length) return;
+    if (!imgs.length && this.osSlash(text)) return;
     let c = hq.get(hq.activeId); if (c && hq.projOf(c) !== (this.project && this.project.id)) c = null;
     if (!c) c = hq.create(u.model.value, u.effort.value, this.project);
     if (c.busy) return; c.model = u.model.value; c.effort = u.effort.value; u.chatOpen = true; this.osChatWas = true; u.cmdIn.value = ""; u.imgs = []; this.osRenderAtts(); if (text) this.osRemember(text); if (u.full) this.osSetFull(false); this.osAutoGrow();
     hq.send(c, text, imgs); this.osChatLayout(); this.osChatRender(true);
+  },
+  osChatPin(c) { c.pinned = !c.pinned; this.hq().save(c); this.osSessData(true); if (this.osUI) this.osChatRender(true); },
+  osChatRename(c, name) { name = String(name || "").replace(/\s+/g, " ").trim().slice(0, 80); if (!name) return; c.title = name; this.hq().save(c); this.osSessData(true); if (this.osUI) this.osChatRender(true); },
+  osChatRenameInline(row, c) {
+    const t = row.querySelector(".os-clt"); if (!t) return; const inp = createEl("input", { cls: "os-ren", attr: { type: "text", "aria-label": "New name" } }); inp.value = c.title; t.replaceWith(inp); inp.focus(); inp.select();
+    let done = false; const fin = (ok) => { if (done) return; done = true; if (ok) this.osChatRename(c, inp.value); const L = this.osUI.chatList; L.addClass("os-hide"); this.osChatList(); };
+    inp.onclick = (e) => e.stopPropagation(); inp.addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Enter") { e.preventDefault(); fin(true); } else if (e.key === "Escape") { e.preventDefault(); fin(false); } }); inp.addEventListener("blur", () => fin(true));
+  },
+  osSysNote(c, text) { const u = this.osUI; if (c) { c.msgs.push({ r: "sys", text }); this.hq().save(c); u.chatOpen = true; this.osChatWas = true; this.osChatLayout(); this.osChatRender(true); } else { u.cmdMsg.setText(text.replace(/[*`]/g, "")); } },
+  // Returns true when HQ handled the command itself; anything else (e.g. /compact, skills) goes to Claude Code as typed.
+  osSlash(text) {
+    const m = /^\/([a-z-]+)(?:\s+([\s\S]*))?$/i.exec(text.trim()); if (!m) return false;
+    const name = m[1].toLowerCase(), arg = (m[2] || "").trim(), u = this.osUI, hq = this.hq(); let c = hq.get(hq.activeId); if (c && hq.projOf(c) !== (this.project && this.project.id)) c = null;
+    const done = () => { u.cmdIn.value = ""; this.osAutoGrow(); this.osGoLabel(); this.osSlashMenu(); this.osRemember(text.trim()); return true; };
+    const pick = (sel, list, label) => { const v = arg.toLowerCase() === "default" ? "" : arg.toLowerCase(); if (!list.includes(v)) { this.osSysNote(c, "Usage: `/" + name + " " + list.map((x) => x || "default").join("|") + "`"); return done(); } sel.value = v; if (c && !c.busy) { c[name] = v; hq.save(c); } this.osSysNote(c, label + " set to **" + (v || "default") + "**" + (c && c.proc ? " (applies from the next message)." : ".")); return done(); };
+    switch (name) {
+      case "clear": case "new": this.osChatNew(); return done();
+      case "model": return pick(u.model, HQ_MODELS, "Model");
+      case "effort": return pick(u.effort, HQ_EFFORTS, "Effort");
+      case "usage": case "status": { const us = this.usage || {}, f = (x) => x && x.utilization != null ? Math.round(x.utilization) + "%" + (x.resets_at ? " (resets " + when(x.resets_at) + ")" : "") : "n/a", a = this.osAccount(); this.osSysNote(c, "**Usage** · week " + f(us.seven_day) + " · session " + f(us.five_hour) + (a.email ? "\nAccount: " + a.email + (a.org ? " (" + a.org + ")" : "") : "")); return done(); }
+      case "cost": { if (!c) { this.osSysNote(null, "No chat open."); return done(); } const ts = c.turns || [], tot = ts.reduce((n, t) => n + (t.cost || 0), 0), tin = ts.reduce((n, t) => n + (t.in || 0) + (t.cache || 0), 0); this.osSysNote(c, "**This chat** · " + ts.length + " turns · ~" + usd(tot) + " est. · " + kfmt(tin) + " tokens read"); return done(); }
+      case "rename": if (!c) { this.osSysNote(null, "Open a chat first."); return done(); } if (!arg) { this.osSysNote(c, "Usage: `/rename New name`"); return done(); } this.osChatRename(c, arg); return done();
+      case "pin": if (!c) { this.osSysNote(null, "Open a chat first."); return done(); } this.osChatPin(c); this.osSysNote(c, c.pinned ? "Pinned to the top of the chat list." : "Unpinned."); return done();
+      case "delete": if (!c) { this.osSysNote(null, "Open a chat first."); return done(); } if (arg !== "yes") { this.osSysNote(c, "Type `/delete yes` to delete this chat for good."); return done(); } hq.remove(c); u.chatOpen = false; this.osChatLayout(); this.osChatRender(true); return done();
+      case "chats": case "resume": this.osChatList(); return done();
+      case "stop": if (c && c.busy) hq.stop(c); return done();
+      case "tools": this.plugin.setMod("chat", { tools: !MODS.chat.tools }); this.osChatRender(true); this.osSysNote(c, "Command lines " + (MODS.chat.tools ? "shown." : "hidden.")); return done();
+      case "help": this.osSysNote(c, "**Commands**\n" + HQ_SLASH.map((x) => "- `/" + x[0] + (x[2] ? " " + x[2] : "") + "` " + x[1]).join("\n") + "\n\nAnything else starting with / (like your skills) is sent to Claude Code as typed."); return done();
+    }
+    return false;
+  },
+  osSlashMenu(move) {
+    const u = this.osUI; if (!u || !u.slash) return false; const v = u.cmdIn.value, m = /^\/(\S*)$/.exec(v), hqT = u.target.value === "hq";
+    const items = m && hqT ? HQ_SLASH.filter((x) => x[0].startsWith(m[1].toLowerCase())) : [];
+    if (!items.length) { u.slash.addClass("os-hide"); u.slashItems = null; return false; }
+    if (move === undefined || !u.slashItems || u.slashItems.join() !== items.map((x) => x[0]).join()) u.slashI = 0; else u.slashI = (u.slashI + move + items.length) % items.length;
+    u.slashItems = items.map((x) => x[0]); u.slash.empty(); u.slash.removeClass("os-hide");
+    items.forEach((x, i) => { const r = u.slash.createDiv({ cls: "os-sli" + (i === u.slashI ? " cur" : ""), attr: { role: "option", "aria-selected": String(i === u.slashI) } }); r.createSpan({ cls: "os-sln", text: "/" + x[0] + (x[2] ? " " + x[2] : "") }); r.createSpan({ cls: "os-sld", text: x[1] }); r.onmousedown = (e) => { e.preventDefault(); u.slashI = i; this.osSlashPick(); }; });
+    return true;
+  },
+  osSlashPick() {
+    const u = this.osUI, nm = u.slashItems && u.slashItems[u.slashI]; if (!nm) return; const def = HQ_SLASH.find((x) => x[0] === nm);
+    if (def[2]) { u.cmdIn.value = "/" + nm + " "; u.slash.addClass("os-hide"); u.slashItems = null; u.cmdIn.focus(); this.osAutoGrow(); return; }
+    u.cmdIn.value = "/" + nm; u.slash.addClass("os-hide"); u.slashItems = null; this.osChatSend("/" + nm);
   },
   osGoLabel() {
     const u = this.osUI, hq = this.hq(); if (!u || !u.go) return; const c = hq && hq.get(hq.activeId), busy = !!(c && c.busy && u.target.value === "hq"), has = !!(u.cmdIn.value.trim() || u.imgs.length), q = busy && has;
@@ -2106,7 +2188,7 @@ Object.assign(HQView.prototype, {
     const n = t.value.length; u.cnt.setText(n ? n.toLocaleString() + " chars · ~" + Math.ceil(n / 4).toLocaleString() + " tokens" : "");
     if (u.full) { t.style.height = ""; t.style.overflowY = "auto"; return; }
     const cs = getComputedStyle(t), lh = parseFloat(cs.lineHeight) || 22, pad = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
-    const min = Math.max(lh * 3 + pad, u.userH || 0), cap = Math.max(min, (u.mid.clientHeight || 600) * 0.4);
+    const min = Math.max(lh * 4.5 + pad, u.userH || 0), cap = Math.max(min, (u.mid.clientHeight || 600) * 0.45);
     t.style.height = "auto"; const sh = t.scrollHeight, h = Math.min(Math.max(sh, min), cap); t.style.height = h + "px"; t.style.overflowY = sh > h + 1 ? "auto" : "hidden";
   },
 });
