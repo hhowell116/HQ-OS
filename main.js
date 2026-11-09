@@ -1707,10 +1707,10 @@ Object.assign(HQView.prototype, {
       } else {
         const cp = this.claudian(); if (!(cp && cp.api && cp.chatHost && cp.sessionMessaging)) throw new Error("Claudian is not available.");
         const src = cp.chatHost.getConversationList().find((x) => x.id === tgt); if (!src) throw new Error("That Claudian chat was not found.");
-        const before = String(await cp.api.read(tgt) || ""); say("Writing the handoff note in \u201C" + src.title + "\u201D (it queues if that chat is busy)\u2026");
+        const before = String(await cp.api.read(tgt) || ""); say(this.claudBusy(tgt) ? "Handoff queued: it starts as soon as Claude finishes the current turn, then a new chat opens. You can keep working." : "Writing the handoff note in \u201C" + src.title + "\u201D\u2026"); new Notice(this.claudBusy(tgt) ? "Handoff queued behind the current turn" : "Handoff started");
         await cp.api.send(tgt, { text: HANDOFF_PROMPT });
         const t0 = Date.now(); let note = "";
-        while (Date.now() - t0 < 15 * 60000) { await new Promise((r) => setTimeout(r, 3000)); if (cp.sessionMessaging.status(tgt) !== "idle") continue; const t = String(await cp.api.read(tgt) || "").trim(); if (t && t !== before.trim() && /##/.test(t)) { note = t; break; } }
+        while (Date.now() - t0 < 15 * 60000) { await new Promise((r) => setTimeout(r, 3000)); if (cp.sessionMessaging.status(tgt) !== "idle") continue; const t = String(await cp.api.read(tgt) || "").trim(); if (t && t !== before.trim() && /##s*Goal/i.test(t) && /##s*Next steps/i.test(t)) { note = t; break; } }
         if (!note) throw new Error("Timed out waiting for the handoff note.");
         const nc = await cp.chatHost.createConversation(Object.assign({ providerId: src.providerId, selectedModel: src.selectedModel }, src.projectId ? { projectId: src.projectId } : {}));
         try { if (cp.chatHost.renameConversation) await cp.chatHost.renameConversation(nc.id, "Handoff: " + String(src.title).slice(0, 40)); } catch (x) {}
