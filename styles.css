@@ -738,3 +738,9 @@
 .hqos .os-q-sent{font-family:var(--os-mono);font-size:9px;letter-spacing:.15em;color:var(--os-am);opacity:.85;white-space:nowrap;padding:0 6px}
 .hqos .os-duelw{position:relative;display:block;line-height:0}
 .hqos .os-duelw>.os-fillsw{top:3px;left:3px;padding:0 5px;font-size:11px;letter-spacing:0;line-height:1.5}
+.hqos .os-duelw>.os-fillsw{opacity:.55}
+.hqos .os-duelw>.os-fillsw.r{left:auto;right:3px}
+.hqos .os-fill{justify-content:flex-start}
+.hqos .os-duel{width:100%;height:auto}
+@media (min-width:1101px){.hqos .os-left>.os-files{flex:0 1 auto!important}}
+.hqos .os-duelw{width:100%}

@@ -347,6 +347,17 @@ function agentLine(st, l) {
     else if ((b.name === "Bash" || b.name === "PowerShell") && /\bgit\s+(-C\s+\S+\s+)?commit\b/.test(inp.command || "")) st.files.forEach((f) => { if (f.op === "edit") f.committed = true; });
   }
 }
+// main chat sessions (top-level ~/.claude/projects/*/<session>.jsonl) touched in the last 15 min, so Files in play also shows what the main chats edit
+let mainCache = { at: 0, list: [] };
+async function mainSessions(app) {
+  const now = Date.now(); if (now - mainCache.at < 30000) return mainCache.list;
+  const out = []; let dirs = []; try { dirs = await fsp.readdir(PROJ); } catch (e) { return []; }
+  for (const d of dirs) { if (EXCL && EXCL.test(d)) continue; let fl = []; try { fl = await fsp.readdir(path.join(PROJ, d)); } catch (e) { continue; }
+    for (const f of fl) { if (!f.endsWith(".jsonl")) continue; const jf = path.join(PROJ, d, f), s = await fsp.stat(jf).catch(() => null); if (s && now - s.mtimeMs < 15 * 60000) out.push({ id: "main:" + f, jf, mtime: s.mtimeMs, title: "" }); } }
+  let convs = []; try { const cp = app.plugins.plugins.realclaudian || app.plugins.plugins.claudian; convs = cp.chatHost.getConversationList(); } catch (e) {}
+  out.forEach((a) => { const c = convs.filter((x) => x.lastActivityAt && Math.abs(x.lastActivityAt - a.mtime) < 180000).sort((x, y) => Math.abs(x.lastActivityAt - a.mtime) - Math.abs(y.lastActivityAt - a.mtime))[0]; a.title = c ? c.title : "Chat " + a.id.slice(5, 13); });
+  mainCache = { at: now, list: out.sort((a, b) => b.mtime - a.mtime).slice(0, 4) }; return mainCache.list;
+}
 async function agentStats(jf) {
   let size; try { size = (await fsp.stat(jf)).size; } catch (e) { return null; }
   let st = insCache.get(jf);
@@ -527,8 +538,8 @@ function renderInsights(v, el, only) {
     const hqT = v.plugin.hq && v.plugin.hq.todayTotals(); if (hqT && hqT.n) { const c = b.createDiv({ cls: "lhq-pcard done" }), h = c.createDiv({ cls: "lhq-top" }); h.createDiv({ cls: "lhq-name", text: "HQ chat (today)" }); h.createDiv({ cls: "lhq-chips" }).createSpan({ text: hqT.n + " turns" }); const m = c.createDiv({ cls: "lhq-meta" }); m.createSpan({ text: "in " + kfmt(hqT.tin) + " · out " + kfmt(hqT.tout) + " · cache " + kfmt(hqT.cache) }); if (MODS.progress.cost) m.createSpan({ cls: "lhq-est", text: "~" + usd(hqT.cost) + " est." }); }
     if (list.length && MODS.progress.cost) b.createDiv({ cls: "lhq-muted", text: "Costs are rough estimates from API list prices (subscription use is not billed per token)." }); }
   // files
-  if (W("files")) { const withFiles = run.filter((a) => a.st && a.st.files.size).slice(0, 5), b = insPanel(v, el, "files", "Files in play", withFiles.reduce((n, a) => n + Math.min(MODS.files.max, a.st.files.size), 0));
-    if (!withFiles.length) b.createDiv({ cls: "lhq-muted", text: "No running agent has touched files yet." });
+  if (W("files")) { const withFiles = run.concat(v.mainLive || []).filter((a) => a.st && a.st.files.size).slice(0, 5), b = insPanel(v, el, "files", "Files in play", withFiles.reduce((n, a) => n + Math.min(MODS.files.max, a.st.files.size), 0));
+    if (!withFiles.length) b.createDiv({ cls: "lhq-muted", text: "No agent or chat has touched files in the last 15 minutes." });
     withFiles.forEach((a) => {
       b.createDiv({ cls: "lhq-fg", text: a.title });
       [...a.st.files.values()].filter((f) => !sensitivePath(f.p)).reverse().slice(0, MODS.files.max).forEach((f) => {
@@ -1072,12 +1083,13 @@ class HQView extends ItemView {
       await mainTick();
       const now = Date.now();
       for (const a of this.live) { if (a.jf && (a.status === "running" || (a.status === "done" && now - a.mtime < 30 * 60000))) a.st = await agentStats(a.jf); }
+      try { this.mainLive = await mainSessions(this.app); for (const a of this.mainLive) a.st = await agentStats(a.jf); } catch (e) { this.mainLive = []; }
       const fin = this.live.filter((a) => a.status !== "running").length; if (fin !== this.insFin) { this.insFin = fin; this.insActAt = 0; } // a new finished agent: rescan reports now
       await this.insActionsUpdate(force);
       const ci = cacheInfo(), cards = this.insRules();
       if (this.cacheChip) { const show = ci && (ci.state !== "warm" || ci.compact); this.cacheChip.toggle(!!show); if (show) { this.cacheChip.setText(ci.state !== "warm" ? ci.msg : "Context ~" + kfmt(ci.ctx) + ": consider /compact"); this.cacheChip.toggleClass("cold", ci.state === "cold"); this.cacheChip.title = ci.compact ? "Large chat (" + kfmt(ci.ctx) + " tokens): consider /compact" : ci.msg; } }
       if (this.insBadge) { const n = cards.length + this.insActs.length; this.insBadge.setText(String(n)); this.insBadge.toggleClass("zero", !n); }
-      const sig = JSON.stringify([ci && [ci.state, ci.msg], cards.map((c) => c.id), this.insActs.map((a) => a.id), this.live.map((a) => [a.id, a.status, a.st && [a.st.tools, a.st.tin + a.st.tout + a.st.tcr, a.st.files.size, [...a.st.files.values()].slice(-3).map((f) => f.op + f.committed + (now - f.t < 90000))]])]);
+      const sig = JSON.stringify([ci && [ci.state, ci.msg], cards.map((c) => c.id), this.insActs.map((a) => a.id), this.live.concat(this.mainLive || []).map((a) => [a.id, a.status, a.st && [a.st.tools, a.st.tin + a.st.tout + a.st.tcr, a.st.files.size, [...a.st.files.values()].slice(-3).map((f) => f.op + f.committed + (now - f.t < 90000))]])]);
       if (sig !== this.insSig) { this.insSig = sig; if (this.page === "insights" || this.os) this.renderPage(); }
     } catch (e) { console.error("Project HQ insights", e); } finally { this.insBusy = false; }
   }
@@ -1426,7 +1438,7 @@ Object.assign(HQView.prototype, {
     const grid = ui.grid = wrap.createDiv({ cls: "os-grid" }), modsEl = ui.modsEl = wrap.createDiv({ cls: "os-mods os-hide" }), L = grid.createDiv({ cls: "os-col os-left" }), M = grid.createDiv({ cls: "os-col os-mid" }), Rt = grid.createDiv({ cls: "os-col os-right" });
     ui.vit = osPanel(L, "SYSTEM VITALS", "os-vit"); ui.sess = osPanel(L, "AGENTS & CHATS", "os-sess"); ui.next = osPanel(L, "NEXT UP", "os-next"); ui.files = osPanel(L, "FILES IN PLAY", "os-files");
     ui.tasks = osPanel(Rt, "TOP TASKS", "os-tasks"); ui.rev = osPanel(Rt, "REVIEW QUEUE", "os-rev");
-    { const f = L.createDiv({ cls: "os-fill" }); hqDuel(f); const g = Rt.createDiv({ cls: "os-fill" }); hqDuel(g, "hq-fill-scene-r", 5); }
+    { const f = L.createDiv({ cls: "os-fill" }); hqDuel(f); const g = Rt.createDiv({ cls: "os-fill" }); hqDuel(g, "hq-fill-scene-r", 5, "r"); }
     this.osColl = this.osColl || new Set(MODS.files.collapsed ? ["files"] : []);
     [["files", ui.files]].forEach(([k, p]) => { p.p.addClass("os-coll"); p.p.toggleClass("collapsed", this.osColl.has(k)); p.h.setAttr("role", "button"); p.h.setAttr("tabindex", "0"); p.h.setAttr("aria-expanded", String(!this.osColl.has(k)));
       const tg = () => { this.osColl.has(k) ? this.osColl.delete(k) : this.osColl.add(k); p.p.toggleClass("collapsed", this.osColl.has(k)); p.h.setAttr("aria-expanded", String(!this.osColl.has(k))); }; p.h.onclick = tg; p.h.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); tg(); } }); });
@@ -2478,12 +2490,12 @@ const hqHash = (n) => { n = (n ^ 61) ^ (n >>> 16); n = Math.imul(n, 9); n ^= n >
 const hqSprite = (ctx, x, y, rows, k) => { ctx.fillStyle = k; rows.forEach((r, j) => { for (let i = 0; i < r.length; i++) if (r[i] === "#") ctx.fillRect(x + i, y + j, 1, 1); }); };
 const HQ_SCENES = [
   { name: "DUEL" },
-  { name: "INVADERS", draw(ctx, t, A, B, st, rgb) {
+  { name: "INVADERS", draw(ctx, t, A, B, st, rgb, W = 64) {
     const H = 30;
     if (!st.dead) { st.dead = new Set(); st.by = -1; st.bx = 0; st.boom = null; }
-    const ox = 4 + Math.abs(((t >> 1) % 16) - 8), fr = (t >> 2) % 2;
+    const ox = ((W - 64) >> 1) + 4 + Math.abs(((t >> 1) % 16) - 8), fr = (t >> 2) % 2;
     const al = fr ? [".###.", "#.#.#", ".#.#."] : [".###.", "#.#.#", "#...#"];
-    const sx = 30 + Math.round(22 * Math.sin(t / 9));
+    const sx = (W >> 1) - 2 + Math.round((W / 2 - 10) * Math.sin(t / 9));
     if (st.by < 0 && t % 5 === 0) { st.bx = sx + 2; st.by = H - 7; }
     if (st.by >= 0) {
       st.by -= 2;
@@ -2499,8 +2511,8 @@ const HQ_SCENES = [
     if (st.boom) { const [x, y, k] = st.boom; ctx.fillStyle = "rgba(255,240,180," + (1 - k * 0.3) + ")"; [[-1 - k, 0], [1 + k, 0], [0, -1 - k], [0, 1 + k], [-1, -1], [1, 1], [1, -1], [-1, 1]].forEach(([a, b]) => ctx.fillRect(x + a, y + b, 1, 1)); st.boom = k < 2 ? [x, y, k + 1] : null; }
     hqSprite(ctx, sx, H - 5, ["..#..", "#####"], rgb(B, 0.95));
   } },
-  { name: "CHASE", draw(ctx, t, A, B, st, rgb) {
-    const W = 64, H = 30, L = W + 30, p = t % L, rev = Math.floor(t / L) % 2 === 1, y = H - 10;
+  { name: "CHASE", draw(ctx, t, A, B, st, rgb, W = 64) {
+    const H = 30, L = W + 30, p = t % L, rev = Math.floor(t / L) % 2 === 1, y = H - 10;
     const px = rev ? W + 12 - p : p - 12, gx = rev ? px - 12 : px - 13;
     ctx.fillStyle = rgb(A, 0.6);
     for (let x = 3; x < W; x += 5) if (rev ? false : x > px + 3) ctx.fillRect(x, y, 1, 1);
@@ -2519,8 +2531,8 @@ const HQ_SCENES = [
     ctx.fillStyle = "rgba(255,255,255,.95)"; ctx.fillRect(gx - 2, y - 1, 1, 2); ctx.fillRect(gx + 1, y - 1, 1, 2);
     if (!scared) { ctx.fillStyle = "rgba(20,30,60,.95)"; ctx.fillRect(gx - 1, y, 1, 1); ctx.fillRect(gx + 2, y, 1, 1); }
   } },
-  { name: "SNAKE", draw(ctx, t, A, B, st, rgb) {
-    const C = 32, R = 13, cell = 2;
+  { name: "SNAKE", draw(ctx, t, A, B, st, rgb, W = 64) {
+    const C = W >> 1, R = 13, cell = 2;
     const free = (x, y) => x >= 0 && y >= 0 && x < C && y < R && !st.body.some((b) => b[0] === x && b[1] === y);
     const apple = () => { for (let i = 0; i < 50; i++) { const x = Math.floor(Math.random() * C), y = Math.floor(Math.random() * R); if (free(x, y)) return [x, y]; } return [0, 0]; };
     if (!st.body || st.reset) { st.body = [[6, 6], [5, 6], [4, 6]]; st.dir = [1, 0]; st.apple = apple(); st.reset = 0; }
@@ -2536,9 +2548,9 @@ const HQ_SCENES = [
     ctx.fillStyle = rgb(B, t % 6 < 3 ? 0.95 : 0.7); ctx.fillRect(st.apple[0] * cell, st.apple[1] * cell, cell, cell);
     st.body.forEach((b, i) => { ctx.fillStyle = rgb(A, i === 0 ? 1 : Math.max(0.35, 0.9 - i * 0.015)); ctx.fillRect(b[0] * cell, b[1] * cell, cell, cell); });
   } },
-  { name: "DVD", smooth: true, draw(ctx, t, A, B, st, rgb) {
+  { name: "DVD", smooth: true, draw(ctx, t, A, B, st, rgb, W = 64) {
     // bouncing DVD logo (drawn as vector text so it glides smoothly), new colour on every wall, sparkles on a corner hit
-    const W = 64, H = 30, w = 18, h = 11, Hb = H - 3;
+    const H = 30, w = 18, h = 11, Hb = H - 3;
     if (!st.init) { st.init = 1; st.x = 3 + Math.random() * 38; st.y = 1 + Math.random() * 12; st.vx = 0.22; st.vy = 0.14; st.c = 0; st.fx = 0; }
     st.x += st.vx; st.y += st.vy; let hx = false, hy = false;
     if (st.x <= 0 || st.x >= W - w) { st.vx = -st.vx; st.x = Math.max(0, Math.min(W - w, st.x)); hx = true; }
@@ -2553,8 +2565,8 @@ const HQ_SCENES = [
     ctx.globalCompositeOperation = "destination-out"; ctx.font = "bold 2.6px Arial, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("VIDEO", x + w / 2, y + 9.15); ctx.restore();
     if (st.fx > 0) { st.fx--; ctx.fillStyle = "rgba(255,240,180," + (st.fx / 40) + ")"; for (let i = 0; i < 12; i++) ctx.fillRect(Math.floor(hqHash(i * 31 + st.c) * W), Math.floor(hqHash(i * 17 + st.c * 3) * Hb), 1, 1); }
   } },
-  { name: "CITY", draw(ctx, t, A, B, st, rgb) {
-    const W = 64, H = 30;
+  { name: "CITY", draw(ctx, t, A, B, st, rgb, W = 64) {
+    const H = 30;
     if (!st.b) {
       st.b = []; for (let x = 0; x < W;) { const w = 5 + Math.floor(Math.random() * 6), h = 7 + Math.floor(Math.random() * 15); st.b.push({ x, w, h }); x += w + 1; }
       st.d = Array.from({ length: 28 }, () => ({ x: Math.random() * (W + 20), y: Math.random() * H, s: 1.5 + Math.random() }));
@@ -2574,10 +2586,10 @@ const HQ_SCENES = [
   } },
 ];
 // Pixel animations for the spare space in the left column (swordfight + HQ_SCENES). Drawn in code (no assets), theme coloured, ~10 fps, idle when hidden.
-function hqDuel(host, key = "hq-fill-scene", def = 0) {
+function hqDuel(host, key = "hq-fill-scene", def = 0, side = "l") {
   const wr = host.createDiv({ cls: "os-duelw" }), cv = wr.createEl("canvas", { cls: "os-duel", attr: { "aria-hidden": "true" } }), ctx = cv.getContext("2d"), W = 64, H = 30;
   let tick = 0, round = 0, st = {}, scene = Math.min(HQ_SCENES.length - 1, Math.max(0, parseInt(localStorage.getItem(key) ?? String(def), 10) || 0));
-  const swb = wr.createEl("button", { cls: "os-fillsw", text: "⇄" });
+  const swb = wr.createEl("button", { cls: "os-fillsw" + (side === "r" ? " r" : ""), text: "⇄" }); let CW = W;
   const lbl = () => swb.setAttr("aria-label", "Swap animation (" + HQ_SCENES[scene].name.toLowerCase() + ")");
   lbl();
   swb.addEventListener("click", (e) => { e.stopPropagation(); scene = (scene + 1) % HQ_SCENES.length; localStorage.setItem(key, String(scene)); st = {}; tick = 0; round = 0; lbl(); draw(); });
@@ -2620,15 +2632,17 @@ function hqDuel(host, key = "hq-fill-scene", def = 0) {
     if (!host.isConnected) { clearInterval(iv); return; }
     const r = host.getBoundingClientRect(); if (r.height < 10 || document.hidden || !host.offsetParent) return;
     // fixed size: the box shrinks to fit the animation and the panels above take the spare room (width in CSS px, HQ may be zoomed)
-    const sc = Math.max(1, Math.min(3, Math.floor(host.clientWidth / W)));
-    if (cv.width !== W * sc || cv.height !== H * sc) { cv.width = W * sc; cv.height = H * sc; wr.style.marginBottom = -sc + "px"; }
+    // full box width: the scale is fixed by the width, the scene gets as many columns as fit
+    const sc = Math.max(1, Math.min(3, Math.floor(host.clientWidth / W))), nw = Math.max(W, Math.floor(host.clientWidth / sc));
+    if (nw !== CW) { CW = nw; st = {}; }
+    if (cv.width !== CW * sc || cv.height !== H * sc) { cv.width = CW * sc; cv.height = H * sc; wr.style.marginBottom = -sc + "px"; }
     const cs = getComputedStyle(host), A = cs.getPropertyValue("--os-acrgb").trim(), B = cs.getPropertyValue("--os-amrgb").trim();
-    ctx.setTransform(sc, 0, 0, sc, 0, 0); ctx.imageSmoothingEnabled = false; ctx.clearRect(0, 0, W, H);
-    ctx.fillStyle = rgb(A, 0.35); for (let x = 2; x < W - 2; x += 2) ctx.fillRect(x, H - 2, 1, 1);
-    if (scene) { try { HQ_SCENES[scene].draw(ctx, tick, A, B, st, rgb); } catch (e) { st = {}; } tick++; return; }
+    ctx.setTransform(sc, 0, 0, sc, 0, 0); ctx.imageSmoothingEnabled = false; ctx.clearRect(0, 0, CW, H);
+    ctx.fillStyle = rgb(A, 0.35); for (let x = 2; x < CW - 2; x += 2) ctx.fillRect(x, H - 2, 1, 1);
+    if (scene) { try { HQ_SCENES[scene].draw(ctx, tick, A, B, st, rgb, CW); } catch (e) { st = {}; } tick++; return; }
     const t = tick % 64, s = step(t), sw = round % 2 === 1, bob = (k) => (s.ap === "idle" && (tick + k) % 8 < 4 ? 1 : 0);
     // swap who wins: mirror the whole scene on odd rounds
-    if (sw) { ctx.setTransform(-sc, 0, 0, sc, W * sc, 0); }
+    const ox = (CW - W) >> 1; if (sw) ctx.setTransform(-sc, 0, 0, sc, (ox + W) * sc, 0); else ctx.setTransform(sc, 0, 0, sc, ox * sc, 0);
     fighter(s.ax, 1, s.ap, sw ? B : A, s.af, bob(0)); fighter(s.bx, -1, s.bp, sw ? A : B, s.bf, bob(3));
     if (s.sp) spark(s.sp[0], s.sp[1], s.sp[2]);
     tick++; if (tick % 64 === 0) round++;
