@@ -682,9 +682,9 @@
 .hqos .os-tro .os-chb:disabled{opacity:.4;cursor:not-allowed}
 .hqos .os-chat.claud .os-chh .os-chb:not(:last-child){display:none}
 /* chatting: globe becomes a faint full-size backdrop behind the conversation (replaces the corner badge) */
-.hqos .os-mid.chatting .os-orbw{position:absolute;inset:0;top:0;right:0;width:auto;height:auto;min-height:0;z-index:0;opacity:.16;pointer-events:none}
+.hqos .os-mid.chatting .os-orbw{position:absolute;inset:0;top:0;right:0;width:auto;height:auto;min-height:0;z-index:0;opacity:.4;pointer-events:none}
 .hqos .os-mid.chatting .os-ring{opacity:.35}
-.hqos .os-mid.chatting .os-chat{position:relative;z-index:1;background:rgba(var(--os-bgrgb),.45)}
+.hqos .os-mid.chatting .os-chat{position:relative;z-index:1;background:rgba(var(--os-bgrgb),.3)}
 .hqos .os-mid.chatting .os-cmd{position:relative;z-index:2}
 .hqos .os-mid.chatting .os-chh{padding-right:8px}
 .hqos .os-grip{display:none!important}
