@@ -1393,6 +1393,7 @@ Object.assign(HQView.prototype, {
       // turn every native title into data-tip as soon as it appears, so Windows' delayed tooltip never shows (rows re-render often)
       const strip = () => wrap.querySelectorAll("[title]").forEach((el) => { el.setAttribute("data-tip", el.getAttribute("title")); el.removeAttribute("title"); });
       let sq = 0; this.osTipMO = new MutationObserver(() => { if (!sq) sq = requestAnimationFrame(() => { sq = 0; strip(); }); }); this.osTipMO.observe(wrap, { subtree: true, childList: true, attributes: true, attributeFilter: ["title"] }); strip();
+      ["mouseover", "mouseenter", "pointerover", "mousemove", "pointermove"].forEach((ev) => wrap.addEventListener(ev, (e) => e.stopPropagation())); // keeps Obsidian's own delayed aria-label tooltip out of HQ (ours shows instantly)
       wrap.addEventListener("mouseover", (e) => { const el = e.target.closest && e.target.closest("[title],[data-tip]"); if (!el || !wrap.contains(el)) { cur = null; tip.addClass("os-hide"); return; } if (el.hasAttribute("title")) { el.setAttribute("data-tip", el.getAttribute("title")); el.removeAttribute("title"); } const t = el.getAttribute("data-tip"); if (!t) return; cur = el; tip.setText(t); tip.removeClass("os-hide"); place(e); });
       wrap.addEventListener("mousemove", (e) => { if (cur) place(e); });
       wrap.addEventListener("mouseleave", () => tip.addClass("os-hide")); wrap.addEventListener("pointerdown", () => tip.addClass("os-hide"), true); wrap.addEventListener("scroll", () => tip.addClass("os-hide"), true); }
