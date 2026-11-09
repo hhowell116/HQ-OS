@@ -1436,7 +1436,7 @@ Object.assign(HQView.prototype, {
     const npShow = (d) => { if (this.osUI !== ui) return; const x = HQNow.pick(d); ui.np.toggleClass("os-hide", !x); if (!x) return; const t = String(x.title).slice(0, 120), a = [x.artist, HQNow.appName(x.app)].filter(Boolean).join("  ·  ").slice(0, 100); if (ui.npT.textContent !== "\u266A " + t) ui.npT.setText("\u266A " + t); if (ui.npS.textContent !== a) ui.npS.setText(a); };
     HQNow.subs.add(npShow); this.osNpUnsub = () => HQNow.subs.delete(npShow); npShow(HQNow.data);
     ui.status = M.createDiv({ cls: "os-status", attr: { role: "status", "aria-live": "polite" } });
-    ui.mid = M; ui.chatBox = M.createDiv({ cls: "os-chat os-hide" }); ui.showChat = M.createEl("button", { cls: "os-showchat os-hide", text: "SHOW CHAT", attr: { title: "Show chat" } }); ui.showChat.onclick = () => { ui.chatHidden = false; this.osChatLayout(); ui.claudKey = ""; setTimeout(() => this.osClaudRender(true), 0); }; this.osChatHeader(ui.chatBox); ui.chatList = ui.chatBox.createDiv({ cls: "os-clist os-hide" }); ui.chatBody = ui.chatBox.createDiv({ cls: "os-cbody", attr: { role: "log", "aria-live": "polite" } }); ui.queue = ui.chatBox.createDiv({ cls: "os-queue os-hide", attr: { "aria-label": "Queued messages" } });
+    ui.mid = M; ui.chatBox = M.createDiv({ cls: "os-chat os-hide" }); ui.showChat = M.createEl("button", { cls: "os-showchat os-hide", text: "SHOW CHAT", attr: { title: "Show chat" } }); ui.showChat.onclick = () => { ui.chatHidden = false; this.osChatLayout(); ui.claudKey = ""; setTimeout(() => this.osClaudRender(true), 0); }; this.osChatHeader(ui.chatBox); ui.chatList = ui.chatBox.createDiv({ cls: "os-clist os-hide" }); ui.chatBody = ui.chatBox.createDiv({ cls: "os-cbody", attr: { role: "log", "aria-live": "polite" } }); ui.chatBody.addEventListener("scroll", () => { const b = ui.chatBody; ui.stick = b.scrollHeight - b.scrollTop - b.clientHeight < 40; }, { passive: true }); ui.queue = ui.chatBox.createDiv({ cls: "os-queue os-hide", attr: { "aria-label": "Queued messages" } });
     { const tip = ui.tip = wrap.createDiv({ cls: "os-tip os-hide", attr: { "aria-hidden": "true" } });
       // follows the cursor; screen px are divided by the HQ text-scale zoom so it lands right under the pointer
       const place = (e) => { const w = wrap.getBoundingClientRect(), z = (w.width / wrap.offsetWidth) || 1, W = wrap.offsetWidth, H = wrap.offsetHeight, tw = tip.offsetWidth, th = tip.offsetHeight;
@@ -1749,7 +1749,7 @@ Object.assign(HQView.prototype, {
         });
         msgs.push({ r: "asst", blocks });
       }
-      const b = u.chatBody, near = b.scrollHeight - b.scrollTop - b.clientHeight < 80 || force; b.empty(); u.liveEl = null;
+      const b = u.chatBody, near = u.stick !== false || force; b.empty(); u.liveEl = null;
       if (all.length > 40) b.createDiv({ cls: "os-muted os-chint", text: "Showing the last 40 messages. Open it in Claudian for the full chat." });
       msgs.forEach((m) => this.osChatMsg(b, m, false));
       const P = this.osPend || {}, seen = msgs.filter((m) => m.r === "user").slice(-8).map((m) => m.text); P[id] = (P[id] || []).filter((p) => Date.now() - p.t < 900000 && !seen.some((x) => x.includes(p.text.slice(0, 60)))); P[id].forEach((p) => this.osChatMsg(b, { r: "user", text: p.text }, false));
@@ -1842,7 +1842,7 @@ Object.assign(HQView.prototype, {
   // ---- Claudian path (only when a Claudian session is picked in the target list; HQ chat is the default) ----
   claudBusy(id) { const cp = this.claudian(); try { if (!(cp && cp.sessionMessaging && cp.sessionMessaging.status(id) === "running")) return false; const m = cp.chatHost.getConversationList().find((x) => x.id === id); return !m || !m.lastActivityAt || Date.now() - m.lastActivityAt < 180000; } catch (e) { return false; } },
   async osSend(text, target) {
-    const u = this.osUI; text = String(text || "").trim(); if (!target || target === "hq") return;
+    const u = this.osUI; if (u) u.stick = true; text = String(text || "").trim(); if (!target || target === "hq") return;
     if (u.imgs && u.imgs.length) { try { const dir = require("path").join(require("os").tmpdir(), "hq-images"); require("fs").mkdirSync(dir, { recursive: true }); const ps = u.imgs.map((im, i) => { const p = require("path").join(dir, Date.now() + "-" + i + "." + ((im.media || "image/png").split("/")[1] || "png").replace("jpeg", "jpg")); require("fs").writeFileSync(p, Buffer.from(im.data, "base64")); return p; }); text = (text || "See the attached image" + (ps.length > 1 ? "s" : "") + ".") + "\n\n" + ps.map((p) => "[Attached image: " + p + "]").join("\n"); u.imgs = []; this.osRenderAtts(); } catch (e) { new Notice("Could not attach image: " + (e && e.message || e)); return; } }
     if (!text) return;
     if (target === "new") { u.cmdIn.value = ""; this.osAutoGrow(); try { u.cmdMsg.setText("Starting a new chat in " + (this.project ? this.project.name : "this project") + "\u2026"); await this.osNewClaudChat(text); this.osRemember(text); u.cmdMsg.setText("Sent."); } catch (e) { u.cmdIn.value = text; u.cmdMsg.setText("Could not start a chat: " + (e && e.message || e)); } return; }
@@ -2335,14 +2335,14 @@ Object.assign(HQView.prototype, {
     this.osQueueRender(c); u.chatTitle.setText(c.title); const tot = (c.turns || []).reduce((n, t) => n + (t.cost || 0), 0); u.chatCost.setText(c.busy ? "WORKING" : tot && MODS.chat.cost ? "~" + usd(tot) : "READY"); u.chatCost.toggleClass("run", !!c.busy);
   },
   osChatFull(c) {
-    const u = this.osUI, b = u.chatBody, near = b.scrollHeight - b.scrollTop - b.clientHeight < 80; b.empty(); u.liveEl = null;
+    const u = this.osUI, b = u.chatBody, near = u.stick !== false; b.empty(); u.liveEl = null;
     if (!c.msgs.length) b.createDiv({ cls: "os-muted os-chint", text: "Ask Claude Code anything. It runs in this vault with your CLAUDE.md rules. Files it mentions open beside HQ." });
     c.msgs.forEach((m) => this.osChatMsg(b, m, m === c.cur));
     if (c.busy && !(c.cur && c.cur.blocks.length)) b.createDiv({ cls: "os-think", text: "Claude is thinking…" });
-    if (near || c.busy) b.scrollTop = b.scrollHeight;
+    if (near) b.scrollTop = b.scrollHeight;
   },
   osChatLive(c) { // streaming: re-render only the last assistant message
-    const u = this.osUI, b = u.chatBody, near = b.scrollHeight - b.scrollTop - b.clientHeight < 80, last = [...b.querySelectorAll(".os-msg.asst")].pop(); if (!last || !c.cur) { this.osChatFull(c); return; }
+    const u = this.osUI, b = u.chatBody, near = u.stick !== false, last = [...b.querySelectorAll(".os-msg.asst")].pop(); if (!last || !c.cur) { this.osChatFull(c); return; }
     const nw = createDiv(); this.osChatMsg(nw, c.cur, true); last.replaceWith(nw.firstChild); if (near) b.scrollTop = b.scrollHeight;
   },
   osChatMsg(parent, m, live) {
