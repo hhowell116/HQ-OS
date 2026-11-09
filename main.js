@@ -2430,6 +2430,13 @@ Object.assign(HQView.prototype, {
       if (bl.k === "text") { if (!bl.text.trim()) return; const t = d.createDiv({ cls: "os-mt os-md" }); t.insertAdjacentHTML("beforeend", mdSafe(redact(bl.text))); }
       else if (bl.k === "think") { if (live && i === m.blocks.length - 1) d.createDiv({ cls: "os-think", text: "Claude is thinking…" }); }
       else if (bl.k === "error") d.createDiv({ cls: "os-err", text: redact(bl.text) });
+      else if (bl.k === "tool" && bl.name === "AskUserQuestion") { // always show Claude's questions and your answers, even with tool lines hidden
+        const qs = (bl.input && Array.isArray(bl.input.questions)) ? bl.input.questions : [], res = String(bl.result || ""), got = {};
+        for (const mm of res.matchAll(/"([^"]+)"="([^"]*)"/g)) got[mm[1]] = mm[2];
+        if (!qs.length) return; const card = d.createDiv({ cls: "os-ask done" }); card.createDiv({ cls: "os-ask-h", text: "CLAUDE ASKED" });
+        qs.forEach((q) => { const qe = card.createDiv({ cls: "os-ask-q" }); if (q.header) qe.createSpan({ cls: "os-ask-tag", text: q.header }); qe.createDiv({ cls: "os-ask-t", text: q.question || "" });
+          const a = got[q.question] || (() => { const k = "\"" + q.question + "\"=\"", ix = res.indexOf(k); if (ix < 0) return ""; const mm = res.slice(ix + k.length).match(/^([\s\S]*?)"(?=,\s*"|\.|\s*$)/); return mm ? mm[1] : ""; })(); qe.createDiv({ cls: "os-ask-a" + (a ? "" : " none"), text: a ? "You answered: " + a : (res ? "Skipped" : "Waiting for your answer") }); });
+      }
       else if (bl.k === "tool" && MODS.chat.tools) {
         const det = d.createEl("details", { cls: "os-tool" + (bl.isErr ? " err" : "") + (bl.open ? " run" : "")}), s = det.createEl("summary");
         const l1 = s.createDiv({ cls: "os-tl" }); l1.createSpan({ cls: "os-tn", text: (bl.isErr ? "\u2716 " : bl.open ? "\u25CF " : "\u2713 ") + bl.name }); l1.createSpan({ cls: "os-tt", text: redact(bl.target || "").replace(/\s+/g, " ").slice(0, 400) });

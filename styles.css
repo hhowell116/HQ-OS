@@ -773,3 +773,6 @@
 .hqos .os-ask-o .l{font-weight:600}.hqos .os-ask-o .d{font-size:.88em;opacity:.75;margin-top:2px}
 .hqos .os-ask-other{width:100%;margin-top:6px}
 .hqos .os-ask-row{display:flex;gap:8px;justify-content:flex-end}
+.hqos .os-ask.done{gap:6px}
+.hqos .os-ask-a{margin-top:6px;padding:6px 10px;border-left:2px solid var(--os-am);color:var(--os-am);background:rgba(var(--os-amrgb),.08);font-weight:600}
+.hqos .os-ask-a.none{opacity:.6;font-weight:400}
