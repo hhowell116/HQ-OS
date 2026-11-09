@@ -717,7 +717,7 @@
   background:radial-gradient(ellipse at 50% 55%,rgba(var(--os-acrgb),.08),transparent 70%),
   repeating-linear-gradient(0deg,rgba(var(--os-acrgb),.06) 0 1px,transparent 1px 18px),
   repeating-linear-gradient(90deg,rgba(var(--os-acrgb),.06) 0 1px,transparent 1px 18px);
-  -webkit-mask-image:linear-gradient(#000 82%,transparent);mask-image:linear-gradient(#000 82%,transparent)}
+  -webkit-mask-image:none;mask-image:none}
 .hqos .os-fill::before{content:"";position:absolute;left:0;right:0;height:40%;top:-40%;background:linear-gradient(transparent,rgba(var(--os-acrgb),.12),transparent);animation:osFillSweep 6s linear infinite}
 .hqos .os-fill-ring{position:absolute;left:50%;top:50%;width:46px;height:46px;margin:-23px 0 0 -23px;border:1px solid rgba(var(--os-acrgb),.5);border-radius:50%;animation:osFillPulse 4s ease-out infinite}
 .hqos .os-fill-ring.r2{animation-delay:-2s}

@@ -2623,10 +2623,10 @@ function hqDuel(host) {
     // work in CSS px (HQ may be zoomed, which scales getBoundingClientRect but not offset sizes)
     const z = host.offsetHeight ? r.height / host.offsetHeight : 1, hw = host.clientWidth, hh = host.clientHeight;
     let sc = Math.max(1, Math.floor(Math.min(hw / W, (hh * 0.8) / H))), mt = null;
-    { // line the ground up with the bottom edge of the chat panel when it's open: shrink the scale until it fits above that edge
-      const hq = host.closest(".hqos"), ch = hq && hq.querySelector(".os-mid .os-chat");
+    { // line the ground up with the bottom edge of the chat input box: shrink the scale until it fits above that edge
+      const hq = host.closest(".hqos"), ch = hq && (hq.querySelector(".os-mid .os-cbox") || hq.querySelector(".os-mid"));
       if (ch && ch.offsetParent) { const cr = ch.getBoundingClientRect(), gy = (cr.bottom - r.top) / z;
-        if (cr.height && gy > 0) { while (sc > 1 && (H - 1) * sc > gy) sc--; mt = Math.round(gy - (H - 1) * sc); if (mt < 0 || mt + H * sc > hh) mt = null; } } }
+        if (cr.height && gy > 0) { while (sc > 1 && (H - 1) * sc > gy) sc--; mt = Math.round(gy - (H - 1) * sc); if (mt < 0 || mt + (H - 1) * sc > hh + 1) mt = null; } } }
     if (cv.width !== W * sc || cv.height !== H * sc) { cv.width = W * sc; cv.height = H * sc; }
     { const v = mt != null ? mt + "px" : ""; if (cv.style.marginTop !== v) { cv.style.marginTop = v; host.style.alignItems = mt != null ? "flex-start" : ""; } }
     const cs = getComputedStyle(host), A = cs.getPropertyValue("--os-acrgb").trim(), B = cs.getPropertyValue("--os-amrgb").trim();
