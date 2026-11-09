@@ -1344,7 +1344,7 @@ Object.assign(HQView.prototype, {
     this.contentEl.toggleClass("hqos", on); this.osStop(); if (this.pageEl) { this.pageEl.empty(); this.pageEl.toggleClass("os", on); }
     if (!on) ["--tx", "--glass", "--glass-b"].forEach((k) => this.contentEl.style.removeProperty(k));
   },
-  osStop() { if (this.osUnsub) { this.osUnsub(); this.osUnsub = null; } clearTimeout(this.osStreamT); this.osStreamT = 0; if (this.orb) this.orb.run(false); if (this.osIO) this.osIO.disconnect(); if (this.osRO) this.osRO.disconnect(); this.orb = null; this.osIO = this.osRO = null; this.osUI = null; },
+  osStop() { if (this.osTipMO) { this.osTipMO.disconnect(); this.osTipMO = null; } if (this.osUnsub) { this.osUnsub(); this.osUnsub = null; } clearTimeout(this.osStreamT); this.osStreamT = 0; if (this.orb) this.orb.run(false); if (this.osIO) this.osIO.disconnect(); if (this.osRO) this.osRO.disconnect(); this.orb = null; this.osIO = this.osRO = null; this.osUI = null; },
   osBuild() {
     const page = this.pageEl; page.empty(); page.addClass("os"); const ui = this.osUI = { sig: {}, inView: true }, wrap = page.createDiv({ cls: "os-wrap" });
     wrap.createDiv({ cls: "os-sweep" }); ui.top = wrap.createDiv({ cls: "os-top" }); ui.run = wrap.createDiv({ cls: "os-run os-hide", attr: { role: "status", "aria-live": "polite", "aria-label": "Running agents" } });
@@ -1363,6 +1363,9 @@ Object.assign(HQView.prototype, {
       const place = (e) => { const w = wrap.getBoundingClientRect(), z = (w.width / wrap.offsetWidth) || 1, W = wrap.offsetWidth, H = wrap.offsetHeight, tw = tip.offsetWidth, th = tip.offsetHeight;
         let x = (e.clientX - w.left) / z + 12, y = (e.clientY - w.top) / z + 18; if (x + tw > W - 4) x = Math.max(4, (e.clientX - w.left) / z - tw - 12); if (y + th > H - 4) y = (e.clientY - w.top) / z - th - 10; tip.style.left = x + "px"; tip.style.top = y + "px"; };
       let cur = null;
+      // turn every native title into data-tip as soon as it appears, so Windows' delayed tooltip never shows (rows re-render often)
+      const strip = () => wrap.querySelectorAll("[title]").forEach((el) => { el.setAttribute("data-tip", el.getAttribute("title")); el.removeAttribute("title"); });
+      let sq = 0; this.osTipMO = new MutationObserver(() => { if (!sq) sq = requestAnimationFrame(() => { sq = 0; strip(); }); }); this.osTipMO.observe(wrap, { subtree: true, childList: true, attributes: true, attributeFilter: ["title"] }); strip();
       wrap.addEventListener("mouseover", (e) => { const el = e.target.closest && e.target.closest("[title],[data-tip]"); if (!el || !wrap.contains(el)) { cur = null; tip.addClass("os-hide"); return; } if (el.hasAttribute("title")) { el.setAttribute("data-tip", el.getAttribute("title")); el.removeAttribute("title"); } const t = el.getAttribute("data-tip"); if (!t) return; cur = el; tip.setText(t); tip.removeClass("os-hide"); place(e); });
       wrap.addEventListener("mousemove", (e) => { if (cur) place(e); });
       wrap.addEventListener("mouseleave", () => tip.addClass("os-hide")); wrap.addEventListener("pointerdown", () => tip.addClass("os-hide"), true); wrap.addEventListener("scroll", () => tip.addClass("os-hide"), true); }
