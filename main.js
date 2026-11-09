@@ -1276,7 +1276,7 @@ function osPanel(parent, title, cls) {
   return { p, h, meta, body: p.createDiv({ cls: "os-pb" }) };
 }
 // ----- the particle orb (2D canvas, projected sphere; ~30 fps; paused when HQ is not visible) -----
-const HQAudio = {
+const HQAudio = window.__hqAudio = {
   on: false, busy: false, err: "", bands: new Float32Array(24), level: 0, bass: 0,
   async start() {
     if (this.on || this.busy || Date.now() - (this.failAt || 0) < 60000) return; this.busy = true; this.err = "";
@@ -1296,6 +1296,13 @@ const HQAudio = {
     this.level = tot / 24; this.bass = (this.bands[2] + this.bands[3] + this.bands[4] + this.bands[5]) / 4;
   },
 };
+function hueShift(rgb, deg) { // rotate a colour's hue (for the equalizer's edge colour)
+  let [r, g, b] = rgb.map((x) => x / 255); const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2, d = mx - mn; let h = 0, s2 = 0;
+  if (d) { s2 = d / (1 - Math.abs(2 * l - 1)); h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; h *= 60; }
+  h = (h + deg + 360) % 360; s2 = Math.max(s2, 0.75); const c = (1 - Math.abs(2 * l - 1)) * s2, x = c * (1 - Math.abs((h / 60) % 2 - 1)), m = l - c / 2;
+  const [a, b2, c2] = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x] : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
+  return [a, b2, c2].map((v) => Math.round((v + m) * 255));
+}
 class Orb {
   constructor(cv) {
     this.cv = cv; this.ctx = cv.getContext("2d"); this.seed(MODS.orb.particles);
@@ -1313,6 +1320,21 @@ class Orb {
     const gk = Math.min(1.5, THEME_RGB.glow), gs = this.gs = Math.round(this.s * 2.8), mk = (rgb) => { const g = document.createElement("canvas"); g.width = g.height = gs; const x = g.getContext("2d"), rg = x.createRadialGradient(gs / 2, gs / 2, this.s * 0.1, gs / 2, gs / 2, gs / 2); rg.addColorStop(0, "rgba(" + rgb + "," + (0.34 * gk).toFixed(3) + ")"); rg.addColorStop(0.45, "rgba(" + rgb + "," + (0.1 * gk).toFixed(3) + ")"); rg.addColorStop(1, "rgba(" + rgb + ",0)"); x.fillStyle = rg; x.fillRect(0, 0, gs, gs); return g; };
     this.glow = mk(THEME_RGB.a.join(",")); this.glowA = mk(THEME_RGB.w.join(","));
   }
+  eq(ctx, cx, cy, R, AF, ak, dpr) {
+    const cols = 81, half = (cols - 1) / 2, span = R * 2.5, cw = span / cols, cell = Math.max(2, cw * 0.74), maxN = 16, A = THEME_RGB.a, B = THEME_RGB.e || THEME_RGB.w;
+    this.eqH = this.eqH && this.eqH.length === cols ? this.eqH : new Float32Array(cols);
+    for (let c = 0; c < cols; c++) {
+      const d = Math.abs(c - half) / half, f = (1 - d) * 23, i0 = Math.floor(f), i1 = Math.min(23, i0 + 1), v = AF[i0] + (AF[i1] - AF[i0]) * (f - i0);
+      const shape = 0.55 + 0.45 * Math.sin(Math.PI * Math.min(1, d * 1.5)); // a little extra lift away from the very centre, like the reference
+      const tgt = Math.min(1, v * ak * shape * 1.25); this.eqH[c] += (tgt - this.eqH[c]) * (tgt > this.eqH[c] ? 0.6 : 0.18); // fast attack, gentle fall
+      const n = Math.max(1, Math.round(this.eqH[c] * maxN)), x = cx - span / 2 + c * cw + (cw - cell) / 2, m = Math.pow(d, 0.8);
+      const r = Math.round(A[0] + (B[0] - A[0]) * m), g = Math.round(A[1] + (B[1] - A[1]) * m), b = Math.round(A[2] + (B[2] - A[2]) * m);
+      for (let k = 0; k < n; k++) {
+        const a = (0.95 - 0.55 * (k / maxN)) * (d > 0.97 ? 0.7 : 1); ctx.fillStyle = "rgba(" + r + "," + g + "," + b + "," + a.toFixed(3) + ")";
+        const yUp = cy - cell / 2 - k * cw, yDn = cy - cell / 2 + k * cw; ctx.fillRect(x, yUp, cell, cell); if (k) ctx.fillRect(x, yDn, cell, cell);
+      }
+    }
+  }
   mode(intensity, warn) { this.target = intensity; this.tintT = warn ? 1 : 0; }
   run(on) { if (on === this.on) return; this.on = on; cancelAnimationFrame(this.raf); if (on) { this.last = 0; this.raf = requestAnimationFrame(this.loop); } }
   pt(i, cx, cy, R, cs) { // rotated + projected point i -> [sx, sy]
@@ -1329,20 +1351,21 @@ class Orb {
     const ctx = this.ctx, W = this.w, H = this.h, cx = W / 2, cy = H / 2, dpr = this.dpr;
     this.int += (this.target - this.int) * Math.min(1, dt * 1.5); this.tint += (this.tintT - this.tint) * Math.min(1, dt * 2);
     const I = this.int; HQAudio.read(); const ak = MODS.orb.audio ? (MODS.orb.audioK || 100) / 100 : 0, AL = HQAudio.level * ak, AB = HQAudio.bass * ak, AF = HQAudio.bands;
-    this.rot += dt * (this.still ? 0.02 : 0.1 + 0.3 * I + 0.6 * AL);
+    this.rot += dt * (this.still ? 0.02 : 0.1 + 0.3 * I);
     ctx.clearRect(0, 0, W, H);
     const gs = this.gs, br = 1 + 0.03 * Math.sin(t / 700) + 0.04 * I * Math.sin(t / 530); // breathing stays well under 3 Hz
-    ctx.globalAlpha = Math.min(1, 0.45 + 0.6 * I + 0.5 * AL); ctx.drawImage(this.glow, cx - gs / 2, cy - gs / 2);
+    ctx.globalAlpha = Math.min(1, 0.45 + 0.6 * I); ctx.drawImage(this.glow, cx - gs / 2, cy - gs / 2);
     if (this.tint > 0.02) { ctx.globalAlpha = this.tint * 0.9; ctx.drawImage(this.glowA, cx - gs / 2, cy - gs / 2); } ctx.globalAlpha = 1;
-    const R = this.s * br * (1 + 0.12 * Math.min(1.5, AB)), tilt = 0.38, cs = [Math.cos(tilt), Math.sin(tilt)], cr = Math.cos(this.rot), sr = Math.sin(this.rot);
+    const R = this.s * br, tilt = 0.38, cs = [Math.cos(tilt), Math.sin(tilt)], cr = Math.cos(this.rot), sr = Math.sin(this.rot);
     this.bn[0] = this.bn[1] = this.bn[2] = this.bn[3] = 0;
     for (let i = 0; i < this.N; i++) {
-      const x = this.X[i], y = this.Y[i], z = this.Z[i], x1 = x * cr + z * sr, z1 = -x * sr + z * cr, y2 = y * cs[0] - z1 * cs[1], z2 = y * cs[1] + z1 * cs[0], p = (1 + z2 * 0.22) * (ak ? 1 + 0.32 * ak * AF[Math.min(23, ((1 - Math.abs(y)) * 23) | 0)] : 1);
+      const x = this.X[i], y = this.Y[i], z = this.Z[i], x1 = x * cr + z * sr, z1 = -x * sr + z * cr, y2 = y * cs[0] - z1 * cs[1], z2 = y * cs[1] + z1 * cs[0], p = 1 + z2 * 0.22;
       const b = z2 < -0.4 ? 0 : z2 < 0 ? 1 : z2 < 0.5 ? 2 : 3, a = this.bx[b], n = this.bn[b]; a[n] = cx + x1 * R * p; a[n + 1] = cy + y2 * R * p; this.bn[b] = n + 2;
     }
     const base = [0.22, 0.4, 0.7, 1], sz = [1.1, 1.5, 2, 2.5].map((s) => s * dpr), mix = this.tint;
     const col = (a) => "rgba(" + Math.round(THEME_RGB.a[0] + (THEME_RGB.w[0] - THEME_RGB.a[0]) * mix) + "," + Math.round(THEME_RGB.a[1] + (THEME_RGB.w[1] - THEME_RGB.a[1]) * mix) + "," + Math.round(THEME_RGB.a[2] + (THEME_RGB.w[2] - THEME_RGB.a[2]) * mix) + "," + a.toFixed(3) + ")";
-    for (let b = 0; b < 4; b++) { ctx.fillStyle = col(Math.min(1, base[b] * (0.55 + 0.45 * I + 0.5 * AL))); const a = this.bx[b], n = this.bn[b], s = sz[b]; for (let j = 0; j < n; j += 2) ctx.fillRect(a[j], a[j + 1], s, s); }
+    for (let b = 0; b < 4; b++) { ctx.fillStyle = col(base[b] * (0.55 + 0.45 * I)); const a = this.bx[b], n = this.bn[b], s = sz[b]; for (let j = 0; j < n; j += 2) ctx.fillRect(a[j], a[j + 1], s, s); }
+    if (ak && (HQAudio.on || AL > 0.002)) this.eq(ctx, cx, cy, R, AF, ak, dpr);
     // lightning arcs: only while agents are working, at most 2 at once, each lives ~0.5 s and they spawn >= 0.55 s apart (never > 3 Hz)
     if (MODS.orb.arcs && !this.still && I > 0.6 && t > this.nextArc && this.arcs.length < 2) {
       this.nextArc = t + 550 + Math.random() * 900; const a = (Math.random() * this.N) | 0; let b = (Math.random() * this.N) | 0, g = 0;
@@ -1775,7 +1798,7 @@ Object.assign(HQView.prototype, {
   applyTheme() {
     const t = this.plugin.curTheme(), r = this.contentEl; Object.entries(themeVars(t)).forEach(([k, v]) => r.style.setProperty(k, v));
     const orb = t.orb || t.accent; // the sphere follows the accent changer when one is set
-    THEME_RGB.a = hex2rgb(orb); THEME_RGB.w = hex2rgb(t.warn); THEME_RGB.glow = t.glow; THEME_RGB.key = orb + t.warn + t.glow;
+    THEME_RGB.a = hex2rgb(orb); THEME_RGB.w = hex2rgb(t.warn); THEME_RGB.e = hueShift(hex2rgb(orb), 110); THEME_RGB.glow = t.glow; THEME_RGB.key = orb + t.warn + t.glow;
   },
   // Accent changer: a dot button in the top bar opens a small swatch tray (AUTO = the theme's own accent, plus a custom picker).
   osAccentPicker(r) {
@@ -1872,7 +1895,7 @@ Object.assign(HQView.prototype, {
     f = card("actions"); [["need", "Decisions (needs you)"], ["money", "Costs"], ["sec", "Security"], ["fail", "Failures"]].forEach(([fl, l]) => chk(f, "actions", fl, l));
     { const r = f.createDiv({ cls: "os-f" }), id = nid(); r.createEl("label", { text: "Custom keywords", attr: { for: id } }); const i = r.createEl("input", { attr: { id, type: "text", placeholder: "comma separated, e.g. deadline, refund" } }); i.value = MODS.actions.keywords; i.onkeydown = (e) => e.stopPropagation(); i.oninput = () => set("actions", { keywords: i.value }); }
     // --- orb
-    f = card("orb"); num(f, "orb", "particles", "Particles", 100, 1500, 50); num(f, "orb", "fps", "FPS cap", 10, 60); chk(f, "orb", "arcs", "Lightning arcs"); chk(f, "orb", "audio", "React to desktop audio"); num(f, "orb", "audioK", "Audio strength %", 10, 300, 10);
+    f = card("orb"); num(f, "orb", "particles", "Particles", 100, 1500, 50); num(f, "orb", "fps", "FPS cap", 10, 60); chk(f, "orb", "arcs", "Lightning arcs"); chk(f, "orb", "audio", "Audio equalizer across the globe"); num(f, "orb", "audioK", "Audio strength %", 10, 300, 10);
     // --- chat
     f = card("chat"); sel(f, "chat", "model", "Default model", HQ_MODELS.map((m) => [m, m ? m.toUpperCase() : "DEFAULT"])); sel(f, "chat", "effort", "Default effort", HQ_EFFORTS.map((m) => [m, m ? m.toUpperCase() : "DEFAULT"])); chk(f, "chat", "tools", "Show tool lines"); chk(f, "chat", "cost", "Show cost");
     // --- guard
