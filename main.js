@@ -282,13 +282,12 @@ function reviewCard(v, p, it) {
 // ===== Insights: agent progress, files, cache clock, rule cards, action items (all deterministic, no LLM, read-only on transcripts) =====
 // One shared 3 s poll (HQView.insTick) that only runs while HQ is visible. Transcripts are tailed with byte offsets, never re-read.
 const RULES_PATH = "Claude'sWorkspace/Rules.md", PLAYBOOK_PATH = "Claude'sWorkspace/LumenAds/Notes/Marketing Playbook.md";
-const CACHE_TTL_MIN = 60, CACHE_WARN_MIN = 50, COMPACT_AT = 150000;
 // ESTIMATE ONLY: API list prices in USD per million tokens (in = input, out = output, cr = cache read, c5/c1 = cache write 5 min / 1 h). Edit here.
 const PRICES = { opus: { in: 5, out: 25, cr: 0.5, c5: 6.25, c1: 10 }, sonnet: { in: 3, out: 15, cr: 0.3, c5: 3.75, c1: 6 }, haiku: { in: 1, out: 5, cr: 0.1, c5: 1.25, c1: 2 } };
 const family = (m) => { m = String(m || "").toLowerCase(); return m.includes("opus") ? "opus" : m.includes("haiku") ? "haiku" : m.includes("sonnet") ? "sonnet" : ""; };
 const shortModel = (m) => String(m || "").replace(/^claude-/, "").replace(/-\d{8}$/, "");
 function usageCost(u, model) {
-  const p = PRICES[family(model)]; if (!u || !p) return 0;
+  const p = (MODS.progress.prices || PRICES)[family(model)]; if (!u || !p) return 0;
   const cc = u.cache_creation || {}, c1 = cc.ephemeral_1h_input_tokens || 0, c5 = cc.ephemeral_5m_input_tokens !== undefined ? cc.ephemeral_5m_input_tokens : Math.max(0, (u.cache_creation_input_tokens || 0) - c1);
   return ((u.input_tokens || 0) * p.in + (u.output_tokens || 0) * p.out + (u.cache_read_input_tokens || 0) * p.cr + c5 * p.c5 + c1 * p.c1) / 1e6;
 }
@@ -383,7 +382,7 @@ function mainLine(l) {
   if (!l.includes('"type":"user"') || l.includes('"tool_result"') || l.length > 300000) return;
   let o; try { o = JSON.parse(l); } catch (e) { return; }
   if (o.type !== "user") return;
-  const t = typedText(o); if (!t || t.length < 10 || !RULE_RE.test(t)) return;
+  const t = typedText(o); if (!t || t.length < 10 || !(MODS.rules.on && ruleRe().test(t))) return;
   mainState.typed.push({ id: String(o.uuid || djb(t)), ts: Date.parse(o.timestamp) || 0, text: redact(t) });
   if (mainState.typed.length > 120) mainState.typed.shift();
 }
@@ -397,12 +396,13 @@ async function mainTick() {
   return moved;
 }
 function cacheInfo() {
+  if (!MODS.cache.on) return null;
   const u = mainState.usage; if (!u || !mainState.ts) return null;
   const age = (Date.now() - mainState.ts) / 60000, ctx = (u.input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0);
-  const state = age >= CACHE_TTL_MIN ? "cold" : age >= CACHE_WARN_MIN ? "warn" : "warm";
-  const left = Math.max(0, Math.ceil(CACHE_TTL_MIN - age));
+  const state = age >= MODS.cache.cold ? "cold" : age >= MODS.cache.warn ? "warn" : "warm";
+  const left = Math.max(0, Math.ceil(MODS.cache.cold - age));
   const msg = state === "cold" ? "Cache cold: your next message re-reads the whole chat (~" + kfmt(ctx) + " tokens)" : state === "warn" ? "Cache going cold in " + left + " min" : "Cache warm · " + left + " min left";
-  return { age, ctx, state, msg, compact: ctx > COMPACT_AT, cost: usageCost({ input_tokens: ctx }, mainState.model) };
+  return { age, ctx, state, msg, compact: ctx > MODS.cache.compact * 1000, cost: usageCost({ input_tokens: ctx }, mainState.model) };
 }
 
 // ----- action items from agents' final reports -----
@@ -413,12 +413,17 @@ const ACTION_CATS = [
   ["fail", "Problem", /\b(failed|failing|fail|blocked|errors?|failures?)\b/i],
 ];
 const ACTION_SKIP = /\b0 (failed|fail|failures?|errors?|vulnerabilities)\b|\bno (errors?|failures?|vulnerabilit\w+|issues)\b|\bwithout errors?\b|\b0 high\b|^\|?[-: |]+$/i;
+function actionCats() {
+  const a = MODS.actions, l = ACTION_CATS.filter((c) => a[c[0]] !== false), kw = String(a.keywords || "").split(",").map((x) => x.trim()).filter(Boolean);
+  if (kw.length) l.push(["need", "Keyword", new RegExp("\\b(" + kw.map(escRe).join("|") + ")\\b", "i")]);
+  return l;
+}
 function actionItems(text, src) {
-  const out = [];
+  const out = []; if (!MODS.actions.on) return out;
   for (const raw of String(text || "").split(/\n+/)) {
     const line = redact(raw.replace(/^[\s>*\-#]+/, "").replace(/^\d+[.)]\s+/, "").replace(/[*`_]/g, "").replace(/\s+/g, " ").trim());
     if (line.length < 14 || ACTION_SKIP.test(line)) continue;
-    const c = ACTION_CATS.find((x) => x[2].test(line)); if (!c) continue;
+    const c = actionCats().find((x) => x[2].test(line)); if (!c) continue;
     out.push({ id: "a:" + djb(line.toLowerCase().replace(/[^a-z0-9]+/g, " ")), cat: c[0], label: c[1], text: line.length > 220 ? line.slice(0, 217) + "…" : line, src });
     if (out.length >= 4) break;
   }
@@ -500,7 +505,7 @@ function renderInsights(v, el, only) {
     if (!ci) b.createDiv({ cls: "lhq-muted", text: "No main chat found yet." });
     else {
       const m = b.createDiv({ cls: "lhq-cache " + ci.state }); m.createDiv({ cls: "lhq-cmsg", text: ci.msg });
-      b.createDiv({ cls: "lhq-muted", text: "Last reply " + agoText(ci.age) + " · context ~" + kfmt(ci.ctx) + " tokens · cache lasts " + CACHE_TTL_MIN + " min" });
+      b.createDiv({ cls: "lhq-muted", text: "Last reply " + agoText(ci.age) + " · context ~" + kfmt(ci.ctx) + " tokens · cache lasts " + MODS.cache.cold + " min" });
       if (ci.compact) b.createDiv({ cls: "lhq-line", text: "The chat is large (" + kfmt(ci.ctx) + "). Consider running /compact." });
     } }
   // agent progress
@@ -517,16 +522,16 @@ function renderInsights(v, el, only) {
       const m = c.createDiv({ cls: "lhq-meta" });
       const el1 = m.createSpan({ cls: done ? "" : "lhq-el", text: dur((done ? a.mtime : now) - a.start) }); if (!done) el1.dataset.start = a.start;
       m.createSpan({ text: (st ? st.tools : a.count) + " tool calls" });
-      if (st) { tot += st.cost; m.createSpan({ text: "in " + kfmt(st.tin) + " · out " + kfmt(st.tout) + " · cache " + kfmt(st.tcr + st.tcc) }); const e = m.createSpan({ cls: "lhq-est", text: "~" + usd(st.cost) + " est." }); e.title = "Estimate from API list prices, not your plan's billing"; }
+      if (st) { tot += st.cost; m.createSpan({ text: "in " + kfmt(st.tin) + " · out " + kfmt(st.tout) + " · cache " + kfmt(st.tcr + st.tcc) }); if (MODS.progress.cost) { const e = m.createSpan({ cls: "lhq-est", text: "~" + usd(st.cost) + " est." }); e.title = "Estimate from API list prices, not your plan's billing"; } }
     });
-    const hqT = v.plugin.hq && v.plugin.hq.todayTotals(); if (hqT && hqT.n) { const c = b.createDiv({ cls: "lhq-pcard done" }), h = c.createDiv({ cls: "lhq-top" }); h.createDiv({ cls: "lhq-name", text: "HQ chat (today)" }); h.createDiv({ cls: "lhq-chips" }).createSpan({ text: hqT.n + " turns" }); const m = c.createDiv({ cls: "lhq-meta" }); m.createSpan({ text: "in " + kfmt(hqT.tin) + " · out " + kfmt(hqT.tout) + " · cache " + kfmt(hqT.cache) }); m.createSpan({ cls: "lhq-est", text: "~" + usd(hqT.cost) + " est." }); }
-    if (list.length) b.createDiv({ cls: "lhq-muted", text: "Costs are rough estimates from API list prices (subscription use is not billed per token)." }); }
+    const hqT = v.plugin.hq && v.plugin.hq.todayTotals(); if (hqT && hqT.n) { const c = b.createDiv({ cls: "lhq-pcard done" }), h = c.createDiv({ cls: "lhq-top" }); h.createDiv({ cls: "lhq-name", text: "HQ chat (today)" }); h.createDiv({ cls: "lhq-chips" }).createSpan({ text: hqT.n + " turns" }); const m = c.createDiv({ cls: "lhq-meta" }); m.createSpan({ text: "in " + kfmt(hqT.tin) + " · out " + kfmt(hqT.tout) + " · cache " + kfmt(hqT.cache) }); if (MODS.progress.cost) m.createSpan({ cls: "lhq-est", text: "~" + usd(hqT.cost) + " est." }); }
+    if (list.length && MODS.progress.cost) b.createDiv({ cls: "lhq-muted", text: "Costs are rough estimates from API list prices (subscription use is not billed per token)." }); }
   // files
-  if (W("files")) { const withFiles = run.filter((a) => a.st && a.st.files.size).slice(0, 5), b = insPanel(v, el, "files", "Files in play", withFiles.reduce((n, a) => n + Math.min(6, a.st.files.size), 0));
+  if (W("files")) { const withFiles = run.filter((a) => a.st && a.st.files.size).slice(0, 5), b = insPanel(v, el, "files", "Files in play", withFiles.reduce((n, a) => n + Math.min(MODS.files.max, a.st.files.size), 0));
     if (!withFiles.length) b.createDiv({ cls: "lhq-muted", text: "No running agent has touched files yet." });
     withFiles.forEach((a) => {
       b.createDiv({ cls: "lhq-fg", text: a.title });
-      [...a.st.files.values()].filter((f) => !sensitivePath(f.p)).reverse().slice(0, 6).forEach((f) => {
+      [...a.st.files.values()].filter((f) => !sensitivePath(f.p)).reverse().slice(0, MODS.files.max).forEach((f) => {
         const live = now - f.t < 90000, kind = f.committed ? "committed" : f.op === "edit" ? (live ? "editing" : "edited") : (now - f.t < 120000 ? "reading" : "read");
         const r = b.createDiv({ cls: "lhq-frow " + kind }); r.createSpan({ cls: "lhq-fdot" });
         const nm = r.createSpan({ cls: "lhq-fn", text: f.p.split(/[\\/]/).pop() }); nm.title = f.p;
@@ -545,8 +550,7 @@ function renderInsights(v, el, only) {
       ta.addEventListener("input", () => { v.insText[c.id] = ta.value; v.touchedAt = Date.now(); }); ta.addEventListener("keydown", (e) => e.stopPropagation());
       const bar = card.createDiv({ cls: "lhq-acts" }), sec = ruleSection(ta.value);
       const btn = (label, cls, fn, tip) => { const x = bar.createEl("button", { cls: "lhq-btn " + cls, text: label }); if (tip) x.title = tip; x.onclick = fn; };
-      btn("Save to Rules.md", "ok", () => v.insSave(c, ta.value, "rules"), "Appends under: " + sec);
-      btn("Save to Marketing Playbook", "ch", () => v.insSave(c, ta.value, "playbook"), "Appends under: Inbox (to sort)");
+      MODS.rules.targets.forEach((t, i) => btn("Save to " + t.label, i ? "ch" : "ok", () => v.insSave(c, ta.value, t), t.kind === "rules" ? "Appends under: " + sec : "Appends under: Inbox (to sort)"));
       btn("Dismiss", "no", () => v.insHandle(c.id, "dismissed"));
     });
     if (cards.length > 6) b.createDiv({ cls: "lhq-muted", text: "+" + (cards.length - 6) + " more" });
@@ -809,6 +813,96 @@ const THEMES = [
   { id: "dusk", name: "Dusk", bg: ["#1e1020", "#3a1a2e", "#160d1a"], teal: ["#2a1426", "#3e1e36"], tx2: "#d0aec0", sky: ["#2a1230", "#7a3a4a"], m: ["#4a2236", "#2e1524", "#170b14"], accent: "#ffa94d" },
 ];
 const ACCENTS = [["Amber", "#f5b83d"], ["Orange", "#ff8a3d"], ["Coral", "#ff6b6b"], ["Rose", "#f06595"], ["Orchid", "#e599f7"], ["Violet", "#9775fa"], ["Indigo", "#748ffc"], ["Sky", "#4dabf7"], ["Cyan", "#3bc9db"], ["Mint", "#38d9a9"], ["Green", "#69db7c"], ["Lime", "#c0eb75"]];
+// ===== MODS: one switch + settings per feature, persisted in plugin data (settings.mods) and read live through MODS =====
+const GUARD_FOLDERS = ["node_modules", ".claude/worktrees", "dist", "build", ".cache", "tmp", ".tmp", "LumenAds/out"];
+const RULE_TRIGGERS = ["never", "always", "from now on", "don't", "do not", "dont", "stop", "i wish", "make sure", "let's not", "lets not", "shouldn't", "should not", "no more", "instead of"];
+const MOD_LIST = [
+  ["progress", "AGENT PROGRESS", "Per-agent tool calls, tokens and an estimated cost."],
+  ["files", "FILES IN PLAY", "Files the running agents are reading and editing."],
+  ["cache", "CACHE WARNING", "Warns before the prompt cache goes cold and nudges /compact on a big chat."],
+  ["rules", "SAVE AS RULE", "Spots corrections in your messages and saves them as rules."],
+  ["actions", "ACTION ITEMS", "Pulls decisions, costs, security notes and failures out of agent reports."],
+  ["orb", "PARTICLE ORB", "The animated sphere in the middle."],
+  ["chat", "HQ CHAT", "The built-in Claude Code chat."],
+  ["guard", "DELETE GUARD", "Blocks recursive deletes outside throwaway folders (hook for Claude Code)."],
+];
+const MOD_DEFAULTS = {
+  progress: { on: true, cost: true, refresh: 3, prices: JSON.parse(JSON.stringify(PRICES)) },
+  files: { on: true, max: 6, collapsed: true },
+  cache: { on: true, warn: 50, cold: 60, compact: 150 },
+  rules: { on: true, triggers: RULE_TRIGGERS.slice(), days: 7, targets: [{ label: "Rules.md", path: "Claude'sWorkspace/Rules.md", kind: "rules" }, { label: "Marketing Playbook", path: "", kind: "playbook" }] },
+  actions: { on: true, need: true, money: true, sec: true, fail: true, keywords: "" },
+  orb: { on: true, particles: 900, fps: 32, arcs: true },
+  chat: { on: true, model: "", effort: "", tools: true, cost: true },
+  guard: { on: true, folders: GUARD_FOLDERS.slice() },
+};
+const cloneJ = (o) => JSON.parse(JSON.stringify(o));
+function buildMods(saved) {
+  const m = cloneJ(MOD_DEFAULTS);
+  for (const k of Object.keys(m)) { const s = saved && saved[k]; if (s && typeof s === "object") for (const f of Object.keys(m[k])) if (s[f] !== undefined && typeof s[f] === typeof m[k][f] && Array.isArray(s[f]) === Array.isArray(m[k][f])) m[k][f] = s[f]; }
+  return m;
+}
+let MODS = cloneJ(MOD_DEFAULTS);
+const MODSTAT = {};
+const modErr = (k, e) => { const m = String((e && e.message) || e).slice(0, 220); MODSTAT[k] = { err: m, last: m, at: Date.now() }; };
+const modOk = (k) => { const s = MODSTAT[k]; if (s && s.err) MODSTAT[k] = { err: "", last: s.last, at: s.at }; };
+const modState = (k) => (!MODS[k].on ? "off" : MODSTAT[k] && MODSTAT[k].err ? "error" : "running");
+const ruleReCache = { key: "", re: null };
+function ruleRe() { // built from the editable trigger list; "no" as an opening word always counts
+  const list = MODS.rules.triggers.map((x) => String(x).trim()).filter(Boolean), key = list.join("\n");
+  if (ruleReCache.key !== key || !ruleReCache.re) {
+    const body = list.map((x) => escRe(x).replace(/'/g, "'?").replace(/\s+/g, "\\s+")).join("|");
+    let re = null; try { re = new RegExp((body ? "\\b(" + body + ")\\b|" : "") + "^\\s*no\\b[\\s,.!]", "i"); } catch (e) { re = /^\s*no\b[\s,.!]/i; }
+    ruleReCache.key = key; ruleReCache.re = re;
+  }
+  return ruleReCache.re;
+}
+
+// ===== THEMES: CSS variables on the HQ root only =====
+const hex2rgb = (h) => { h = String(h || "").replace("#", ""); if (h.length === 3) h = h.split("").map((c) => c + c).join(""); const n = parseInt(h, 16); return h.length !== 6 || isNaN(n) ? [0, 0, 0] : [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+const rgb2hex = (c) => "#" + c.map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0")).join("");
+const mixC = (a, b, t) => { const x = hex2rgb(a), y = hex2rgb(b); return rgb2hex(x.map((v, i) => v + (y[i] - v) * t)); };
+const relLum = (c) => { const [r, g, b] = hex2rgb(c).map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+const contrastOf = (a, b) => { const l1 = relLum(a), l2 = relLum(b); return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05); };
+const HQ_PRESETS = [
+  { id: "cyan", name: "Cyan", accent: "#19e3d0", accent2: "#14b8a6", warn: "#ffb02e", danger: "#ff5d6c", bg: "#04080b", panel: "#071217" },
+  { id: "lumen", name: "Lumen Teal", accent: "#2bb8a3", accent2: "#7dd3c0", warn: "#f5b83d", danger: "#ff6b6b", bg: "#05100f", panel: "#09201f" },
+  { id: "amber", name: "Amber", accent: "#ffb02e", accent2: "#f59e0b", warn: "#ff7a2e", danger: "#ff5d6c", bg: "#0a0804", panel: "#16100a" },
+  { id: "matrix", name: "Matrix Green", accent: "#3dff6e", accent2: "#19c24a", warn: "#d6ff3d", danger: "#ff5d6c", bg: "#020a04", panel: "#06140a" },
+  { id: "crimson", name: "Crimson", accent: "#ff3b5c", accent2: "#d9304f", warn: "#ffb02e", danger: "#ff8a3d", bg: "#0b0406", panel: "#170709" },
+  { id: "violet", name: "Violet", accent: "#a78bfa", accent2: "#7c5cf0", warn: "#ffb02e", danger: "#ff5d6c", bg: "#07050d", panel: "#100c1c" },
+  { id: "mono", name: "Mono", accent: "#e5e7eb", accent2: "#9ca3af", warn: "#fbbf24", danger: "#f87171", bg: "#08090a", panel: "#131416" },
+  { id: "ice", name: "Ice", accent: "#7dd3fc", accent2: "#38bdf8", warn: "#fcd34d", danger: "#fb7185", bg: "#040a10", panel: "#091621" },
+].map((t) => Object.assign({ glow: 1, grid: 1, scan: 1, scanOn: true }, t));
+const THEME_KEYS = ["accent", "accent2", "warn", "danger", "bg", "panel"];
+const hexOk = (x) => /^#[0-9a-f]{6}$/i.test(String(x || ""));
+function cleanTheme(o, base) { // import/saved themes are validated field by field
+  const t = Object.assign({}, base || HQ_PRESETS[0]); o = o || {};
+  for (const k of THEME_KEYS) if (hexOk(o[k])) t[k] = String(o[k]).toLowerCase();
+  const n = (v, lo, hi, d) => (typeof v === "number" && isFinite(v) ? Math.max(lo, Math.min(hi, v)) : d);
+  t.glow = n(o.glow, 0, 1.5, t.glow); t.grid = n(o.grid, 0, 1, t.grid); t.scan = n(o.scan, 0, 1, t.scan); t.scanOn = o.scanOn === undefined ? t.scanOn : !!o.scanOn;
+  return t;
+}
+function themeDerive(t) { // readable text colours for this panel, auto-corrected to AA
+  const panel = mixC(t.bg, t.panel, 0.82), light = relLum(panel) > 0.35, end = light ? "#000000" : "#ffffff";
+  const fix = (c) => { let x = c, i = 0; while (contrastOf(x, panel) < 4.6 && i++ < 20) x = mixC(x, end, 0.1); return x; };
+  return { panel, tx: fix(mixC(t.accent, end, 0.85)), dim: fix(mixC(mixC(t.accent, "#b4bcc0", 0.55), panel, light ? 0.2 : 0.15)) };
+}
+function themeChecks(t) {
+  const d = themeDerive(t), rows = [["Body text", d.tx, d.panel], ["Dim text", d.dim, d.panel], ["Accent text", t.accent, d.panel], ["Secondary accent", t.accent2, d.panel], ["Warning text", t.warn, d.panel], ["Danger text", t.danger, d.panel], ["Accent on background", t.accent, t.bg]];
+  return rows.map(([label, fg, bg]) => { const r = contrastOf(fg, bg); return { label, fg, bg, ratio: r, pass: r >= 4.5 }; });
+}
+function themeVars(t) {
+  const d = themeDerive(t), rg = (c) => hex2rgb(c).join(",");
+  return {
+    "--os-cy": t.accent, "--os-teal": t.accent2, "--os-am": t.warn, "--os-red": t.danger, "--os-dim": d.dim, "--os-bg0": t.bg, "--os-solid": mixC(t.bg, t.panel, 0.9),
+    "--os-cyrgb": rg(t.accent), "--os-amrgb": rg(t.warn), "--os-redrgb": rg(t.danger), "--os-bgrgb": rg(mixC(t.bg, "#000000", 0.2)), "--os-panelrgb": rg(t.panel),
+    "--os-glowk": String(t.glow), "--os-gridk": String(t.grid), "--os-scank": String(t.scanOn ? t.scan : 0),
+    "--tx": d.tx, "--tx2": d.dim, "--amber": t.accent, "--amber2": t.accent2, "--bg1": t.bg, "--bg2": t.panel, "--bg3": t.bg, "--teal": t.panel, "--teal2": mixC(t.panel, t.accent, 0.1),
+    "--glass": "rgba(" + rg(t.accent) + ",.05)", "--glass-b": "rgba(" + rg(t.accent) + ",.28)",
+  };
+}
+const THEME_RGB = { a: [25, 227, 208], w: [255, 176, 46], glow: 1, key: "" };
 class HQView extends ItemView {
   constructor(leaf, plugin) { super(leaf); this.plugin = plugin; }
   getViewType() { return VIEW; }
@@ -937,7 +1031,7 @@ class HQView extends ItemView {
     this.registerInterval(window.setInterval(() => this.clock(), 1000));
     this.registerInterval(window.setInterval(() => this.osTick(), 1000)); // HQ_OS: the one shared timer (clock, countdown, vitals, sessions)
     this.registerDomEvent(document, "visibilitychange", () => this.osGate());
-    this.registerInterval(window.setInterval(() => this.insTick(), 3000)); // one shared throttled poll for the Insights panels; skips work while HQ is hidden
+    this.registerInterval(window.setInterval(() => this.insTick(), 1000)); // one shared throttled poll for the Insights panels; skips work while HQ is hidden
     this.registerInterval(window.setInterval(() => { if (this.page === "home" && !this.hover && this.go && this.slideCount > 1) this.go(this.slide + 1); }, 8000));
     this.clock(); this.show("home");
     this.insTick(true);
@@ -946,16 +1040,19 @@ class HQView extends ItemView {
   insHandled() { const s = this.plugin.settings; s.insights = s.insights || {}; s.insights.handled = s.insights.handled || []; return s.insights.handled; }
   async insHandleMany(ids, why) { const h = this.insHandled(); ids.forEach((id) => { if (!h.includes(id)) h.push(id); }); if (h.length > 800) h.splice(0, h.length - 800); await this.plugin.saveSettings(); this.touchedAt = 0; this.insActAt = 0; await this.insTick(true); this.renderPage(false, true); }
   insHandle(id, why) { return this.insHandleMany([id], why); }
-  insRules() { const h = new Set(this.insHandled()), cut = Date.now() - 7 * 864e5; return mainState.typed.filter((c) => !h.has(c.id) && c.ts > cut).slice().reverse(); }
+  insRules() { if (!MODS.rules.on) return []; const h = new Set(this.insHandled()), cut = Date.now() - MODS.rules.days * 864e5; return mainState.typed.filter((c) => !h.has(c.id) && c.ts > cut).slice().reverse(); }
   insActions() { return this.insActs; }
   async insSave(c, text, where) {
     text = String(text || "").trim(); if (!text) return;
     try {
-      if (where === "rules") await appendTo(this.app, RULES_PATH, ruleSection(text), text, true); else await appendTo(this.app, (this.project && this.project.playbook) || PLAYBOOK_PATH, "Inbox (to sort)", text, false);
-      new Notice("Saved to " + (where === "rules" ? "Rules.md" : "Marketing Playbook")); delete this.insText[c.id]; await this.insHandle(c.id, "saved");
+      const t = where && where.kind ? where : MODS.rules.targets[0], p = t.path || (t.kind === "playbook" ? (this.project && this.project.playbook) || PLAYBOOK_PATH : RULES_PATH);
+      if (sensitivePath(p)) throw new Error("That path is off limits.");
+      if (t.kind === "rules") await appendTo(this.app, p, ruleSection(text), text, true); else await appendTo(this.app, p, "Inbox (to sort)", text, false);
+      new Notice("Saved to " + t.label); delete this.insText[c.id]; await this.insHandle(c.id, "saved");
     } catch (e) { console.error("Project HQ save rule", e); new Notice("Could not save: " + (e && e.message || e)); }
   }
   async insActionsUpdate(force) {
+    if (!MODS.actions.on) { this.insActs = []; return; }
     if (!force && Date.now() - this.insActAt < 30000) return; this.insActAt = Date.now();
     const done = new Set(this.insHandled()), seen = new Set(), out = [];
     const add = (text, src) => actionItems(text, src).forEach((a) => { if (!seen.has(a.id) && !done.has(a.id)) { seen.add(a.id); out.push(a); } });
@@ -968,6 +1065,7 @@ class HQView extends ItemView {
   async insTick(force) {
     if (this.insBusy) return;
     if (!force && ((this.contentEl.isShown && !this.contentEl.isShown()) || document.hidden)) return;
+    if (!force && Date.now() - (this.insAt || 0) < MODS.progress.refresh * 1000 - 300) return; this.insAt = Date.now();
     this.insBusy = true;
     try {
       await mainTick();
@@ -1170,19 +1268,20 @@ function osPanel(parent, title, cls) {
 // ----- the particle orb (2D canvas, projected sphere; ~30 fps; paused when HQ is not visible) -----
 class Orb {
   constructor(cv) {
-    this.cv = cv; this.ctx = cv.getContext("2d"); const N = this.N = 900;
+    this.cv = cv; this.ctx = cv.getContext("2d"); this.seed(MODS.orb.particles);
+    Object.assign(this, { rot: 0, int: 0.25, target: 0.25, tint: 0, tintT: 0, arcs: [], nextArc: 0, last: 0, on: false, raf: 0, w: 0, h: 0, cost: 0, frames: 0, dpr: 1, still: matchMedia("(prefers-reduced-motion: reduce)").matches });
+    this.loop = (t) => { try { this.frame(t); if (MODSTAT.orb && MODSTAT.orb.err) modOk("orb"); } catch (e) { modErr("orb", e); this.on = false; cancelAnimationFrame(this.raf); } };
+  }
+  seed(n) { const N = this.N = n;
     this.X = new Float32Array(N); this.Y = new Float32Array(N); this.Z = new Float32Array(N);
     for (let i = 0; i < N; i++) { const y = 1 - (i + 0.5) * 2 / N, r = Math.sqrt(1 - y * y), th = i * 2.399963, k = 0.96 + Math.random() * 0.08; this.X[i] = Math.cos(th) * r * k; this.Y[i] = y * k; this.Z[i] = Math.sin(th) * r * k; }
-    this.bx = [0, 1, 2, 3].map(() => new Float32Array(N * 2)); this.bn = [0, 0, 0, 0];
-    Object.assign(this, { rot: 0, int: 0.25, target: 0.25, tint: 0, tintT: 0, arcs: [], nextArc: 0, last: 0, on: false, raf: 0, w: 0, h: 0, cost: 0, frames: 0, dpr: 1, still: matchMedia("(prefers-reduced-motion: reduce)").matches });
-    this.loop = (t) => this.frame(t);
-  }
+    this.bx = [0, 1, 2, 3].map(() => new Float32Array(N * 2)); this.bn = [0, 0, 0, 0]; }
   resize() {
     const cv = this.cv, w = cv.clientWidth, h = cv.clientHeight; if (!w || !h) return;
     const dpr = Math.min(window.devicePixelRatio || 1, 1.5); cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
     this.w = cv.width; this.h = cv.height; this.s = Math.min(this.w, this.h) * 0.42; this.dpr = dpr;
-    const gs = this.gs = Math.round(this.s * 2.8), mk = (rgb) => { const g = document.createElement("canvas"); g.width = g.height = gs; const x = g.getContext("2d"), rg = x.createRadialGradient(gs / 2, gs / 2, this.s * 0.1, gs / 2, gs / 2, gs / 2); rg.addColorStop(0, "rgba(" + rgb + ",.34)"); rg.addColorStop(0.45, "rgba(" + rgb + ",.1)"); rg.addColorStop(1, "rgba(" + rgb + ",0)"); x.fillStyle = rg; x.fillRect(0, 0, gs, gs); return g; };
-    this.glow = mk("25,227,208"); this.glowA = mk("255,176,46");
+    const gk = Math.min(1.5, THEME_RGB.glow), gs = this.gs = Math.round(this.s * 2.8), mk = (rgb) => { const g = document.createElement("canvas"); g.width = g.height = gs; const x = g.getContext("2d"), rg = x.createRadialGradient(gs / 2, gs / 2, this.s * 0.1, gs / 2, gs / 2, gs / 2); rg.addColorStop(0, "rgba(" + rgb + "," + (0.34 * gk).toFixed(3) + ")"); rg.addColorStop(0.45, "rgba(" + rgb + "," + (0.1 * gk).toFixed(3) + ")"); rg.addColorStop(1, "rgba(" + rgb + ",0)"); x.fillStyle = rg; x.fillRect(0, 0, gs, gs); return g; };
+    this.glow = mk(THEME_RGB.a.join(",")); this.glowA = mk(THEME_RGB.w.join(","));
   }
   mode(intensity, warn) { this.target = intensity; this.tintT = warn ? 1 : 0; }
   run(on) { if (on === this.on) return; this.on = on; cancelAnimationFrame(this.raf); if (on) { this.last = 0; this.raf = requestAnimationFrame(this.loop); } }
@@ -1193,7 +1292,8 @@ class Orb {
   }
   frame(t) {
     if (!this.on) return; this.raf = requestAnimationFrame(this.loop);
-    const gap = this.still ? 120 : 31; if (t - this.last < gap) return;
+    const gap = this.still ? 120 : Math.max(8, 1000 / Math.max(5, MODS.orb.fps) - 2); if (t - this.last < gap) return;
+    if (this.N !== MODS.orb.particles) this.seed(MODS.orb.particles); if (this.tk !== THEME_RGB.key) { this.tk = THEME_RGB.key; this.resize(); }
     const dt = Math.min(0.1, (t - (this.last || t - gap)) / 1000); this.last = t; const t0 = performance.now();
     if (!this.w) { this.resize(); if (!this.w) return; }
     const ctx = this.ctx, W = this.w, H = this.h, cx = W / 2, cy = H / 2, dpr = this.dpr;
@@ -1210,10 +1310,10 @@ class Orb {
       const b = z2 < -0.4 ? 0 : z2 < 0 ? 1 : z2 < 0.5 ? 2 : 3, a = this.bx[b], n = this.bn[b]; a[n] = cx + x1 * R * p; a[n + 1] = cy + y2 * R * p; this.bn[b] = n + 2;
     }
     const base = [0.22, 0.4, 0.7, 1], sz = [1.1, 1.5, 2, 2.5].map((s) => s * dpr), mix = this.tint;
-    const col = (a) => "rgba(" + Math.round(25 + 230 * mix) + "," + Math.round(227 - 51 * mix) + "," + Math.round(208 - 162 * mix) + "," + a.toFixed(3) + ")";
+    const col = (a) => "rgba(" + Math.round(THEME_RGB.a[0] + (THEME_RGB.w[0] - THEME_RGB.a[0]) * mix) + "," + Math.round(THEME_RGB.a[1] + (THEME_RGB.w[1] - THEME_RGB.a[1]) * mix) + "," + Math.round(THEME_RGB.a[2] + (THEME_RGB.w[2] - THEME_RGB.a[2]) * mix) + "," + a.toFixed(3) + ")";
     for (let b = 0; b < 4; b++) { ctx.fillStyle = col(base[b] * (0.55 + 0.45 * I)); const a = this.bx[b], n = this.bn[b], s = sz[b]; for (let j = 0; j < n; j += 2) ctx.fillRect(a[j], a[j + 1], s, s); }
     // lightning arcs: only while agents are working, at most 2 at once, each lives ~0.5 s and they spawn >= 0.55 s apart (never > 3 Hz)
-    if (!this.still && I > 0.6 && t > this.nextArc && this.arcs.length < 2) {
+    if (MODS.orb.arcs && !this.still && I > 0.6 && t > this.nextArc && this.arcs.length < 2) {
       this.nextArc = t + 550 + Math.random() * 900; const a = (Math.random() * this.N) | 0; let b = (Math.random() * this.N) | 0, g = 0;
       while (g++ < 40 && Math.abs(this.X[a] * this.X[b] + this.Y[a] * this.Y[b] + this.Z[a] * this.Z[b]) > 0.5) b = (Math.random() * this.N) | 0;
       this.arcs.push({ a, b, born: t });
@@ -1223,7 +1323,7 @@ class Orb {
       const A = this.pt(r.a, cx, cy, R, cs), B = this.pt(r.b, cx, cy, R, cs), f = 1 - (t - r.born) / 520, mx = (A[0] + B[0]) / 2, my = (A[1] + B[1]) / 2, ox = mx - cx, oy = my - cy, ol = Math.hypot(ox, oy) || 1, bulge = R * 0.35;
       const qx = mx + ox / ol * bulge, qy = my + oy / ol * bulge; ctx.beginPath(); ctx.moveTo(A[0], A[1]);
       for (let s = 1; s <= 9; s++) { const u = s / 9, ax = (1 - u) * (1 - u) * A[0] + 2 * u * (1 - u) * qx + u * u * B[0], ay = (1 - u) * (1 - u) * A[1] + 2 * u * (1 - u) * qy + u * u * B[1], j = s < 9 ? (Math.random() - 0.5) * R * 0.06 : 0; ctx.lineTo(ax + j, ay + j); }
-      ctx.strokeStyle = "rgba(25,227,208," + (0.18 * f).toFixed(3) + ")"; ctx.lineWidth = 5 * dpr; ctx.stroke(); ctx.strokeStyle = "rgba(210,255,250," + (0.9 * f).toFixed(3) + ")"; ctx.lineWidth = 1.3 * dpr; ctx.stroke();
+      ctx.strokeStyle = "rgba(" + THEME_RGB.a.join(",") + "," + (0.18 * f).toFixed(3) + ")"; ctx.lineWidth = 5 * dpr; ctx.stroke(); ctx.strokeStyle = "rgba(210,255,250," + (0.9 * f).toFixed(3) + ")"; ctx.lineWidth = 1.3 * dpr; ctx.stroke();
     }
     this.cost += (performance.now() - t0 - this.cost) * 0.05; this.frames++;
   }
@@ -1231,6 +1331,7 @@ class Orb {
 Object.assign(HQView.prototype, {
   claudian() { return claudianOf(this.app); },
   osVars() {
+    if (true) { this.applyTheme(); return; }
     const r = this.contentEl, v = { "--amber": "#19e3d0", "--amber2": "#2dd4bf", "--bg1": "#05090c", "--bg2": "#071014", "--bg3": "#04070a", "--tx": "#d8f3f1", "--tx2": "#8fb3b6", "--glass": "rgba(25,227,208,.05)", "--glass-b": "rgba(25,227,208,.28)", "--teal": "#0a1c20", "--teal2": "#0f2a2e" };
     Object.entries(v).forEach(([k, c]) => r.style.setProperty(k, c));
   },
@@ -1243,10 +1344,10 @@ Object.assign(HQView.prototype, {
   osBuild() {
     const page = this.pageEl; page.empty(); page.addClass("os"); const ui = this.osUI = { sig: {}, inView: true }, wrap = page.createDiv({ cls: "os-wrap" });
     wrap.createDiv({ cls: "os-sweep" }); ui.top = wrap.createDiv({ cls: "os-top" });
-    const grid = wrap.createDiv({ cls: "os-grid" }), L = grid.createDiv({ cls: "os-col os-left" }), M = grid.createDiv({ cls: "os-col os-mid" }), Rt = grid.createDiv({ cls: "os-col os-right" });
+    const grid = ui.grid = wrap.createDiv({ cls: "os-grid" }), modsEl = ui.modsEl = wrap.createDiv({ cls: "os-mods os-hide" }), L = grid.createDiv({ cls: "os-col os-left" }), M = grid.createDiv({ cls: "os-col os-mid" }), Rt = grid.createDiv({ cls: "os-col os-right" });
     ui.vit = osPanel(L, "SYSTEM VITALS", "os-vit"); ui.sess = osPanel(L, "ACTIVE AI SESSIONS", "os-sess"); ui.prog = osPanel(L, "PROJECT PROGRESS", "os-prog"); ui.next = osPanel(L, "NEXT UP", "os-next");
     ui.tasks = osPanel(Rt, "TOP TASKS", "os-tasks"); ui.rev = osPanel(Rt, "REVIEW QUEUE", "os-rev"); ui.acts = osPanel(Rt, "ACTION ITEMS", "os-acts"); ui.rules = osPanel(Rt, "SAVE AS RULE", "os-rules"); ui.ap = osPanel(Rt, "AGENT PROGRESS", "os-ap"); ui.files = osPanel(Rt, "FILES IN PLAY", "os-files");
-    this.osColl = this.osColl || new Set(["files"]);
+    this.osColl = this.osColl || new Set(MODS.files.collapsed ? ["files"] : []);
     [["ap", ui.ap], ["files", ui.files]].forEach(([k, p]) => { p.p.addClass("os-coll"); p.p.toggleClass("collapsed", this.osColl.has(k)); p.h.setAttr("role", "button"); p.h.setAttr("tabindex", "0"); p.h.setAttr("aria-expanded", String(!this.osColl.has(k)));
       const tg = () => { this.osColl.has(k) ? this.osColl.delete(k) : this.osColl.add(k); p.p.toggleClass("collapsed", this.osColl.has(k)); p.h.setAttr("aria-expanded", String(!this.osColl.has(k))); }; p.h.onclick = tg; p.h.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); tg(); } }); });
     const orbw = M.createDiv({ cls: "os-orbw" }); ui.cv = orbw.createEl("canvas", { cls: "os-cv", attr: { "aria-hidden": "true" } });
@@ -1313,7 +1414,7 @@ Object.assign(HQView.prototype, {
     ui.grip.addEventListener("dblclick", () => { ui.userH = 0; lsSet("hqos-in-h", 0); this.osAutoGrow(true); });
     ui.exp.onclick = () => this.osSetFull(!ui.full);
     ui.model.onchange = ui.effort.onchange = () => { const c = this.hq().get(this.hq().activeId); if (c && !c.busy) { c.model = ui.model.value; c.effort = ui.effort.value; this.hq().save(c); } };
-    this.osAutoGrow();
+    ui.model.value = MODS.chat.model || ""; ui.effort.value = MODS.chat.effort || ""; this.osAutoGrow();
   },
   osSetFull(on) { const u = this.osUI; if (!u) return; u.full = !!on; u.cmd.toggleClass("full", u.full); u.exp.setText(u.full ? "COLLAPSE" : "EXPAND"); u.exp.setAttr("aria-pressed", String(u.full)); this.osAutoGrow(true); u.cmdIn.focus(); },
   osAddImage(f) {
@@ -1327,7 +1428,7 @@ Object.assign(HQView.prototype, {
     this.osAutoGrow();
   },
   osRemember(text) { const H = (this.osHist || []).filter((x) => x !== text); H.push(text); this.osHist = H.slice(-30); try { localStorage.setItem("hqos-hist", JSON.stringify(this.osHist)); } catch (e) {} if (this.osUI) this.osUI.hi = -1; },
-  osGate() { const ui = this.osUI; if (!ui || !this.orb) return; this.orb.run(!document.hidden && ui.inView && (!this.contentEl.isShown || this.contentEl.isShown())); },
+  osGate() { const ui = this.osUI; if (!ui || !this.orb) return; ui.cv.toggleClass("os-hide", !MODS.orb.on); this.orb.run(MODS.orb.on && !document.hidden && ui.inView && !(this.osPage === "mods") && (!this.contentEl.isShown || this.contentEl.isShown())); },
   // ---- render everything (cheap; each region redraws only when its signature changed) ----
   osRender(force) {
     if (!this.osUI) this.osBuild();
@@ -1340,7 +1441,7 @@ Object.assign(HQView.prototype, {
   osTopRender() {
     const u = this.osUI, ci = cacheInfo(), us = this.usage, wk = us && us.seven_day, se = us && us.five_hour, model = shortModel(mainState.model);
     const pc = (x) => x && x.utilization !== undefined && x.utilization !== null ? Math.round(x.utilization) : null, wv = pc(wk), sv = pc(se), cl = (p) => p === null ? "" : p >= 90 ? "bad" : p >= 75 ? "warn" : "";
-    const vis = this.plugin.visibleProjects(), sig = JSON.stringify([this.project && this.project.id, vis.map((p) => [p.id, p.name, !!p.pinned]), this.osMenuOpen, model, this.osPlanName(), wv, sv, ci && ci.state, ci && Math.floor(ci.age / 3), this.err, vit.cpu > 85, wk && wk.resets_at, se && se.resets_at]);
+    const vis = this.plugin.visibleProjects(), sig = JSON.stringify([this.project && this.project.id, vis.map((p) => [p.id, p.name, !!p.pinned]), this.osMenuOpen, model, this.osPlanName(), wv, sv, ci && ci.state, ci && Math.floor(ci.age / 3), this.err, vit.cpu > 85, wk && wk.resets_at, se && se.resets_at, this.plugin.settings.theme.id, Object.keys(this.plugin.settings.theme.saved).join(), MODS.guard.on, this.osPage]);
     this.osReg("top", sig, () => {
       const t = u.top; t.empty(); const brand = t.createDiv({ cls: "os-brand" }); brand.createSpan({ cls: "os-logo", text: "HQ_OS" });
       const pw = brand.createDiv({ cls: "os-pw" }), pb = pw.createEl("button", { cls: "os-proj os-pbtn", attr: { "aria-haspopup": "menu", "aria-expanded": String(!!this.osMenuOpen), "aria-label": "Switch project (current: " + (this.project ? this.project.name : "none") + ")" } });
@@ -1362,7 +1463,12 @@ Object.assign(HQView.prototype, {
       chip("SESSION", sv === null ? "N/A" : sv + "%", cl(sv), se && se.resets_at ? "Resets " + when(se.resets_at) + " (in " + left(se.resets_at) + ")" : this.err || "");
       if (ci) { const e = chip("CACHE", ci.state === "cold" ? "COLD" : ci.state === "warn" ? "COOLING" : "WARM", ci.state === "cold" ? "bad" : ci.state === "warn" ? "warn" : "", ci.msg); e.addClass("click"); e.onclick = () => this.osFocusInsights(); }
       if (vit.cpu > 85) chip("LOAD", vit.cpu + "%", "bad", "System load is high");
+      if (!MODS.guard.on) { const e = chip("GUARD", "OFF", "bad os-offchip", "Delete guard is OFF: recursive deletes are not checked. Click to open MODS."); e.setAttr("role", "button"); e.setAttr("tabindex", "0"); e.addClass("click"); e.onclick = () => { if (this.osPage !== "mods") this.osModsToggle(); }; }
       const r = t.createDiv({ cls: "os-r" }); this.osClock = r.createDiv({ cls: "os-clock" });
+      { const ts = r.createEl("select", { cls: "os-sel os-modsw", attr: { "aria-label": "Colour theme" } }), th = this.plugin.settings.theme;
+        HQ_PRESETS.forEach((p) => ts.createEl("option", { value: p.id, text: p.name.toUpperCase() })); Object.keys(th.saved).forEach((n) => ts.createEl("option", { value: "saved:" + n, text: n.toUpperCase() })); if (th.id === "custom") ts.createEl("option", { value: "custom", text: "CUSTOM" });
+        ts.value = th.id; ts.onchange = () => this.plugin.setThemeId(ts.value);
+        const mb = r.createEl("button", { cls: "os-chb", text: this.osPage === "mods" ? "BACK" : "MODS", attr: { "aria-label": this.osPage === "mods" ? "Back to HQ" : "Open the MODS page (switches, settings, theme)" } }); mb.onclick = () => this.osModsToggle(); }
       const ib = (icon, label, fn) => { const b = r.createEl("button", { cls: "os-ib", attr: { "aria-label": label, title: label } }); setIcon(b, icon); b.onclick = fn; };
       ib("refresh-cw", "Refresh", () => this.refreshAll()); ib("settings", "Settings", () => { try { this.app.setting.open(); this.app.setting.openTabById("project-hq"); } catch (e) { new Notice("Open Settings, then Project HQ"); } });
       this.osClockTick();
@@ -1548,9 +1654,12 @@ Object.assign(HQView.prototype, {
   },
   osInsRender() {
     const u = this.osUI;
-    this.osReg("ins", this.insSig + "|" + this.liveSig, () => {
-      [["acts", "actions"], ["rules", "rules"], ["ap", "progress"], ["files", "files"]].forEach(([k, w]) => {
-        const p = u[k], b = p.body; b.empty(); renderInsights(this, b, [w]); const d = b.querySelector("details"); if (!d) return;
+    this.osReg("ins", this.insSig + "|" + this.liveSig + "|" + JSON.stringify(MODS), () => {
+      [["acts", "actions", "actions"], ["rules", "rules", "rules"], ["ap", "progress", "progress"], ["files", "files", "files"]].forEach(([k, w, mod]) => {
+        const p = u[k], b = p.body; b.empty();
+        if (!MODS[mod].on) { b.createDiv({ cls: "os-muted", text: "Mod is off. Switch it on in MODS." }); p.meta.setText("OFF"); return; }
+        try { renderInsights(this, b, [w]); modOk(mod); } catch (e) { modErr(mod, e); console.error("Project HQ mod " + mod, e); b.createDiv({ cls: "os-err", text: "Error: " + ((e && e.message) || e) }); p.meta.setText("ERROR"); return; }
+        const d = b.querySelector("details"); if (!d) return;
         const s = d.querySelector("summary"), cnt = s && s.querySelector(".lhq-cnt"); p.meta.setText(cnt ? cnt.textContent.toUpperCase() : ""); d.open = true; if (s) s.hide();
       });
     });
@@ -1559,10 +1668,149 @@ Object.assign(HQView.prototype, {
     if (!this.os) return; this.osClockTick(); this.osCountTick(); this.osGate();
     if (document.hidden || (this.contentEl.isShown && !this.contentEl.isShown())) return;
     const now = Date.now();
-    if (now - (this.osVitAt || 0) >= 4000) { this.osVitAt = now; sampleVitals(); if (this.osUI) { this.osVitalsRender(); this.osTopRender(); this.osMidRender(); } }
+    if (now - (this.osVitAt || 0) >= 4000) { this.osVitAt = now; if (this.osPage === "mods") { guardVerify(); this.osModsStatus(); if (this.osUI.guardLog) this.osUI.guardLog.setText(guardLogTail(50)); } sampleVitals(); if (this.osUI) { this.osVitalsRender(); this.osTopRender(); this.osMidRender(); } }
     this.osSessData(); this.osElevenCheck();
   },
 });
+
+// ===== MODS page + THEME editor (HQ_OS style). Settings apply live; nothing needs a reload. =====
+const guardCfgPath = () => path.join(BASE || "", WS, "Agent Team", "hooks", "delete-guard.config.json");
+const guardLogPath = () => path.join(BASE || "", WS, "Agent Team", "hooks", "delete-guard.log");
+function writeGuardConfig() {
+  try {
+    const f = guardCfgPath(), tmp = f + ".tmp";
+    fs.writeFileSync(tmp, JSON.stringify({ enabled: !!MODS.guard.on, folders: MODS.guard.folders, updated: new Date().toISOString() }, null, 2)); fs.renameSync(tmp, f); modOk("guard"); return true;
+  } catch (e) { modErr("guard", "Could not write delete-guard.config.json: " + (e && e.message || e)); return false; }
+}
+function guardVerify() { // the hook reads this file on every command, so it must match what HQ shows
+  try {
+    const c = JSON.parse(fs.readFileSync(guardCfgPath(), "utf8"));
+    if (!!c.enabled !== !!MODS.guard.on || JSON.stringify(c.folders) !== JSON.stringify(MODS.guard.folders)) { if (!writeGuardConfig()) return; }
+    else modOk("guard");
+  } catch (e) { if (e && e.code === "ENOENT") writeGuardConfig(); else modErr("guard", "Config unreadable: " + (e && e.message || e)); }
+}
+function guardLogTail(n) {
+  try { const f = guardLogPath(), st = fs.statSync(f), len = Math.min(st.size, 64 * 1024), fd = fs.openSync(f, "r"), b = Buffer.alloc(len); fs.readSync(fd, b, 0, len, st.size - len); fs.closeSync(fd); return redact(b.toString("utf8")).split("\n").filter(Boolean).slice(-n).join("\n") || "(log is empty)"; } catch (e) { return "(no log yet)"; }
+}
+Object.assign(HQView.prototype, {
+  applyTheme() {
+    const t = this.plugin.curTheme(), r = this.contentEl; Object.entries(themeVars(t)).forEach(([k, v]) => r.style.setProperty(k, v));
+    THEME_RGB.a = hex2rgb(t.accent); THEME_RGB.w = hex2rgb(t.warn); THEME_RGB.glow = t.glow; THEME_RGB.key = t.accent + t.warn + t.glow;
+  },
+  osModsToggle() { this.osPage = this.osPage === "mods" ? "" : "mods"; this.osPageApply(); },
+  osPageApply() {
+    const u = this.osUI; if (!u || !u.modsEl) return; const on = this.osPage === "mods";
+    u.grid.toggleClass("os-hide", on); u.modsEl.toggleClass("os-hide", !on); u.sig.top = ""; this.osTopRender();
+    if (on) { guardVerify(); this.osModsBuild(); } else this.osGate();
+  },
+  osSetColl(k, on) {
+    const u = this.osUI, p = u && u[k === "ap" ? "ap" : k]; if (!p) return; this.osColl = this.osColl || new Set(); on ? this.osColl.add(k) : this.osColl.delete(k);
+    p.p.toggleClass("collapsed", on); p.h.setAttr("aria-expanded", String(!on));
+  },
+  // a mod's settings changed: refresh whatever shows it, right now
+  modApplied(k) {
+    const u = this.osUI; if (!u) return;
+    if (["progress", "files", "cache", "rules", "actions"].includes(k)) { this.insSig = ""; this.insActAt = 0; u.sig.ins = ""; u.sig.top = ""; if (k === "files") this.osSetColl("files", !!MODS.files.collapsed); this.insTick(true); this.osInsRender(); this.osTopRender(); }
+    if (k === "orb") this.osGate();
+    if (k === "chat") { const hq = this.hq(), c = hq && hq.get(hq.activeId); if (!c && u.model) { u.model.value = MODS.chat.model || ""; u.effort.value = MODS.chat.effort || ""; } this.osChatRender(true); }
+    if (k === "guard") { u.sig.top = ""; this.osTopRender(); }
+    if (u.modsEl && !u.modsEl.hasClass("os-hide")) this.osModsStatus();
+  },
+  osModsStatus() {
+    const u = this.osUI; if (!u || !u.modEls) return;
+    if (!this.plugin.hq) modErr("chat", "Chat engine failed to start (see console).");
+    MOD_LIST.forEach(([k]) => {
+      const e = u.modEls[k]; if (!e) return; const s = modState(k), ms = MODSTAT[k] || {};
+      e.st.setText(s.toUpperCase()); e.st.className = "os-stat " + s; e.c.toggleClass("off", s === "off");
+      e.err.setText(ms.err ? "Error: " + ms.err : ms.last ? "Last error (cleared): " + ms.last : ""); e.err.toggleClass("os-hide", !(ms.err || ms.last));
+    });
+  },
+  osModsBuild() {
+    const u = this.osUI, el = u.modsEl, keep = el.scrollTop; el.empty(); u.modEls = {}; const P = this.plugin;
+    const hd = el.createDiv({ cls: "os-mods-h" }); hd.createSpan({ cls: "t", text: "MODS // SWITCHES, SETTINGS AND THEME" });
+    hd.createSpan({ cls: "os-mod-d", text: "Every change applies at once and is saved." }); const back = hd.createEl("button", { cls: "os-chb", text: "BACK TO HQ" }); back.onclick = () => this.osModsToggle();
+    const set = (k, patch, rebuild) => { P.setMod(k, patch); if (rebuild) this.osModsBuild(); else this.osModsStatus(); };
+    const card = (k) => {
+      const def = MOD_LIST.find((x) => x[0] === k), c = el.createDiv({ cls: "os-mod" + (MODS[k].on ? "" : " off") }), h = c.createDiv({ cls: "os-mod-h" });
+      h.createSpan({ cls: "os-mod-n", text: def[1] }); const st = h.createSpan({ cls: "os-stat" });
+      const sw = h.createEl("button", { cls: "os-sw", attr: { role: "switch", "aria-checked": String(!!MODS[k].on), "aria-label": def[1] + " on or off" } }); sw.onclick = () => set(k, { on: !MODS[k].on }, true);
+      const b = c.createDiv({ cls: "os-mod-b" }); b.createDiv({ cls: "os-mod-d", text: def[2] }); const err = b.createDiv({ cls: "os-err os-hide", attr: { role: "status" } }); u.modEls[k] = { st, err, c };
+      const f = b.createDiv({ cls: "os-mod-b" }); const rs = b.createEl("button", { cls: "os-chb", text: "RESET TO DEFAULTS", attr: { "aria-label": "Reset " + def[1] + " to defaults" } }); rs.style.alignSelf = "flex-start";
+      rs.onclick = () => { P.resetMod(k); this.osModsBuild(); }; return f;
+    };
+    let idn = 0; const nid = () => "osm" + (++idn);
+    const chk = (f, k, fld, label) => { const r = f.createDiv({ cls: "os-f" }), l = r.createEl("label", { cls: "os-tgl" }), i = l.createEl("input", { attr: { type: "checkbox" } }); i.checked = !!MODS[k][fld]; l.createSpan({ text: label }); i.onchange = () => set(k, { [fld]: i.checked }); };
+    const num = (f, k, fld, label, lo, hi, step) => { const r = f.createDiv({ cls: "os-f" }), id = nid(); r.createEl("label", { text: label, attr: { for: id } }); const i = r.createEl("input", { attr: { id, type: "number", min: lo, max: hi, step: step || 1 } }); i.value = MODS[k][fld]; i.oninput = () => { const v = Number(i.value); if (i.value !== "" && isFinite(v) && v >= lo && v <= hi) set(k, { [fld]: v }); }; };
+    const sel = (f, k, fld, label, opts) => { const r = f.createDiv({ cls: "os-f" }), id = nid(); r.createEl("label", { text: label, attr: { for: id } }); const s = r.createEl("select", { attr: { id } }); opts.forEach(([v, t]) => s.createEl("option", { value: v, text: t })); s.value = MODS[k][fld]; s.onchange = () => set(k, { [fld]: s.value }); };
+    const chips = (f, k, fld, label, ph, norm) => {
+      const r = f.createDiv({ cls: "os-f" }); r.createEl("label", { text: label }); const L = r.createDiv({ cls: "os-chips-l" });
+      MODS[k][fld].forEach((x, i) => { const s = L.createSpan({ text: x }); const rm = s.createEl("button", { text: "×", attr: { "aria-label": "Remove " + x } }); rm.onclick = () => { const a = MODS[k][fld].slice(); a.splice(i, 1); set(k, { [fld]: a }, true); }; });
+      const id = nid(), inp = r.createEl("input", { attr: { id, type: "text", placeholder: ph, "aria-label": "Add to " + label } }), add = r.createEl("button", { cls: "os-chb", text: "ADD" });
+      const go = () => { const v = (norm ? norm(inp.value) : inp.value).trim(); if (!v || MODS[k][fld].includes(v)) return; set(k, { [fld]: MODS[k][fld].concat(v) }, true); }; add.onclick = go; inp.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Enter") go(); };
+    };
+    // --- progress
+    let f = card("progress"); chk(f, "progress", "cost", "Show estimated cost"); num(f, "progress", "refresh", "Refresh (seconds)", 1, 60);
+    { const tb = f.createEl("table", { cls: "os-prices" }), hr = tb.createEl("tr"); ["$ / MTok", "in", "out", "cache read", "cache 5m", "cache 1h"].forEach((x) => hr.createEl("th", { text: x }));
+      ["opus", "sonnet", "haiku"].forEach((fam) => { const tr = tb.createEl("tr"); tr.createEl("td", { text: fam }); ["in", "out", "cr", "c5", "c1"].forEach((fld) => { const i = tr.createEl("td").createEl("input", { attr: { type: "number", min: "0", step: "0.05", "aria-label": fam + " " + fld } }); i.value = (MODS.progress.prices[fam] || {})[fld] || 0; i.oninput = () => { const v = Number(i.value); if (i.value === "" || !isFinite(v) || v < 0) return; const p = cloneJ(MODS.progress.prices); p[fam] = Object.assign({}, p[fam], { [fld]: v }); insCache.clear(); set("progress", { prices: p }); }; }); });
+      f.createDiv({ cls: "os-mod-d", text: "Estimates only. Rates apply to every agent as soon as you change them." }); }
+    // --- files
+    f = card("files"); num(f, "files", "max", "Max files per agent", 1, 30); chk(f, "files", "collapsed", "Collapsed by default");
+    // --- cache
+    f = card("cache"); num(f, "cache", "warn", "Warn after (min)", 1, 240); num(f, "cache", "cold", "Cold after (min)", 2, 480); num(f, "cache", "compact", "Large chat (k tokens)", 10, 1000, 10);
+    // --- rules
+    f = card("rules"); chips(f, "rules", "triggers", "Trigger words", "add a word or phrase", (x) => x.toLowerCase()); num(f, "rules", "days", "Days back to scan", 1, 90);
+    { const r = f.createDiv({ cls: "os-f" }); r.createEl("label", { text: "Save targets" }); const L = r.createDiv({ cls: "os-chips-l" });
+      MODS.rules.targets.forEach((t, i) => { const s = L.createSpan({ text: t.label + " (" + t.kind + (t.path ? ": " + t.path : ": project playbook") + ")" }); const rm = s.createEl("button", { text: "×", attr: { "aria-label": "Remove target " + t.label } }); rm.onclick = () => { const a = MODS.rules.targets.slice(); a.splice(i, 1); set("rules", { targets: a }, true); }; });
+      const r2 = f.createDiv({ cls: "os-f" }), lab = r2.createEl("input", { attr: { type: "text", placeholder: "label", "aria-label": "New target label" } }), pth = r2.createEl("input", { attr: { type: "text", placeholder: "vault path, e.g. Claude'sWorkspace/Lumen/Notes/Rules.md", "aria-label": "New target vault path" } }), kd = r2.createEl("select", { attr: { "aria-label": "New target kind" } });
+      [["rules", "as a rule"], ["playbook", "to Inbox section"]].forEach(([v, t]) => kd.createEl("option", { value: v, text: t })); const add = r2.createEl("button", { cls: "os-chb", text: "ADD FILE" }), msg = f.createDiv({ cls: "os-err os-hide" });
+      [lab, pth].forEach((i) => i.addEventListener("keydown", (e) => e.stopPropagation()));
+      add.onclick = () => { const p = pth.value.trim().replace(/\\/g, "/"), l = lab.value.trim() || p.split("/").pop(); msg.addClass("os-hide");
+        if (!p || sensitivePath(p) || !(this.app.vault.getAbstractFileByPath(p) instanceof TFile)) { msg.setText(sensitivePath(p) ? "That path is off limits." : "No such note in the vault: " + (p || "(empty)")); msg.removeClass("os-hide"); return; }
+        set("rules", { targets: MODS.rules.targets.concat({ label: l, path: p, kind: kd.value }) }, true); }; }
+    // --- actions
+    f = card("actions"); [["need", "Decisions (needs you)"], ["money", "Costs"], ["sec", "Security"], ["fail", "Failures"]].forEach(([fl, l]) => chk(f, "actions", fl, l));
+    { const r = f.createDiv({ cls: "os-f" }), id = nid(); r.createEl("label", { text: "Custom keywords", attr: { for: id } }); const i = r.createEl("input", { attr: { id, type: "text", placeholder: "comma separated, e.g. deadline, refund" } }); i.value = MODS.actions.keywords; i.onkeydown = (e) => e.stopPropagation(); i.oninput = () => set("actions", { keywords: i.value }); }
+    // --- orb
+    f = card("orb"); num(f, "orb", "particles", "Particles", 100, 1500, 50); num(f, "orb", "fps", "FPS cap", 10, 60); chk(f, "orb", "arcs", "Lightning arcs");
+    // --- chat
+    f = card("chat"); sel(f, "chat", "model", "Default model", HQ_MODELS.map((m) => [m, m ? m.toUpperCase() : "DEFAULT"])); sel(f, "chat", "effort", "Default effort", HQ_EFFORTS.map((m) => [m, m ? m.toUpperCase() : "DEFAULT"])); chk(f, "chat", "tools", "Show tool lines"); chk(f, "chat", "cost", "Show cost");
+    // --- guard
+    f = card("guard"); f.createDiv({ cls: "os-mod-d", text: "OFF makes the hook allow everything (the hook entry stays in settings.json). Config: Agent Team\\hooks\\delete-guard.config.json" });
+    chips(f, "guard", "folders", "Allowed folders", "name, project/sub, or absolute path", (x) => x.replace(/\\/g, "/").replace(/^\/+|\/+$/g, ""));
+    f.createDiv({ cls: "os-mod-d", text: "A plain name (dist) matches inside any project. project/sub (LumenAds/out) is rooted. System Temp is always allowed." });
+    { const hr = f.createDiv({ cls: "os-f" }); hr.createEl("label", { text: "Last 50 log lines" }); const rf = hr.createEl("button", { cls: "os-chb", text: "REFRESH" }), pre = f.createEl("pre", { cls: "os-log", text: guardLogTail(50), attr: { tabindex: "0", "aria-label": "delete-guard log, last 50 lines" } }); rf.onclick = () => { pre.setText(guardLogTail(50)); pre.scrollTop = pre.scrollHeight; }; u.guardLog = pre; setTimeout(() => { pre.scrollTop = pre.scrollHeight; }, 0); }
+    this.osThemeBuild(el);
+    this.osModsStatus(); el.scrollTop = keep;
+  },
+  osThemeBuild(el) {
+    const P = this.plugin, c = el.createDiv({ cls: "os-mod" }); c.style.gridColumn = "1/-1"; const h = c.createDiv({ cls: "os-mod-h" }); h.createSpan({ cls: "os-mod-n", text: "THEME" }); const cur = h.createSpan({ cls: "os-stat", text: "" });
+    const b = c.createDiv({ cls: "os-mod-b" }); b.createDiv({ cls: "os-mod-d", text: "Colours apply only to HQ. Pick a preset, or edit the custom theme with a live preview." });
+    const pr = b.createDiv({ cls: "os-f" }), refresh = () => { const t = P.curTheme(); cur.setText(t.name.toUpperCase()); cur.className = "os-stat"; };
+    const swatch = (t, id) => { const x = pr.createEl("button", { cls: "os-chb", attr: { "aria-pressed": String(P.settings.theme.id === id) } }); x.createSpan({ cls: "os-sw2", attr: { "aria-hidden": "true" } }).style.background = t.accent; x.appendText(" " + t.name.toUpperCase()); x.style.display = "inline-flex"; x.style.gap = "6px"; x.style.alignItems = "center"; x.onclick = () => { P.setThemeId(id); this.osModsBuild(); }; };
+    HQ_PRESETS.forEach((t) => swatch(t, t.id)); Object.keys(P.settings.theme.saved || {}).forEach((n) => swatch(Object.assign({ name: n }, P.settings.theme.saved[n]), "saved:" + n));
+    const t = P.curTheme(); const edit = (patch, cheap) => { P.editTheme(patch); if (!cheap) this.osModsBuild(); else { refresh(); this.osThemeChecks(); } };
+    const cr = b.createDiv({ cls: "os-f" }); cr.createEl("label", { text: "Custom colours" });
+    [["accent", "Accent"], ["accent2", "Secondary"], ["warn", "Warning"], ["danger", "Danger"], ["bg", "Background"], ["panel", "Panel"]].forEach(([k, l]) => { const w = cr.createEl("label", { cls: "os-tgl" }), i = w.createEl("input", { attr: { type: "color", "aria-label": l + " colour" } }); i.value = t[k]; w.createSpan({ text: l }); i.oninput = () => edit({ [k]: i.value }, true); });
+    const sl = (label, fld, lo, hi) => { const r = b.createDiv({ cls: "os-f" }), id = "osth" + fld; r.createEl("label", { text: label, attr: { for: id } }); const i = r.createEl("input", { attr: { id, type: "range", min: lo, max: hi, step: "0.05" } }); i.value = t[fld]; const o = r.createSpan({ text: Number(t[fld]).toFixed(2) }); i.oninput = () => { o.setText(Number(i.value).toFixed(2)); edit({ [fld]: Number(i.value) }, true); }; };
+    sl("Glow strength", "glow", 0, 1.5); sl("Grid opacity", "grid", 0, 1); sl("Scanline opacity", "scan", 0, 1);
+    { const r = b.createDiv({ cls: "os-f" }), l = r.createEl("label", { cls: "os-tgl" }), i = l.createEl("input", { attr: { type: "checkbox" } }); i.checked = !!t.scanOn; l.createSpan({ text: "Scanlines on" }); i.onchange = () => edit({ scanOn: i.checked }, true); }
+    const sv = b.createDiv({ cls: "os-f" }), nm = sv.createEl("input", { attr: { type: "text", placeholder: "name for this custom theme", "aria-label": "Custom theme name" } }), sb = sv.createEl("button", { cls: "os-chb", text: "SAVE THEME" }); nm.onkeydown = (e) => e.stopPropagation();
+    sb.onclick = () => { const n = nm.value.trim().slice(0, 24); if (n) { P.saveTheme(n); this.osModsBuild(); } };
+    const sd = P.settings.theme.id.startsWith("saved:") ? P.settings.theme.id.slice(6) : ""; if (sd) { const db = sv.createEl("button", { cls: "os-chb", text: "DELETE \"" + sd.toUpperCase() + "\"" }); db.onclick = () => { P.deleteTheme(sd); this.osModsBuild(); }; }
+    const io = b.createDiv({ cls: "os-f" }), ta = io.createEl("textarea", { attr: { "aria-label": "Theme JSON for import or export", rows: "3", spellcheck: "false" } }); ta.onkeydown = (e) => e.stopPropagation();
+    const ex = io.createEl("button", { cls: "os-chb", text: "EXPORT JSON" }), im = io.createEl("button", { cls: "os-chb", text: "IMPORT JSON" }), msg = b.createDiv({ cls: "os-mod-d" });
+    ex.onclick = () => { const o = Object.assign({ name: P.curTheme().name }, P.curTheme()); delete o.id; ta.value = JSON.stringify(o, null, 1); try { navigator.clipboard.writeText(ta.value); msg.setText("Exported (copied to clipboard)."); } catch (e) { msg.setText("Exported below."); } };
+    im.onclick = () => { try { const o = JSON.parse(ta.value); if (!o || typeof o !== "object") throw new Error("not an object"); P.importTheme(o); this.osModsBuild(); } catch (e) { msg.setText("Import failed: " + (e && e.message || e)); } };
+    b.createDiv({ cls: "os-mod-d", text: "CONTRAST CHECK (WCAG AA needs 4.5:1 for text)" }); u_checks(this, b); refresh();
+  },
+  osThemeChecks() { const u = this.osUI; if (u && u.checks) { u.checks.empty(); this.osThemeChecksFill(u.checks); } },
+  osThemeChecksFill(box) {
+    const rows = themeChecks(this.plugin.curTheme()), bad = rows.filter((r) => !r.pass);
+    box.createDiv({ cls: bad.length ? "os-cwarn" : "os-cok", text: bad.length ? "WARNING: " + bad.map((r) => r.label).join(", ") + " below AA (4.5:1) on this theme." : "All checks pass WCAG AA." });
+    rows.forEach((r) => { const d = box.createDiv({ cls: "os-f " + (r.pass ? "os-cok" : "os-cwarn") }); d.createSpan({ cls: "os-sw2" }).style.background = r.fg; d.createSpan({ text: r.label + "  " + r.ratio.toFixed(2) + ":1  " + (r.pass ? "PASS" : "FAIL") }); });
+  },
+});
+function u_checks(v, b) { const u = v.osUI; u.checks = b.createDiv({ cls: "os-mod-b" }); u.checks.setAttr("role", "status"); v.osThemeChecksFill(u.checks); }
 
 // ===== HQ chat engine: runs the installed Claude Code CLI headless (stream-json) so HQ is a real chat surface. =====
 // One long-lived child process per conversation. User turns go in as stream-json lines; session ids persist for --resume.
@@ -1741,7 +1989,7 @@ Object.assign(HQView.prototype, {
     const u = this.osUI, hq = this.hq(), c = hq && hq.get(hq.activeId); if (!u || !c || !u.chatOpen) { if (u && u.chatBody && full) u.chatBody.empty(); return; }
     const sig = c.id + "|" + c.msgs.length + "|" + c.busy;
     if (full || u.chatSig !== sig) { u.chatSig = sig; this.osChatFull(c); } else this.osChatLive(c);
-    u.chatTitle.setText(c.title); const tot = (c.turns || []).reduce((n, t) => n + (t.cost || 0), 0); u.chatCost.setText(c.busy ? "WORKING" : tot ? "~" + usd(tot) : "READY"); u.chatCost.toggleClass("run", !!c.busy);
+    u.chatTitle.setText(c.title); const tot = (c.turns || []).reduce((n, t) => n + (t.cost || 0), 0); u.chatCost.setText(c.busy ? "WORKING" : tot && MODS.chat.cost ? "~" + usd(tot) : "READY"); u.chatCost.toggleClass("run", !!c.busy);
   },
   osChatFull(c) {
     const u = this.osUI, b = u.chatBody, near = b.scrollHeight - b.scrollTop - b.clientHeight < 80; b.empty(); u.liveEl = null;
@@ -1761,14 +2009,14 @@ Object.assign(HQView.prototype, {
       if (bl.k === "text") { if (!bl.text.trim()) return; const t = d.createDiv({ cls: "os-mt os-md" }); t.insertAdjacentHTML("beforeend", mdSafe(redact(bl.text))); }
       else if (bl.k === "think") { if (live && i === m.blocks.length - 1) d.createDiv({ cls: "os-think", text: "Claude is thinking…" }); }
       else if (bl.k === "error") d.createDiv({ cls: "os-err", text: redact(bl.text) });
-      else if (bl.k === "tool") {
+      else if (bl.k === "tool" && MODS.chat.tools) {
         const det = d.createEl("details", { cls: "os-tool" + (bl.isErr ? " err" : "") + (bl.open ? " run" : "")}), s = det.createEl("summary");
         s.createSpan({ cls: "os-tn", text: bl.name }); s.createSpan({ cls: "os-tt", text: redact(bl.target || "").replace(/\s+/g, " ").slice(0, 110) });
         const body = det.createDiv({ cls: "os-tb" }); const inp = bl.input ? redact(JSON.stringify(bl.input, null, 1)).slice(0, 1200) : ""; if (inp) body.createEl("pre", { text: inp }); if (bl.result) body.createEl("pre", { text: bl.result.slice(0, 800) });
       }
     });
     if (m.stopped) d.createDiv({ cls: "os-err", text: "Stopped." });
-    if (m.usage) { const t = m.usage; d.createDiv({ cls: "os-use", text: "in " + kfmt(t.in) + " · out " + kfmt(t.out) + " · cache " + kfmt(t.cache) + " · ~" + usd(t.cost) + " est." }); }
+    if (m.usage && MODS.chat.cost) { const t = m.usage; d.createDiv({ cls: "os-use", text: "in " + kfmt(t.in) + " · out " + kfmt(t.out) + " · cache " + kfmt(t.cache) + " · ~" + usd(t.cost) + " est." }); }
   },
   osChatHeader(box) {
     const u = this.osUI, h = box.createDiv({ cls: "os-chh" });
@@ -1784,7 +2032,7 @@ Object.assign(HQView.prototype, {
     if (!list.length) L.createDiv({ cls: "os-muted", text: "No conversations for " + (this.project ? this.project.name : "this project") + " yet. Press NEW or just type below." });
     list.slice(0, 30).forEach((c) => {
       const r = L.createDiv({ cls: "os-cli" + (c.id === hq.activeId ? " cur" : ""), attr: { role: "button", tabindex: "0" } }), tot = (c.turns || []).reduce((n, t) => n + (t.cost || 0), 0);
-      r.createSpan({ cls: "os-clt", text: c.title }); r.createSpan({ cls: "os-cld", text: (c.busy ? "WORKING · " : "") + (all ? (c.projName || "Lumen") + " · " : "") + new Date(c.updated).toLocaleDateString([], { day: "2-digit", month: "short" }) + (tot ? " · ~" + usd(tot) : "") });
+      r.createSpan({ cls: "os-clt", text: c.title }); r.createSpan({ cls: "os-cld", text: (c.busy ? "WORKING · " : "") + (all ? (c.projName || "Lumen") + " · " : "") + new Date(c.updated).toLocaleDateString([], { day: "2-digit", month: "short" }) + (tot && MODS.chat.cost ? " · ~" + usd(tot) : "") });
       const del = r.createEl("button", { cls: "os-chb", text: "DEL", attr: { "aria-label": "Delete conversation " + c.title } }); del.onclick = (e) => { e.stopPropagation(); hq.remove(c); u.chatList.addClass("os-hide"); this.osChatLayout(); this.osChatRender(true); };
       const open = () => this.osChatOpenConv(c.id); r.onclick = open; r.addEventListener("keydown", (e) => { if (e.target === r && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); open(); } });
     });
@@ -1798,7 +2046,7 @@ Object.assign(HQView.prototype, {
     ws.getLeaf("tab").openFile(f); // keepFilesBesideHQ places it next to HQ
   },
   osChatSend(text) {
-    const u = this.osUI, hq = this.hq(); text = String(text || "").trim(); const imgs = u.imgs.slice(); if (!text && !imgs.length) return;
+    const u = this.osUI, hq = this.hq(); if (!MODS.chat.on) { new Notice("The HQ chat mod is off. Switch it on in MODS."); return; } text = String(text || "").trim(); const imgs = u.imgs.slice(); if (!text && !imgs.length) return;
     let c = hq.get(hq.activeId); if (c && hq.projOf(c) !== (this.project && this.project.id)) c = null;
     if (!c) c = hq.create(u.model.value, u.effort.value, this.project);
     if (c.busy) return; c.model = u.model.value; c.effort = u.effort.value; u.chatOpen = true; this.osChatWas = true; u.cmdIn.value = ""; u.imgs = []; this.osRenderAtts(); if (text) this.osRemember(text); if (u.full) this.osSetFull(false); this.osAutoGrow();
@@ -1815,7 +2063,7 @@ Object.assign(HQView.prototype, {
 });
 function hqChatIsActive(view, c) { const hq = view.hq(); return !!hq && hq.activeId === c.id; }
 
-const DEFAULTS = { projects: [], last: "", claudeDir: "", excludeRe: "personal", person: "", chatView: "claudian-view", filesBesideHQ: true, textScale: 125, claudePath: "" };
+const DEFAULTS = { mods: {}, theme: { id: "cyan", custom: null, saved: {} }, projects: [], last: "", claudeDir: "", excludeRe: "personal", person: "", chatView: "claudian-view", filesBesideHQ: true, textScale: 125, claudePath: "" };
 const PFIELDS = [
   ["todo", "To-Do note path", "Vault path to a note with a numbered list under the Next heading, and checkboxes under Waiting on.", "Notes/To-Do.md"],
   ["nextHead", "Next heading", "Heading text (prefix match) of the numbered plan list. Default: Next", "Next"],
@@ -1875,6 +2123,7 @@ class ProjectHQSettings extends PluginSettingTab {
 module.exports = class ProjectHQ extends Plugin {
   async onload() {
     const d = (await this.loadData()) || {}; this.settings = Object.assign({}, DEFAULTS, d); if (!Array.isArray(this.settings.projects)) this.settings.projects = [];
+    { const th = this.settings.theme = Object.assign({ id: "cyan", custom: null, saved: {} }, this.settings.theme || {}); if (!th.saved || typeof th.saved !== "object") th.saved = {}; if (typeof th.id !== "string") th.id = "cyan"; if (!this.settings.mods || typeof this.settings.mods !== "object") this.settings.mods = {}; MODS = buildMods(this.settings.mods); BASE = this.app.vault.adapter.basePath || ""; guardVerify(); }
     if (this.syncProjects()) await this.saveData(this.settings);
     try { this.hq = new HQChats(this); } catch (e) { console.error("Project HQ chat engine", e); this.hq = null; }
     this.registerView(VIEW, (leaf) => new HQView(leaf, this));
@@ -1925,6 +2174,31 @@ module.exports = class ProjectHQ extends Plugin {
     return v.map((p, i) => [p, i]).sort((a, b) => (b[0].pinned ? 1 : 0) - (a[0].pinned ? 1 : 0) || a[1] - b[1]).map((x) => x[0]);
   }
   async saveSettings() { await this.saveData(this.settings); }
+  views() { return this.app.workspace.getLeavesOfType(VIEW).map((l) => l.view).filter(Boolean); }
+  saveSoon() { clearTimeout(this._ms); this._ms = setTimeout(() => this.saveSettings(), 400); }
+  // ---- mods ----
+  setMod(k, patch) {
+    const st = this.settings; st.mods = st.mods || {}; st.mods[k] = Object.assign({}, st.mods[k] || {}, patch); MODS = buildMods(st.mods); this.afterMod(k, patch); this.saveSoon();
+  }
+  resetMod(k) { const st = this.settings; delete st.mods[k]; MODS = buildMods(st.mods); if (k === "progress") insCache.clear(); this.afterMod(k, { triggers: 1 }); this.saveSoon(); }
+  afterMod(k, patch) {
+    if (k === "guard") writeGuardConfig();
+    if (k === "rules" && patch && patch.triggers) mainState.file = ""; // rescan the chat for the new trigger words
+    this.views().forEach((v) => { try { v.modApplied && v.modApplied(k); } catch (e) { modErr(k, e); console.error("Project HQ mod apply", e); } });
+  }
+  // ---- themes ----
+  curTheme() {
+    const th = this.settings.theme, id = th.id || "cyan";
+    if (id.startsWith("saved:") && th.saved[id.slice(6)]) return Object.assign(cleanTheme(th.saved[id.slice(6)]), { id, name: id.slice(6) });
+    if (id === "custom") return Object.assign(cleanTheme(th.custom), { id, name: "Custom" });
+    return Object.assign({}, HQ_PRESETS.find((x) => x.id === id) || HQ_PRESETS[0]);
+  }
+  themeApplyAll() { this.views().forEach((v) => { if (!v.applyTheme) return; v.applyTheme(); if (v.osUI) { v.osUI.sig.top = ""; v.osTopRender(); } }); this.saveSoon(); }
+  setThemeId(id) { this.settings.theme.id = id; this.themeApplyAll(); }
+  editTheme(patch) { this.settings.theme.custom = cleanTheme(Object.assign({}, this.curTheme(), patch)); this.settings.theme.id = "custom"; this.themeApplyAll(); }
+  saveTheme(name) { const th = this.settings.theme; th.saved[name] = cleanTheme(this.curTheme()); th.id = "saved:" + name; this.themeApplyAll(); }
+  deleteTheme(name) { const th = this.settings.theme; delete th.saved[name]; if (th.id === "saved:" + name) th.id = "cyan"; this.themeApplyAll(); }
+  importTheme(o) { const th = this.settings.theme, t = cleanTheme(o), nm = typeof o.name === "string" ? o.name.trim().slice(0, 24) : ""; th.custom = t; th.id = "custom"; if (nm) { th.saved[nm] = t; th.id = "saved:" + nm; } this.themeApplyAll(); }
   // Debounced: save and refresh every open HQ view after a settings change.
   changed(now) {
     clearTimeout(this._t);
