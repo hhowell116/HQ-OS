@@ -1426,7 +1426,7 @@ Object.assign(HQView.prototype, {
     const grid = ui.grid = wrap.createDiv({ cls: "os-grid" }), modsEl = ui.modsEl = wrap.createDiv({ cls: "os-mods os-hide" }), L = grid.createDiv({ cls: "os-col os-left" }), M = grid.createDiv({ cls: "os-col os-mid" }), Rt = grid.createDiv({ cls: "os-col os-right" });
     ui.vit = osPanel(L, "SYSTEM VITALS", "os-vit"); ui.sess = osPanel(L, "AGENTS & CHATS", "os-sess"); ui.next = osPanel(L, "NEXT UP", "os-next"); ui.files = osPanel(L, "FILES IN PLAY", "os-files");
     ui.tasks = osPanel(Rt, "TOP TASKS", "os-tasks"); ui.rev = osPanel(Rt, "REVIEW QUEUE", "os-rev");
-    { const f = L.createDiv({ cls: "os-fill" }); hqDuel(f); }
+    { const f = L.createDiv({ cls: "os-fill" }); hqDuel(f); const g = Rt.createDiv({ cls: "os-fill" }); hqDuel(g, "hq-fill-scene-r", 5); }
     this.osColl = this.osColl || new Set(MODS.files.collapsed ? ["files"] : []);
     [["files", ui.files]].forEach(([k, p]) => { p.p.addClass("os-coll"); p.p.toggleClass("collapsed", this.osColl.has(k)); p.h.setAttr("role", "button"); p.h.setAttr("tabindex", "0"); p.h.setAttr("aria-expanded", String(!this.osColl.has(k)));
       const tg = () => { this.osColl.has(k) ? this.osColl.delete(k) : this.osColl.add(k); p.p.toggleClass("collapsed", this.osColl.has(k)); p.h.setAttr("aria-expanded", String(!this.osColl.has(k))); }; p.h.onclick = tg; p.h.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); tg(); } }); });
@@ -2574,13 +2574,13 @@ const HQ_SCENES = [
   } },
 ];
 // Pixel animations for the spare space in the left column (swordfight + HQ_SCENES). Drawn in code (no assets), theme coloured, ~10 fps, idle when hidden.
-function hqDuel(host) {
+function hqDuel(host, key = "hq-fill-scene", def = 0) {
   const cv = host.createEl("canvas", { cls: "os-duel", attr: { "aria-hidden": "true" } }), ctx = cv.getContext("2d"), W = 64, H = 30;
-  let tick = 0, round = 0, st = {}, scene = Math.min(HQ_SCENES.length - 1, Math.max(0, parseInt(localStorage.getItem("hq-fill-scene") || "0", 10) || 0));
+  let tick = 0, round = 0, st = {}, scene = Math.min(HQ_SCENES.length - 1, Math.max(0, parseInt(localStorage.getItem(key) ?? String(def), 10) || 0));
   const swb = host.createEl("button", { cls: "os-fillsw", attr: { "aria-label": "Swap animation", title: "Swap animation" } });
   const lbl = () => swb.setText("⇄ " + HQ_SCENES[scene].name);
   lbl();
-  swb.addEventListener("click", (e) => { e.stopPropagation(); scene = (scene + 1) % HQ_SCENES.length; localStorage.setItem("hq-fill-scene", String(scene)); st = {}; tick = 0; round = 0; lbl(); draw(); });
+  swb.addEventListener("click", (e) => { e.stopPropagation(); scene = (scene + 1) % HQ_SCENES.length; localStorage.setItem(key, String(scene)); st = {}; tick = 0; round = 0; lbl(); draw(); });
   const rgb = (v, a) => "rgba(" + (v || "25,227,208") + "," + a + ")";
   // one fighter: x = feet centre, f = facing (1 right, -1 left), pose, flash = hit flash, col = "r,g,b"
   const fighter = (x, f, pose, col, flash, bob) => {
