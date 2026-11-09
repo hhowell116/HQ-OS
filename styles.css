@@ -749,3 +749,5 @@
 .hqos .os-cbody,.hqos .os-cbody *{-webkit-user-select:text;user-select:text;cursor:auto}.hqos .os-cbody button{cursor:pointer}
 .hqos .os-tidy.hot{color:var(--os-am);border-color:var(--os-am)}
 .hqos .os-mid:not(.chatting){position:relative}
+.hqos .os-left>.os-sess{min-height:104px}
+.hqos .os-right>.os-next{flex:0 0 auto!important}

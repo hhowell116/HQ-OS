@@ -347,13 +347,13 @@ function agentLine(st, l) {
     else if ((b.name === "Bash" || b.name === "PowerShell") && /\bgit\s+(-C\s+\S+\s+)?commit\b/.test(inp.command || "")) st.files.forEach((f) => { if (f.op === "edit") f.committed = true; });
   }
 }
-// main chat sessions (top-level ~/.claude/projects/*/<session>.jsonl) touched in the last 15 min, so Files in play also shows what the main chats edit
+// main chat sessions (top-level ~/.claude/projects/*/<session>.jsonl) active in the last 3 min, so Files in play also shows what the main chats edit
 let mainCache = { at: 0, list: [] };
 async function mainSessions(app) {
   const now = Date.now(); if (now - mainCache.at < 30000) return mainCache.list;
   const out = []; let dirs = []; try { dirs = await fsp.readdir(PROJ); } catch (e) { return []; }
   for (const d of dirs) { if (EXCL && EXCL.test(d)) continue; let fl = []; try { fl = await fsp.readdir(path.join(PROJ, d)); } catch (e) { continue; }
-    for (const f of fl) { if (!f.endsWith(".jsonl")) continue; const jf = path.join(PROJ, d, f), s = await fsp.stat(jf).catch(() => null); if (s && now - s.mtimeMs < 15 * 60000) out.push({ id: "main:" + f, jf, mtime: s.mtimeMs, title: "" }); } }
+    for (const f of fl) { if (!f.endsWith(".jsonl")) continue; const jf = path.join(PROJ, d, f), s = await fsp.stat(jf).catch(() => null); if (s && now - s.mtimeMs < 3 * 60000) out.push({ id: "main:" + f, jf, mtime: s.mtimeMs, title: "" }); } }
   let convs = []; try { const cp = app.plugins.plugins.realclaudian || app.plugins.plugins.claudian; convs = cp.chatHost.getConversationList(); } catch (e) {}
   out.forEach((a) => { const c = convs.filter((x) => x.lastActivityAt && Math.abs(x.lastActivityAt - a.mtime) < 180000).sort((x, y) => Math.abs(x.lastActivityAt - a.mtime) - Math.abs(y.lastActivityAt - a.mtime))[0]; a.title = c ? c.title : "Chat " + a.id.slice(5, 13); });
   mainCache = { at: now, list: out.sort((a, b) => b.mtime - a.mtime).slice(0, 4) }; return mainCache.list;
@@ -539,7 +539,7 @@ function renderInsights(v, el, only) {
     if (list.length && MODS.progress.cost) b.createDiv({ cls: "lhq-muted", text: "Costs are rough estimates from API list prices (subscription use is not billed per token)." }); }
   // files
   if (W("files")) { const withFiles = run.concat(v.mainLive || []).filter((a) => a.st && a.st.files.size).slice(0, 5), b = insPanel(v, el, "files", "Files in play", withFiles.reduce((n, a) => n + Math.min(MODS.files.max, a.st.files.size), 0));
-    if (!withFiles.length) b.createDiv({ cls: "lhq-muted", text: "No agent or chat has touched files in the last 15 minutes." });
+    if (!withFiles.length) b.createDiv({ cls: "lhq-muted", text: "No active agent or chat is touching files right now." });
     withFiles.forEach((a) => {
       b.createDiv({ cls: "lhq-fg", text: a.title });
       [...a.st.files.values()].filter((f) => !sensitivePath(f.p)).reverse().slice(0, MODS.files.max).forEach((f) => {
@@ -1437,7 +1437,7 @@ Object.assign(HQView.prototype, {
     wrap.createDiv({ cls: "os-sweep" }); ui.top = wrap.createDiv({ cls: "os-top" }); ui.run = wrap.createDiv({ cls: "os-run os-hide", attr: { role: "status", "aria-live": "polite", "aria-label": "Running agents" } });
     const grid = ui.grid = wrap.createDiv({ cls: "os-grid" }), modsEl = ui.modsEl = wrap.createDiv({ cls: "os-mods os-hide" }), L = grid.createDiv({ cls: "os-col os-left" }), M = grid.createDiv({ cls: "os-col os-mid" }), Rt = grid.createDiv({ cls: "os-col os-right" });
     ui.vit = osPanel(L, "SYSTEM VITALS", "os-vit"); ui.sess = osPanel(L, "AGENTS & CHATS", "os-sess"); ui.next = osPanel(L, "NEXT UP", "os-next"); ui.files = osPanel(L, "FILES IN PLAY", "os-files");
-    ui.tasks = osPanel(Rt, "TOP TASKS", "os-tasks"); ui.rev = osPanel(Rt, "REVIEW QUEUE", "os-rev");
+    Rt.prepend(ui.next.p); ui.tasks = osPanel(Rt, "TOP TASKS", "os-tasks"); ui.rev = osPanel(Rt, "REVIEW QUEUE", "os-rev");
     { const f = L.createDiv({ cls: "os-fill" }); hqDuel(f); const g = Rt.createDiv({ cls: "os-fill" }); hqDuel(g, "hq-fill-scene-r", 5, "r"); }
     this.osColl = this.osColl || new Set(MODS.files.collapsed ? ["files"] : []);
     [["files", ui.files]].forEach(([k, p]) => { p.p.addClass("os-coll"); p.p.toggleClass("collapsed", this.osColl.has(k)); p.h.setAttr("role", "button"); p.h.setAttr("tabindex", "0"); p.h.setAttr("aria-expanded", String(!this.osColl.has(k)));
