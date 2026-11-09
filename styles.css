@@ -851,3 +851,7 @@
 .hqos .os-cbody{background:#020507}
 /* Hayden 2026-11-09: chat background slightly brighter than #020507 */
 .hqos .os-cbody{background:#060b0e}
+/* Hayden 2026-11-09: sturdy screen serif. Charter/Iowan are not on this PC; Sitka Text (Windows, by Charter's designer
+   Matthew Carter, made for screen reading) is the closest. Theme-tinted background, near rgb(2,30,30) but a touch deeper. */
+.hqos .os-cbody,.hqos .os-cbody *:not(code):not(pre):not(kbd):not(code *):not(pre *){font-family:Charter,"Iowan Old Style","Sitka Text",Cambria,Georgia,serif!important}
+.hqos .os-cbody{background:#04181a}
