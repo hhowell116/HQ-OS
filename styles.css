@@ -656,3 +656,7 @@
 .hqos .os-rev .lhq-rbody>*{flex:0 1 auto;min-width:0}
 .hqos .os-rev .lhq-rcard:has(.lhq-rbody .lhq-media) .lhq-md :is(video,img,.internal-embed.media-embed){display:none}
 .hqos .os-rev .lhq-md :is(video,img){display:block;max-width:100%;max-height:220px;width:auto;height:auto;object-fit:contain;margin:0 auto}
+.hqos .os-ctool .os-hint{display:none}
+.hqos .os-ctool .os-cnt2{margin-left:auto;border-left:0;padding-left:0}
+.hqos .os-ctool .os-compact{margin-left:auto}
+.hqos .os-ctool .os-cnt2:not(:empty)+.os-compact{margin-left:8px}
