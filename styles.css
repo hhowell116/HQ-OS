@@ -839,3 +839,5 @@
 
 /* Chat text a bit smaller (Hayden 2026-11-09): 1.12em -> 1em, line height kept airy */
 .hqos .os-msg{font-size:1em;line-height:1.6}
+/* Hayden 2026-11-09: 5% bigger, and text uses the full chat width (drops the 78ch cap) */
+.hqos .os-msg{font-size:1.05em;max-width:none}
