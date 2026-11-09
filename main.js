@@ -458,16 +458,17 @@ function openPath(v, p) {
   if (q.toLowerCase().startsWith(base + "/")) { const f = v.app.vault.getAbstractFileByPath(q.slice(base.length + 1)); if (f instanceof TFile) { v.app.workspace.getLeaf("tab").openFile(f); return; } } // keepFilesBesideHQ moves it next to HQ
   try { require("electron").shell.showItemInFolder(p.replace(/\//g, path.sep)); } catch (e) { new Notice("Not in the vault: " + p); }
 }
-function renderInsights(v, el) {
+function renderInsights(v, el, only) {
+  const W = (k) => !only || only.includes(k);
   const now = Date.now(), run = v.live.filter((a) => a.status === "running"), recent = v.live.filter((a) => a.status === "done" && now - a.mtime < 30 * 60000);
   // action strip
   const acts = v.insActions();
-  { const b = insPanel(v, el, "actions", "Action items", acts.length);
+  if (W("actions")) { const b = insPanel(v, el, "actions", "Action items", acts.length);
     if (!acts.length) b.createDiv({ cls: "lhq-muted", text: "Nothing flagged in agent reports." });
     const strip = b.createDiv({ cls: "lhq-astrip" });
     acts.slice(0, 12).forEach((a) => { const c = strip.createDiv({ cls: "lhq-achip " + catCls[a.cat] }); c.createSpan({ cls: "lhq-ak", text: a.label }); const t = c.createSpan({ cls: "lhq-at2", text: a.text }); t.title = a.text; c.createSpan({ cls: "lhq-asrc", text: a.src }); const x = c.createSpan({ cls: "lhq-x", text: "×" }); x.title = "Dismiss"; x.onclick = () => v.insHandle(a.id, "dismissed"); }); }
   // cache
-  { const ci = cacheInfo(), b = insPanel(v, el, "cache", "Chat cache", ci ? ci.state : "");
+  if (W("cache")) { const ci = cacheInfo(), b = insPanel(v, el, "cache", "Chat cache", ci ? ci.state : "");
     if (!ci) b.createDiv({ cls: "lhq-muted", text: "No main chat found yet." });
     else {
       const m = b.createDiv({ cls: "lhq-cache " + ci.state }); m.createDiv({ cls: "lhq-cmsg", text: ci.msg });
@@ -475,7 +476,7 @@ function renderInsights(v, el) {
       if (ci.compact) b.createDiv({ cls: "lhq-line", text: "The chat is large (" + kfmt(ci.ctx) + "). Consider running /compact." });
     } }
   // agent progress
-  { const b = insPanel(v, el, "progress", "Agent progress", run.length + " running");
+  if (W("progress")) { const b = insPanel(v, el, "progress", "Agent progress", run.length + " running");
     const list = run.concat(recent).slice(0, 10); let tot = 0;
     if (!list.length) b.createDiv({ cls: "lhq-muted", text: "No agents running." });
     list.forEach((a) => {
@@ -492,7 +493,7 @@ function renderInsights(v, el) {
     });
     if (list.length) b.createDiv({ cls: "lhq-muted", text: "Costs are rough estimates from API list prices (subscription use is not billed per token)." }); }
   // files
-  { const withFiles = run.filter((a) => a.st && a.st.files.size).slice(0, 5), b = insPanel(v, el, "files", "Files in play", withFiles.reduce((n, a) => n + Math.min(6, a.st.files.size), 0));
+  if (W("files")) { const withFiles = run.filter((a) => a.st && a.st.files.size).slice(0, 5), b = insPanel(v, el, "files", "Files in play", withFiles.reduce((n, a) => n + Math.min(6, a.st.files.size), 0));
     if (!withFiles.length) b.createDiv({ cls: "lhq-muted", text: "No running agent has touched files yet." });
     withFiles.forEach((a) => {
       b.createDiv({ cls: "lhq-fg", text: a.title });
@@ -505,7 +506,7 @@ function renderInsights(v, el) {
       });
     }); }
   // rule cards
-  { const cards = v.insRules(), b = insPanel(v, el, "rules", "Save as rule", cards.length);
+  if (W("rules")) { const cards = v.insRules(), b = insPanel(v, el, "rules", "Save as rule", cards.length);
     if (!cards.length) b.createDiv({ cls: "lhq-muted", text: "No new corrections or standing rules spotted in your messages." });
     v.insText = v.insText || {};
     cards.slice(0, 6).forEach((c) => {
@@ -786,7 +787,8 @@ class HQView extends ItemView {
   applyProject() {
     const st = this.plugin.settings; BASE = this.app.vault.adapter.basePath || "";
     const pr = st.projects.find((p) => p.id === st.last) || st.projects[0] || null;
-    this.project = pr; setConfig(pr, st);
+    this.project = pr; setConfig(pr, st); this.osMode();
+    if (this.os) { this.osVars(); return; }
     this.setTheme(this.themeId()); this.setAccent(pr && pr.accent);
   }
   themeId() { const pr = this.project; return (pr && pr.theme) || (this.app.loadLocalStorage && this.app.loadLocalStorage("lhq-alt") ? "ember" : "teal"); }
@@ -835,7 +837,7 @@ class HQView extends ItemView {
     document.addEventListener("pointerdown", out, true); pop.addEventListener("keydown", esc);
     this.pickOff = () => document.removeEventListener("pointerdown", out, true);
   }
-  async onClose() { this.closePicker(); }
+  async onClose() { this.closePicker(); this.osStop(); }
   closePicker() { if (this.pickOff) this.pickOff(); this.pickOff = null; if (this.pick) this.pick.remove(); this.pick = null; }
   resetData() { Object.assign(this, { planOpen: new Set(), days: [], dsig: "", metricsRunning: false, review: [], rsig: "", live: [], liveSig: "", agents: [], todo: { live: "", next: [], wait: [] }, commits: {}, cAt: 0, sig: "", openSet: new Set(), page: "home" }); liveCache.clear(); }
   buildSwitcher() {
@@ -883,7 +885,7 @@ class HQView extends ItemView {
     ib("refresh-cw", "Refresh", () => this.refreshAll()); ib("palette", "Colours", (b) => this.openPicker(b));
     this.pageEl = root.createDiv({ cls: "lhq-page" });
     this.dock = root.createDiv({ cls: "lhq-dock" }); this.buildSwitcher(); this.buildDock();
-    this.registerEvent(this.app.vault.on("modify", (f) => { if (f.path === ACT || f.path === TODO) this.loadFiles(); }));
+    this.registerEvent(this.app.vault.on("modify", (f) => { if (f.path === ACT || f.path === TODO || (this.project && f.path === this.project.queue)) this.loadFiles(); }));
     this.registerInterval(window.setInterval(() => this.loadFiles(), 10000));
     this.registerEvent(this.app.metadataCache.on("changed", (f) => { if (f.path.startsWith(DAILY + "/")) this.loadDays(); }));
     this.registerInterval(window.setInterval(() => this.runMetrics(false), 3600000));
@@ -902,6 +904,8 @@ class HQView extends ItemView {
       this.register(() => { try { w.close(); } catch (e) {} clearTimeout(this.watchT); });
     } catch (e) { /* no recursive watch on this platform: the interval still covers it */ }
     this.registerInterval(window.setInterval(() => this.clock(), 1000));
+    this.registerInterval(window.setInterval(() => this.osTick(), 1000)); // HQ_OS: the one shared timer (clock, countdown, vitals, sessions)
+    this.registerDomEvent(document, "visibilitychange", () => this.osGate());
     this.registerInterval(window.setInterval(() => this.insTick(), 3000)); // one shared throttled poll for the Insights panels; skips work while HQ is hidden
     this.registerInterval(window.setInterval(() => { if (this.page === "home" && !this.hover && this.go && this.slideCount > 1) this.go(this.slide + 1); }, 8000));
     this.clock(); this.show("home");
@@ -944,7 +948,7 @@ class HQView extends ItemView {
       if (this.cacheChip) { const show = ci && (ci.state !== "warm" || ci.compact); this.cacheChip.toggle(!!show); if (show) { this.cacheChip.setText(ci.state !== "warm" ? ci.msg : "Context ~" + kfmt(ci.ctx) + ": consider /compact"); this.cacheChip.toggleClass("cold", ci.state === "cold"); this.cacheChip.title = ci.compact ? "Large chat (" + kfmt(ci.ctx) + " tokens): consider /compact" : ci.msg; } }
       if (this.insBadge) { const n = cards.length + this.insActs.length; this.insBadge.setText(String(n)); this.insBadge.toggleClass("zero", !n); }
       const sig = JSON.stringify([ci && [ci.state, ci.msg], cards.map((c) => c.id), this.insActs.map((a) => a.id), this.live.map((a) => [a.id, a.status, a.st && [a.st.tools, a.st.tin + a.st.tout + a.st.tcr, a.st.files.size, [...a.st.files.values()].slice(-3).map((f) => f.op + f.committed + (now - f.t < 90000))]])]);
-      if (sig !== this.insSig) { this.insSig = sig; if (this.page === "insights") this.renderPage(); }
+      if (sig !== this.insSig) { this.insSig = sig; if (this.page === "insights" || this.os) this.renderPage(); }
     } catch (e) { console.error("Project HQ insights", e); } finally { this.insBusy = false; }
   }
   async loadLive() {
@@ -971,6 +975,7 @@ class HQView extends ItemView {
     this.renderPage(true, true);
   }
   renderPage(anim, force) {
+    if (this.os && this.project) { try { this.osRender(force); } catch (e) { console.error("Project HQ OS render", e); } return; }
     // The page redraws every few seconds (live agents, files). On the review page a redraw between press and release
     // swallowed Approve/Changes/Reject clicks and wiped typed feedback, so hold redraws there while the user is interacting.
     if (!force && (this.page === "view" || this.page === "insights") && (Date.now() - (this.touchedAt || 0) < 20000 || (document.activeElement && document.activeElement.tagName === "TEXTAREA" && this.contentEl.contains(document.activeElement)))) return;
@@ -985,9 +990,9 @@ class HQView extends ItemView {
     try {
       const vt = this.app.vault, a = ACT ? vt.getAbstractFileByPath(ACT) : null, t = TODO ? vt.getAbstractFileByPath(TODO) : null;
       const am = a instanceof TFile ? await vt.read(a) : "", tm = t instanceof TFile ? await vt.read(t) : "";
-      const agents = parseAgents(am), todo = parseTodo(tm);
-      const sig = JSON.stringify([agents.map((x) => [x.name, x.state, x.task, x.last, x.updated]), todo]);
-      this.agents = agents; this.todo = todo;
+      const agents = parseAgents(am), todo = parseTodo(tm), secs = parseSecs(tm), qp = this.project && this.project.queue, qf = qp ? vt.getAbstractFileByPath(qp) : null, queue = qf instanceof TFile ? parseQueue(await vt.read(qf)) : null;
+      const sig = JSON.stringify([agents.map((x) => [x.name, x.state, x.task, x.last, x.updated]), todo, secs.map((x) => x.items.map((i) => [i.line, i.st, i.text])), queue]);
+      this.agents = agents; this.todo = todo; this.secs = secs; this.queue = queue;
       if (sig !== this.sig) { this.sig = sig; this.renderPage(); }
     } catch (e) { console.error("Project HQ files", e); }
   }
@@ -1085,6 +1090,377 @@ class HQView extends ItemView {
   }
 }
 
+// ===== HQ_OS: sci-fi mission-control layout. Replaces the classic home unless settings.classicLayout is on. =====
+// Presentation only: every data function above (usage, agents, review, insights, todo) is reused. One shared 1 s timer (HQView.osTick) plus the orb's own rAF loop (paused when hidden).
+const OS_PERSONAL = /💀|personal/i;
+const claudianOf = (app) => { const pl = app.plugins && app.plugins.plugins; return pl && (pl.realclaudian || pl.claudian) || null; };
+const osMono = (n) => String(n).padStart(2, "0");
+const shortName = (s) => clean(String(s)).replace(/\s*[(,:].*$/, "").slice(0, 16) || "Section";
+const vit = { cpu: 0, mem: 0, up: 0, hist: [], last: null };
+function sampleVitals() {
+  const cur = os.cpus().map((c) => Object.assign({}, c.times)); let idle = 0, tot = 0;
+  if (vit.last) cur.forEach((t, i) => { const p = vit.last[i] || t; let s = 0; for (const k in t) s += t[k] - p[k]; tot += s; idle += t.idle - p.idle; });
+  vit.last = cur; vit.cpu = tot > 0 ? Math.max(0, Math.min(100, Math.round(100 * (1 - idle / tot)))) : vit.cpu;
+  vit.mem = Math.round(100 * (1 - os.freemem() / os.totalmem())); vit.up = os.uptime();
+  vit.hist.push(vit.cpu); if (vit.hist.length > 30) vit.hist.shift();
+}
+const upText = (s) => { const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60); return d ? d + "d " + h + "h" : h + "h " + m + "m"; };
+// ----- To-Do sections: every top-level checkbox line with its line number -----
+function parseSecs(md) {
+  const out = []; let cur = null;
+  md.split("\n").forEach((l, i) => {
+    const h = /^## (.*)/.exec(l); if (h) { cur = { name: h[1].trim(), items: [] }; out.push(cur); return; }
+    const m = cur && /^(?:- |\d+[a-z]?\.\s)\[( |x|~|-)\]\s(.*)/i.exec(l); if (m) cur.items.push({ line: i, st: m[1].toLowerCase(), raw: m[2], text: clean(m[2]) });
+  });
+  return out;
+}
+function parseQueue(md) {
+  const open = [], today = ymd(new Date()); let posted = 0;
+  md.split("\n").forEach((l, i) => {
+    const m = /^- \[( |x)\]\s+(.*)/i.exec(l); if (!m) return;
+    if (m[1].toLowerCase() === "x") { const d = /posted[^)]*?(\d{4}-\d{2}-\d{2})/i.exec(m[2]); if (d && d[1] === today) posted++; return; }
+    if (/\bHOLD\b/.test(m[2])) return;
+    const parts = m[2].split("|").map((x) => x.trim()), file = (parts[1] || "").split(/[\\/]/).pop().replace(/\.\w+(\s|$).*/, "").replace(/_9x16.*/, "");
+    open.push({ line: i, text: (parts[0] || "") + " · " + (file || parts[1] || "").slice(0, 60) });
+  });
+  return { open, posted };
+}
+function nextSlot(slots, now) {
+  const list = String(slots || "").split(",").map((s) => /^(\d{1,2}):(\d{2})$/.exec(s.trim())).filter(Boolean).map((m) => [+m[1], +m[2]]).sort((a, b) => a[0] * 60 + a[1] - b[0] * 60 - b[1]);
+  if (!list.length) return null;
+  for (const dayOff of [0, 1]) for (const [h, m] of list) { const d = new Date(now); d.setDate(d.getDate() + dayOff); d.setHours(h, m, 0, 0); if (d > now) return d; }
+  return null;
+}
+function osPanel(parent, title, cls) {
+  const p = parent.createDiv({ cls: "os-p " + (cls || "") }), h = p.createDiv({ cls: "os-ph" });
+  h.createSpan({ cls: "os-pt", text: title }); const meta = h.createSpan({ cls: "os-pm" });
+  return { p, h, meta, body: p.createDiv({ cls: "os-pb" }) };
+}
+// ----- the particle orb (2D canvas, projected sphere; ~30 fps; paused when HQ is not visible) -----
+class Orb {
+  constructor(cv) {
+    this.cv = cv; this.ctx = cv.getContext("2d"); const N = this.N = 900;
+    this.X = new Float32Array(N); this.Y = new Float32Array(N); this.Z = new Float32Array(N);
+    for (let i = 0; i < N; i++) { const y = 1 - (i + 0.5) * 2 / N, r = Math.sqrt(1 - y * y), th = i * 2.399963, k = 0.96 + Math.random() * 0.08; this.X[i] = Math.cos(th) * r * k; this.Y[i] = y * k; this.Z[i] = Math.sin(th) * r * k; }
+    this.bx = [0, 1, 2, 3].map(() => new Float32Array(N * 2)); this.bn = [0, 0, 0, 0];
+    Object.assign(this, { rot: 0, int: 0.25, target: 0.25, tint: 0, tintT: 0, arcs: [], nextArc: 0, last: 0, on: false, raf: 0, w: 0, h: 0, cost: 0, frames: 0, dpr: 1, still: matchMedia("(prefers-reduced-motion: reduce)").matches });
+    this.loop = (t) => this.frame(t);
+  }
+  resize() {
+    const cv = this.cv, w = cv.clientWidth, h = cv.clientHeight; if (!w || !h) return;
+    const dpr = Math.min(window.devicePixelRatio || 1, 1.5); cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+    this.w = cv.width; this.h = cv.height; this.s = Math.min(this.w, this.h) * 0.4; this.dpr = dpr;
+    const gs = this.gs = Math.round(this.s * 2.8), mk = (rgb) => { const g = document.createElement("canvas"); g.width = g.height = gs; const x = g.getContext("2d"), rg = x.createRadialGradient(gs / 2, gs / 2, this.s * 0.1, gs / 2, gs / 2, gs / 2); rg.addColorStop(0, "rgba(" + rgb + ",.34)"); rg.addColorStop(0.45, "rgba(" + rgb + ",.1)"); rg.addColorStop(1, "rgba(" + rgb + ",0)"); x.fillStyle = rg; x.fillRect(0, 0, gs, gs); return g; };
+    this.glow = mk("25,227,208"); this.glowA = mk("255,176,46");
+  }
+  mode(intensity, warn) { this.target = intensity; this.tintT = warn ? 1 : 0; }
+  run(on) { if (on === this.on) return; this.on = on; cancelAnimationFrame(this.raf); if (on) { this.last = 0; this.raf = requestAnimationFrame(this.loop); } }
+  pt(i, cx, cy, R, cs) { // rotated + projected point i -> [sx, sy]
+    const x = this.X[i], y = this.Y[i], z = this.Z[i], c = Math.cos(this.rot), s = Math.sin(this.rot);
+    const x1 = x * c + z * s, z1 = -x * s + z * c, y2 = y * cs[0] - z1 * cs[1], z2 = y * cs[1] + z1 * cs[0], p = 1 + z2 * 0.22;
+    return [cx + x1 * R * p, cy + y2 * R * p];
+  }
+  frame(t) {
+    if (!this.on) return; this.raf = requestAnimationFrame(this.loop);
+    const gap = this.still ? 120 : 31; if (t - this.last < gap) return;
+    const dt = Math.min(0.1, (t - (this.last || t - gap)) / 1000); this.last = t; const t0 = performance.now();
+    if (!this.w) { this.resize(); if (!this.w) return; }
+    const ctx = this.ctx, W = this.w, H = this.h, cx = W / 2, cy = H / 2, dpr = this.dpr;
+    this.int += (this.target - this.int) * Math.min(1, dt * 1.5); this.tint += (this.tintT - this.tint) * Math.min(1, dt * 2);
+    const I = this.int; this.rot += dt * (this.still ? 0.02 : 0.1 + 0.3 * I);
+    ctx.clearRect(0, 0, W, H);
+    const gs = this.gs, br = 1 + 0.03 * Math.sin(t / 700) + 0.04 * I * Math.sin(t / 530); // breathing stays well under 3 Hz
+    ctx.globalAlpha = Math.min(1, 0.45 + 0.6 * I); ctx.drawImage(this.glow, cx - gs / 2, cy - gs / 2);
+    if (this.tint > 0.02) { ctx.globalAlpha = this.tint * 0.9; ctx.drawImage(this.glowA, cx - gs / 2, cy - gs / 2); } ctx.globalAlpha = 1;
+    const R = this.s * br, tilt = 0.38, cs = [Math.cos(tilt), Math.sin(tilt)], cr = Math.cos(this.rot), sr = Math.sin(this.rot);
+    this.bn[0] = this.bn[1] = this.bn[2] = this.bn[3] = 0;
+    for (let i = 0; i < this.N; i++) {
+      const x = this.X[i], y = this.Y[i], z = this.Z[i], x1 = x * cr + z * sr, z1 = -x * sr + z * cr, y2 = y * cs[0] - z1 * cs[1], z2 = y * cs[1] + z1 * cs[0], p = 1 + z2 * 0.22;
+      const b = z2 < -0.4 ? 0 : z2 < 0 ? 1 : z2 < 0.5 ? 2 : 3, a = this.bx[b], n = this.bn[b]; a[n] = cx + x1 * R * p; a[n + 1] = cy + y2 * R * p; this.bn[b] = n + 2;
+    }
+    const base = [0.16, 0.32, 0.6, 0.95], sz = [1, 1.3, 1.7, 2.1].map((s) => s * dpr), mix = this.tint;
+    const col = (a) => "rgba(" + Math.round(25 + 230 * mix) + "," + Math.round(227 - 51 * mix) + "," + Math.round(208 - 162 * mix) + "," + a.toFixed(3) + ")";
+    for (let b = 0; b < 4; b++) { ctx.fillStyle = col(base[b] * (0.55 + 0.45 * I)); const a = this.bx[b], n = this.bn[b], s = sz[b]; for (let j = 0; j < n; j += 2) ctx.fillRect(a[j], a[j + 1], s, s); }
+    // lightning arcs: only while agents are working, at most 2 at once, each lives ~0.5 s and they spawn >= 0.55 s apart (never > 3 Hz)
+    if (!this.still && I > 0.6 && t > this.nextArc && this.arcs.length < 2) {
+      this.nextArc = t + 550 + Math.random() * 900; const a = (Math.random() * this.N) | 0; let b = (Math.random() * this.N) | 0, g = 0;
+      while (g++ < 40 && Math.abs(this.X[a] * this.X[b] + this.Y[a] * this.Y[b] + this.Z[a] * this.Z[b]) > 0.5) b = (Math.random() * this.N) | 0;
+      this.arcs.push({ a, b, born: t });
+    }
+    this.arcs = this.arcs.filter((r) => t - r.born < 520);
+    for (const r of this.arcs) {
+      const A = this.pt(r.a, cx, cy, R, cs), B = this.pt(r.b, cx, cy, R, cs), f = 1 - (t - r.born) / 520, mx = (A[0] + B[0]) / 2, my = (A[1] + B[1]) / 2, ox = mx - cx, oy = my - cy, ol = Math.hypot(ox, oy) || 1, bulge = R * 0.35;
+      const qx = mx + ox / ol * bulge, qy = my + oy / ol * bulge; ctx.beginPath(); ctx.moveTo(A[0], A[1]);
+      for (let s = 1; s <= 9; s++) { const u = s / 9, ax = (1 - u) * (1 - u) * A[0] + 2 * u * (1 - u) * qx + u * u * B[0], ay = (1 - u) * (1 - u) * A[1] + 2 * u * (1 - u) * qy + u * u * B[1], j = s < 9 ? (Math.random() - 0.5) * R * 0.06 : 0; ctx.lineTo(ax + j, ay + j); }
+      ctx.strokeStyle = "rgba(25,227,208," + (0.18 * f).toFixed(3) + ")"; ctx.lineWidth = 5 * dpr; ctx.stroke(); ctx.strokeStyle = "rgba(210,255,250," + (0.9 * f).toFixed(3) + ")"; ctx.lineWidth = 1.3 * dpr; ctx.stroke();
+    }
+    this.cost += (performance.now() - t0 - this.cost) * 0.05; this.frames++;
+  }
+}
+Object.assign(HQView.prototype, {
+  claudian() { return claudianOf(this.app); },
+  osVars() {
+    const r = this.contentEl, v = { "--amber": "#19e3d0", "--amber2": "#2dd4bf", "--bg1": "#05090c", "--bg2": "#071014", "--bg3": "#04070a", "--tx": "#d8f3f1", "--tx2": "#8fb3b6", "--glass": "rgba(25,227,208,.05)", "--glass-b": "rgba(25,227,208,.28)", "--teal": "#0a1c20", "--teal2": "#0f2a2e" };
+    Object.entries(v).forEach(([k, c]) => r.style.setProperty(k, c));
+  },
+  osMode() {
+    const on = !this.plugin.settings.classicLayout; if (this.os === on) return; this.os = on;
+    this.contentEl.toggleClass("hqos", on); this.osStop(); if (this.pageEl) { this.pageEl.empty(); this.pageEl.toggleClass("os", on); }
+    if (!on) ["--tx", "--glass", "--glass-b"].forEach((k) => this.contentEl.style.removeProperty(k));
+  },
+  osStop() { if (this.orb) this.orb.run(false); if (this.osIO) this.osIO.disconnect(); if (this.osRO) this.osRO.disconnect(); this.orb = null; this.osIO = this.osRO = null; this.osUI = null; },
+  osBuild() {
+    const page = this.pageEl; page.empty(); page.addClass("os"); const ui = this.osUI = { sig: {}, inView: true }, wrap = page.createDiv({ cls: "os-wrap" });
+    wrap.createDiv({ cls: "os-sweep" }); ui.top = wrap.createDiv({ cls: "os-top" });
+    const grid = wrap.createDiv({ cls: "os-grid" }), L = grid.createDiv({ cls: "os-col os-left" }), M = grid.createDiv({ cls: "os-col os-mid" }), Rt = grid.createDiv({ cls: "os-col os-right" });
+    ui.vit = osPanel(L, "SYSTEM VITALS", "os-vit"); ui.sess = osPanel(L, "ACTIVE AI SESSIONS", "os-sess"); ui.prog = osPanel(L, "PROJECT PROGRESS", "os-prog"); ui.next = osPanel(L, "NEXT UP", "os-next");
+    ui.tasks = osPanel(Rt, "TOP TASKS", "os-tasks"); ui.rev = osPanel(Rt, "REVIEW QUEUE", "os-rev"); ui.acts = osPanel(Rt, "ACTION ITEMS", "os-acts"); ui.rules = osPanel(Rt, "SAVE AS RULE", "os-rules"); ui.ap = osPanel(Rt, "AGENT PROGRESS", "os-ap"); ui.files = osPanel(Rt, "FILES IN PLAY", "os-files");
+    this.osColl = this.osColl || new Set(["files"]);
+    [["ap", ui.ap], ["files", ui.files]].forEach(([k, p]) => { p.p.addClass("os-coll"); p.p.toggleClass("collapsed", this.osColl.has(k)); p.h.setAttr("role", "button"); p.h.setAttr("tabindex", "0"); p.h.setAttr("aria-expanded", String(!this.osColl.has(k)));
+      const tg = () => { this.osColl.has(k) ? this.osColl.delete(k) : this.osColl.add(k); p.p.toggleClass("collapsed", this.osColl.has(k)); p.h.setAttr("aria-expanded", String(!this.osColl.has(k))); }; p.h.onclick = tg; p.h.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); tg(); } }); });
+    const orbw = M.createDiv({ cls: "os-orbw" }); ui.cv = orbw.createEl("canvas", { cls: "os-cv", attr: { "aria-hidden": "true" } });
+    orbw.insertAdjacentHTML("beforeend", '<svg class="os-ring" viewBox="0 0 200 200" aria-hidden="true"><circle cx="100" cy="100" r="96" class="r1"/><circle cx="100" cy="100" r="88" class="r2"/><path class="r3" d="M100 2v10M100 188v10M2 100h10M188 100h10"/></svg>');
+    ui.status = M.createDiv({ cls: "os-status", attr: { role: "status", "aria-live": "polite" } });
+    const cmd = M.createDiv({ cls: "os-cmd" }); ui.target = cmd.createEl("select", { cls: "os-sel", attr: { "aria-label": "Send to which Claudian session" } });
+    ui.cmdIn = cmd.createEl("input", { cls: "os-in", attr: { type: "text", placeholder: "Type a command for HQ…", "aria-label": "Command for Claudian", autocomplete: "off", spellcheck: "false" } });
+    const sendB = cmd.createEl("button", { cls: "os-go", text: "SEND", attr: { "aria-label": "Send command" } }); ui.cmdMsg = M.createDiv({ cls: "os-cmdmsg" });
+    const go = () => this.osSend(ui.cmdIn.value, ui.target.value); sendB.onclick = go; ui.cmdIn.addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Enter" && !e.isComposing) go(); });
+    ui.tick = M.createDiv({ cls: "os-ticker" });
+    this.orb = new Orb(ui.cv); this.osRO = new ResizeObserver(() => { if (this.orb) this.orb.resize(); }); this.osRO.observe(orbw);
+    this.osIO = new IntersectionObserver((es) => { ui.inView = es[es.length - 1].isIntersecting; this.osGate(); }); this.osIO.observe(orbw);
+    sampleVitals(); setTimeout(() => { if (this.osUI === ui) { sampleVitals(); this.osVitalsRender(); } }, 1500);
+    this.osSessData(true); this.osElevenCheck(true); setTimeout(() => this.osGate(), 300);
+  },
+  osGate() { const ui = this.osUI; if (!ui || !this.orb) return; this.orb.run(!document.hidden && ui.inView && (!this.contentEl.isShown || this.contentEl.isShown())); },
+  // ---- render everything (cheap; each region redraws only when its signature changed) ----
+  osRender(force) {
+    if (!this.osUI) this.osBuild();
+    const ae = document.activeElement, held = !force && (Date.now() - (this.touchedAt || 0) < 20000 || (ae && /TEXTAREA|INPUT/.test(ae.tagName) && this.contentEl.contains(ae)));
+    this.osTopRender(); this.osVitalsRender(); this.osSessRender(); this.osProgRender(); this.osNextRender(); this.osMidRender();
+    if (!held) { this.osTasksRender(); this.osReviewRender(); this.osInsRender(); }
+  },
+  osReg(name, sig, fn) { const u = this.osUI; if (u.sig[name] === sig) return; u.sig[name] = sig; fn(); },
+  osPlanName() { if (this.osPlan === undefined) { this.osPlan = ""; try { const c = JSON.parse(fs.readFileSync(path.join(os.homedir(), ".claude", ".credentials.json"), "utf8")); this.osPlan = String((c.claudeAiOauth && c.claudeAiOauth.subscriptionType) || "").slice(0, 12); } catch (e) {} } return this.osPlan; },
+  osTopRender() {
+    const u = this.osUI, ci = cacheInfo(), us = this.usage, wk = us && us.seven_day, se = us && us.five_hour, model = shortModel(mainState.model);
+    const pc = (x) => x && x.utilization !== undefined && x.utilization !== null ? Math.round(x.utilization) : null, wv = pc(wk), sv = pc(se), cl = (p) => p === null ? "" : p >= 90 ? "bad" : p >= 75 ? "warn" : "";
+    const sig = JSON.stringify([this.project && this.project.name, model, this.osPlanName(), wv, sv, ci && ci.state, ci && Math.floor(ci.age / 3), this.err, vit.cpu > 85, wk && wk.resets_at, se && se.resets_at]);
+    this.osReg("top", sig, () => {
+      const t = u.top; t.empty(); const brand = t.createDiv({ cls: "os-brand" }); brand.createSpan({ cls: "os-logo", text: "HQ_OS" });
+      brand.createSpan({ cls: "os-proj", text: "// " + String(this.project ? this.project.name : "HQ").toUpperCase() });
+      const on = brand.createSpan({ cls: "os-online" }); on.createSpan({ cls: "os-dot" }); on.createSpan({ text: "ONLINE" });
+      const chips = t.createDiv({ cls: "os-chips" }), chip = (k, v, c, tip) => { const e = chips.createSpan({ cls: "os-chip " + (c || "") }); e.createSpan({ cls: "k", text: k }); e.createSpan({ cls: "v", text: v }); if (tip) e.title = tip; return e; };
+      if (model) chip("MODEL", model.toUpperCase()); if (this.osPlanName()) chip("PLAN", this.osPlanName().toUpperCase());
+      chip("WEEK", wv === null ? "N/A" : wv + "%", cl(wv), wk && wk.resets_at ? "Resets " + when(wk.resets_at) + " (in " + left(wk.resets_at) + ")" : this.err || "");
+      chip("SESSION", sv === null ? "N/A" : sv + "%", cl(sv), se && se.resets_at ? "Resets " + when(se.resets_at) + " (in " + left(se.resets_at) + ")" : this.err || "");
+      if (ci) { const e = chip("CACHE", ci.state === "cold" ? "COLD" : ci.state === "warn" ? "COOLING" : "WARM", ci.state === "cold" ? "bad" : ci.state === "warn" ? "warn" : "", ci.msg); e.addClass("click"); e.onclick = () => this.osFocusInsights(); }
+      if (vit.cpu > 85) chip("LOAD", vit.cpu + "%", "bad", "System load is high");
+      const r = t.createDiv({ cls: "os-r" }); this.osClock = r.createDiv({ cls: "os-clock" });
+      const ib = (icon, label, fn) => { const b = r.createEl("button", { cls: "os-ib", attr: { "aria-label": label, title: label } }); setIcon(b, icon); b.onclick = fn; };
+      ib("refresh-cw", "Refresh", () => this.refreshAll()); ib("settings", "Settings", () => { try { this.app.setting.open(); this.app.setting.openTabById("project-hq"); } catch (e) { new Notice("Open Settings, then Project HQ"); } });
+      this.osClockTick();
+    });
+  },
+  osFocusInsights() { const u = this.osUI; if (u && u.acts) u.acts.p.scrollIntoView({ behavior: "smooth", block: "nearest" }); },
+  osClockTick() { if (!this.osClock) return; const n = new Date(); this.osClock.setText(osMono(n.getHours()) + ":" + osMono(n.getMinutes()) + ":" + osMono(n.getSeconds()) + "  ·  " + n.toLocaleDateString([], { weekday: "short", day: "2-digit", month: "short", year: "numeric" }).toUpperCase().replace(/,/g, "")); },
+  osVitalsRender() {
+    const u = this.osUI, b = u.vit.body, warn = vit.cpu > 85 || vit.mem > 85;
+    this.osReg("vit", JSON.stringify([vit.cpu, vit.mem, Math.floor(vit.up / 60)]), () => {
+      b.empty(); const row = (k, v, p) => { const r = b.createDiv({ cls: "os-vrow" + (p > 85 ? " bad" : p > 70 ? " warn" : "") }); r.createSpan({ cls: "k", text: k }); r.createSpan({ cls: "v", text: v }); const bar = r.createDiv({ cls: "os-bar" }); bar.createEl("i").style.width = Math.max(2, p) + "%"; };
+      row("CPU", vit.cpu + "%", vit.cpu); row("MEMORY", vit.mem + "%", vit.mem);
+      const sp = b.createDiv({ cls: "os-spark" }); spark(sp, vit.hist);
+      const up = b.createDiv({ cls: "os-vrow flat" }); up.createSpan({ cls: "k", text: "UPTIME" }); up.createSpan({ cls: "v", text: upText(vit.up) });
+      if (warn) b.createDiv({ cls: "os-warn", text: "HIGH LOAD: " + (vit.cpu > 85 ? "CPU " + vit.cpu + "%" : "memory " + vit.mem + "%") + ". Close heavy apps." });
+      u.vit.meta.setText(warn ? "WARNING" : "NOMINAL"); u.vit.meta.toggleClass("bad", warn);
+    });
+  },
+  // ---- sessions: Claudian conversations + agents ----
+  async osSessData(force) {
+    if (this.osSessBusy) return; if (!force && Date.now() - (this.osSessAt || 0) < 4500) return; this.osSessBusy = true; this.osSessAt = Date.now();
+    try {
+      const cp = this.claudian(), rows = []; this.osSnip = this.osSnip || {};
+      if (cp && cp.chatHost && cp.sessionMessaging) {
+        const list = cp.chatHost.getConversationList().filter((c) => !c.isArchived && !OS_PERSONAL.test((c.linkedContentPath || "") + " " + (c.title || ""))).sort((a, b) => (b.lastActivityAt || 0) - (a.lastActivityAt || 0)).slice(0, 7);
+        for (const c of list) {
+          const st = cp.sessionMessaging.status(c.id), key = [c.lastActivityAt, c.messageCount, st].join("|"), sn = this.osSnip[c.id];
+          if (rows.length < 4 && cp.api && (!sn || (sn.key !== key && Date.now() - sn.at > 8000))) { let t = ""; try { t = String(await cp.api.read(c.id) || ""); } catch (e) {} this.osSnip[c.id] = { key, at: Date.now(), text: /^\(no reply\)$/.test(t) ? "" : redact(t).replace(/\s+/g, " ").trim().slice(0, 180) }; }
+          rows.push({ kind: "chat", id: c.id, title: clean(c.title || "Untitled"), st: st === "running" ? "thinking" : st === "awaiting-user" ? "needs you" : "idle", ts: c.lastActivityAt || 0, snip: (this.osSnip[c.id] || {}).text || "" });
+        }
+        this.osConvs = list.map((c) => [c.id, clean(c.title || "Untitled"), !!(cp.api && cp.api.getActiveSessionId && cp.api.getActiveSessionId() === c.id)]);
+      } else this.osConvs = [];
+      const now = Date.now();
+      this.live.filter((a) => a.status === "running" || (a.status === "done" && now - a.mtime < 3600000)).slice(0, 8).forEach((a) => rows.push({ kind: "agent", id: a.id, title: clean(a.title), st: a.status === "running" ? "running in background" : "done", ts: a.mtime, snip: redact(a.tool ? stepText(a.tool) : a.text || "").replace(/\s+/g, " ").slice(0, 180), type: a.type }));
+      this.osRows = rows; this.osFillTarget(); this.osSessRender();
+    } catch (e) { console.error("Project HQ OS sessions", e); } finally { this.osSessBusy = false; }
+  },
+  osSessRender() {
+    const u = this.osUI; if (!u) return; const rows = this.osRows || [];
+    this.osReg("sess", JSON.stringify(rows.map((r) => [r.id, r.st, r.snip, r.title])), () => {
+      const b = u.sess.body; b.empty(); u.sess.meta.setText(rows.filter((r) => r.st === "thinking" || r.st === "running in background").length + " ACTIVE");
+      if (!rows.length) b.createDiv({ cls: "os-muted", text: "No sessions yet." });
+      rows.forEach((r) => {
+        const c = b.createDiv({ cls: "os-srow " + r.kind + " s-" + r.st.replace(/\s+/g, "-"), attr: r.kind === "chat" ? { role: "button", tabindex: "0", "aria-label": "Open session " + r.title } : {} });
+        const h = c.createDiv({ cls: "os-sh" }); h.createSpan({ cls: "os-sd" }); h.createSpan({ cls: "os-sn", text: r.title }).title = r.title; h.createSpan({ cls: "os-ss", text: r.st.toUpperCase() });
+        c.createDiv({ cls: "os-sm", text: (r.kind === "agent" ? r.type + " · " : "") + (r.snip || "(no messages yet)") });
+        if (r.kind === "chat") { const open = () => this.osOpenSession(r.id); c.onclick = open; c.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } }); }
+      });
+    });
+  },
+  osOpenSession(id) {
+    const cp = this.claudian(), ws = this.app.workspace, type = (this.plugin.settings.chatView || "claudian-view").trim();
+    try { const p = cp && cp.chatHost && cp.chatHost.switchConversation ? cp.chatHost.switchConversation(id) : null; if (p && p.catch) p.catch((e) => console.error("Project HQ switch session", e)); } catch (e) { console.error("Project HQ switch session", e); }
+    const leaf = ws.getLeavesOfType(type)[0]; if (leaf) ws.revealLeaf(leaf);
+  },
+  osFillTarget() {
+    const u = this.osUI; if (!u || !u.target) return; const prev = u.target.value, convs = this.osConvs || [], sig = JSON.stringify(convs); if (u.tsig === sig) return; u.tsig = sig; u.target.empty();
+    u.target.createEl("option", { value: "new", text: "+ NEW SESSION" }); convs.forEach(([id, t, act]) => u.target.createEl("option", { value: id, text: (act ? "* " : "") + t.slice(0, 34) }));
+    u.target.value = convs.some((c) => c[0] === prev) || prev === "new" ? prev : "new";
+  },
+  // ---- command bar -> Claudian (api.send queues the text as a user message; new session via chatHost.createConversation) ----
+  async osSend(text, target) {
+    const u = this.osUI; text = String(text || "").trim(); if (!text) return; const say = (m, bad) => { u.cmdMsg.setText(m); u.cmdMsg.toggleClass("bad", !!bad); };
+    const cp = this.claudian(), ws = this.app.workspace, type = (this.plugin.settings.chatView || "claudian-view").trim();
+    if (!(cp && cp.api && cp.api.send && cp.chatHost)) { // no safe API: copy and focus the chat input
+      try { await navigator.clipboard.writeText(text); } catch (e) {}
+      const leaf = ws.getLeavesOfType(type)[0]; if (leaf) { ws.revealLeaf(leaf); setTimeout(() => { const ta = leaf.view.contentEl.querySelector("textarea"); if (ta) ta.focus(); }, 150); }
+      say("Claudian API not found: copied to clipboard, paste it into the chat."); return;
+    }
+    u.cmdIn.disabled = true; say("Sending…");
+    try {
+      let id = target, title = "";
+      if (!id || id === "new") {
+        const s = cp.chatHost.getCommittedSettings ? cp.chatHost.getCommittedSettings() : {}, ms = cp.chatHost.getActiveModelSelection ? cp.chatHost.getActiveModelSelection() : null;
+        const conv = await cp.chatHost.createConversation(Object.assign({ providerId: (ms && ms.providerId) || s.settingsProvider || "claude" }, ms && ms.model ? { selectedModel: ms.model } : {})); id = conv.id; title = "a new session";
+      } else title = ((this.osConvs || []).find((c) => c[0] === id) || [])[1] || "session";
+      await cp.api.send(id, { text });
+      u.cmdIn.value = ""; say("Sent to " + title + ".");
+      if (!target || target === "new") { this.osSessAt = 0; this.osOpenSession(id); }
+      this.osSessData(true);
+    } catch (e) { console.error("Project HQ command", e); say("Could not send: " + redact(e && e.message || e), true); }
+    finally { u.cmdIn.disabled = false; u.cmdIn.focus(); }
+  },
+  // ---- project progress rings ----
+  osProgRender() {
+    const u = this.osUI, secs = (this.secs || []).filter((s) => !/^done/i.test(s.name)).map((s) => { const it = s.items.filter((i) => i.st !== "-"); return { n: shortName(s.name), done: it.filter((i) => i.st === "x").length, tot: it.length }; }).filter((s) => s.tot > 0);
+    this.osReg("prog", JSON.stringify(secs), () => {
+      const b = u.prog.body; b.empty(); u.prog.meta.setText(secs.reduce((n, s) => n + s.done, 0) + "/" + secs.reduce((n, s) => n + s.tot, 0));
+      if (!secs.length) { b.createDiv({ cls: "os-muted", text: "No To-Do sections found." }); return; }
+      const g = b.createDiv({ cls: "os-rings" });
+      secs.slice(0, 6).forEach((s) => {
+        const pct = Math.round(100 * s.done / s.tot), c = g.createDiv({ cls: "os-rg", attr: { title: s.n + ": " + s.done + " of " + s.tot + " done" } }), C = 2 * Math.PI * 22;
+        c.insertAdjacentHTML("beforeend", '<svg viewBox="0 0 56 56" aria-hidden="true"><circle cx="28" cy="28" r="22" class="bg"/><circle cx="28" cy="28" r="22" class="fg" stroke-dasharray="' + (C * pct / 100).toFixed(1) + " " + C.toFixed(1) + '" transform="rotate(-90 28 28)"/></svg>');
+        c.createDiv({ cls: "os-rp", text: pct + "%" }); c.createDiv({ cls: "os-rl", text: s.n }); c.createDiv({ cls: "os-rc", text: s.done + "/" + s.tot });
+      });
+    });
+  },
+  // ---- next posting slot ----
+  osNextRender() {
+    const u = this.osUI, pr = this.project || {}, nx = nextSlot(pr.slots, new Date()), wait = this.needsCount(), q = this.queue || { open: [] };
+    this.osReg("next", JSON.stringify([nx && nx.getTime(), wait, q.open[0] && q.open[0].text]), () => {
+      const b = u.next.body; b.empty(); u.next.meta.setText(wait ? wait + " WAITING" : "CLEAR");
+      if (nx) { const r = b.createDiv({ cls: "os-nrow" }); r.createSpan({ cls: "k", text: "NEXT POST" }); r.createSpan({ cls: "v", text: osMono(nx.getHours()) + ":" + osMono(nx.getMinutes()) }); this.osCount = b.createDiv({ cls: "os-count" }); this.osCountAt = nx.getTime(); this.osCountTick(); }
+      else { this.osCount = null; b.createDiv({ cls: "os-muted", text: "No posting slots set (Settings: Posting slots)." }); }
+      if (q.open[0]) b.createDiv({ cls: "os-muted os-qn", text: "Queue: " + q.open[0].text });
+      const w = b.createDiv({ cls: "os-nrow" + (wait ? " warn" : "") }); w.createSpan({ cls: "k", text: "WAITING ON " + String(this.plugin.settings.person || "YOU").toUpperCase() }); w.createSpan({ cls: "v", text: String(wait) });
+    });
+  },
+  osCountTick() { if (this.osCount && this.osCountAt) { const ms = this.osCountAt - Date.now(), s = Math.max(0, Math.floor(ms / 1000)); this.osCount.setText("T-" + osMono(Math.floor(s / 3600)) + ":" + osMono(Math.floor(s % 3600 / 60)) + ":" + osMono(s % 60)); if (ms < 0 && this.osUI) { this.osUI.sig.next = ""; this.osNextRender(); } } },
+  // ---- centre: status line + ticker; orb mood ----
+  osMidRender() {
+    const u = this.osUI, run = this.live.filter((a) => a.status === "running").length, ci = cacheInfo(), cold = ci && ci.state === "cold", hot = vit.cpu > 85;
+    const el = this.osEleven && this.osEleven.ok ? this.osEleven : null, posts = this.queue ? this.queue.posted : null, lv = this.todo && this.todo.live;
+    if (this.orb) this.orb.mode(run ? 1 : cold ? 0.15 : 0.28, cold || hot);
+    const msg = run ? run + (run === 1 ? " agent" : " agents") + " running" : cold ? "Cache cold: next message re-reads the chat" : hot ? "High system load" : "All systems operational", cls = run ? "run" : (cold || hot) ? "warn" : "ok";
+    this.osReg("mid", JSON.stringify([msg, cls, run, posts, el && el.left, this.osEleven && this.osEleven.err, lv]), () => {
+      u.status.empty(); u.status.className = "os-status " + cls; u.status.createSpan({ cls: "os-dot" }); u.status.createSpan({ text: msg.toUpperCase() });
+      const t = u.tick; t.empty(); const it = (k, v, c, tip) => { const e = t.createSpan({ cls: "os-ti " + (c || "") }); e.createSpan({ cls: "k", text: k }); e.createSpan({ cls: "v", text: v }); if (tip) e.title = tip; };
+      it("AGENTS", run + " running", run ? "run" : ""); if (posts !== null) it("POSTS TODAY", String(posts));
+      if (this.osEleven) it("ELEVENLABS", el ? fmtN(el.left) + " chars left" : (this.osEleven.err ? "n/a" : "checking…"), el && el.left < 20000 ? "warn" : "", this.osEleven.err);
+      it("SITE", lv ? "LIVE · " + lv.slice(0, 40) : "n/a", lv ? "ok" : "");
+    });
+  },
+  // ---- ElevenLabs credits: via the existing eleven.mjs, at most once per hour, cached in localStorage ----
+  osElevenCheck() {
+    const pr = this.project || {}, script = absP(pr.creditsScript || ""); if (!script) return;
+    if (this.osEleven === undefined) { try { this.osEleven = JSON.parse(localStorage.getItem("hqos-eleven") || "null"); } catch (e) { this.osEleven = null; } }
+    if (this.osElevenBusy || (this.osEleven && Date.now() - this.osEleven.t < 3600000)) return; this.osElevenBusy = true;
+    execFile("node", [script, "subscription"], { cwd: path.dirname(script), timeout: 25000, windowsHide: true }, (err, out) => {
+      this.osElevenBusy = false; let r = { t: Date.now(), ok: false, err: "" };
+      try { const line = String(out || "").split("\n").reverse().find((l) => l.trim().startsWith("{")), j = JSON.parse(line); if (typeof j.left === "number") r = { t: Date.now(), ok: true, left: j.left, limit: j.limit, tier: j.tier }; else r.err = "no data"; } catch (e) { r.err = redact(err ? String(err.message).split("\n")[0] : "no data").slice(0, 100); }
+      this.osEleven = r; try { localStorage.setItem("hqos-eleven", JSON.stringify(r)); } catch (e) {} if (this.osUI) { this.osUI.sig.mid = ""; this.osMidRender(); }
+    });
+  },
+  // ---- tasks (right) ----
+  osTasksRender() {
+    const u = this.osUI, secs = this.secs || [], wait = this.todo.wait.filter((w) => !w.done), q = this.queue || { open: [] };
+    const open = []; secs.forEach((s) => { if (/^done/i.test(s.name) || WAITH.test(s.name)) return; s.items.forEach((i) => { if (i.st === " " || i.st === "~") open.push({ s, i }); }); });
+    this.osReg("tasks", JSON.stringify([open.slice(0, 60).map((o) => [o.i.line, o.i.text, o.i.st]), wait.map((w) => [w.line, w.text]), q.open.slice(0, 5).map((o) => o.text), this.osTaskAdd, this.osTaskAll]), () => {
+      const b = u.tasks.body; b.empty(); u.tasks.meta.setText(open.length + wait.length + " OPEN");
+      const group = (title, count, addTo, build) => {
+        const g = b.createDiv({ cls: "os-tg" }), h = g.createDiv({ cls: "os-tgh" }); h.createSpan({ cls: "os-tgt", text: title }); h.createSpan({ cls: "os-cnt", text: String(count) });
+        const add = h.createEl("button", { cls: "os-add", text: "+ Add", attr: { "aria-label": "Add task to " + title } }); const list = g.createDiv({ cls: "os-tl" }); build(list);
+        if (this.osTaskAdd === addTo) {
+          const f = g.createDiv({ cls: "os-addf" }), inp = f.createEl("input", { cls: "os-in", attr: { type: "text", placeholder: "New task, Enter to add (Esc cancels)", "aria-label": "New task text" } });
+          inp.addEventListener("keydown", async (e) => { e.stopPropagation(); if (e.key === "Escape") { this.osTaskAdd = null; this.osUI.sig.tasks = ""; this.osTasksRender(); } if (e.key === "Enter" && !e.isComposing && inp.value.trim()) { const t = inp.value.trim(); this.osTaskAdd = null; await this.osAddTask(addTo, t); } });
+          setTimeout(() => inp.focus(), 0);
+        }
+        add.onclick = () => { this.osTaskAdd = this.osTaskAdd === addTo ? null : addTo; this.osUI.sig.tasks = ""; this.osTasksRender(); };
+      };
+      const pn = String(this.project ? this.project.name : "Project").toUpperCase();
+      group(pn + " TO-DO", open.length, "todo", (l) => {
+        if (!open.length) l.createDiv({ cls: "os-muted", text: "Nothing open." });
+        (this.osTaskAll ? open : open.slice(0, 8)).forEach(({ s, i }) => this.osTaskRow(l, i.text, false, () => this.osTickLine(i.line, i.raw), i.st === "~" ? "in progress" : "", s.name));
+        if (open.length > 8) { const m = l.createEl("button", { cls: "os-more", text: this.osTaskAll ? "Show fewer" : "+" + (open.length - 8) + " more" }); m.onclick = () => { this.osTaskAll = !this.osTaskAll; this.osUI.sig.tasks = ""; this.osTasksRender(); }; }
+      });
+      group("WAITING ON " + String(this.plugin.settings.person || "YOU").toUpperCase(), wait.length, "wait", (l) => { if (!wait.length) l.createDiv({ cls: "os-muted", text: "Nothing waiting." }); wait.forEach((w) => this.osTaskRow(l, clean(w.text), false, () => this.tick(w.line, w.text, true), "")); });
+      if (this.project && this.project.queue) group("POST QUEUE · NEXT 5", q.open.length, "queue", (l) => { if (!q.open.length) l.createDiv({ cls: "os-muted", text: "Queue empty." }); q.open.slice(0, 5).forEach((o) => this.osTaskRow(l, o.text, true)); });
+    });
+  },
+  osTaskRow(list, text, ro, onTick, tag, tip) {
+    const r = list.createDiv({ cls: "os-task" }), id = "os" + Math.random().toString(36).slice(2, 8);
+    const cb = r.createEl("input", { attr: { type: "checkbox", id, "aria-label": ro ? "Queued post" : "Mark done: " + text } }); if (ro) { cb.disabled = true; cb.addClass("ro"); } else cb.onchange = () => { cb.disabled = true; onTick(); };
+    const lb = r.createEl("label", { attr: { for: id }, text: text.slice(0, 130) }); lb.title = (tip ? tip + ": " : "") + text; if (tag) r.createSpan({ cls: "os-tag", text: tag });
+  },
+  async osTickLine(line, raw) {
+    const f = this.app.vault.getAbstractFileByPath(TODO); if (!(f instanceof TFile)) return;
+    await this.app.vault.process(f, (d) => { const ls = d.split("\n"), L = ls[line]; if (L !== undefined && L.includes(String(raw).slice(0, 40))) ls[line] = L.replace(/\[[ ~]\]/, "[x]"); return ls.join("\n"); }); // only that one line
+  },
+  async osAddTask(where, text) {
+    const rel = where === "queue" ? (this.project || {}).queue : TODO, head = where === "wait" ? "Waiting on" : where === "queue" ? "TikTok" : NEXTH;
+    try {
+      const f = this.app.vault.getAbstractFileByPath(rel); if (!(f instanceof TFile)) throw new Error("note not found");
+      const line = "- [ ] " + text.replace(/\s+/g, " ").trim() + (where === "queue" ? "" : " (Added " + todayStr() + ")");
+      await this.app.vault.process(f, (d) => insertInSection(d, head, line, false)); new Notice("Task added");
+    } catch (e) { console.error("Project HQ add task", e); new Notice("Could not add: " + (e && e.message || e)); }
+    this.osUI.sig.tasks = ""; await this.loadFiles(); this.osTasksRender();
+  },
+  osReviewRender() {
+    const u = this.osUI, need = this.review.filter((i) => i.status === "needs-review"), shown = this.osRevAll ? need : need.slice(0, 3);
+    this.osReg("rev", this.rsig + "|" + need.length + "|" + this.osRevAll, () => {
+      const b = u.rev.body; b.empty(); u.rev.meta.setText(need.length ? need.length + " PENDING" : "CLEAR"); u.rev.meta.toggleClass("warn", need.length > 0);
+      if (!need.length) b.createDiv({ cls: "os-muted", text: "Nothing to review." });
+      shown.forEach((it) => reviewCard(this, b, it));
+      if (need.length > 3) { const m = b.createEl("button", { cls: "os-more", text: this.osRevAll ? "Show fewer" : "+" + (need.length - 3) + " more" }); m.onclick = () => { this.osRevAll = !this.osRevAll; this.osUI.sig.rev = ""; this.osReviewRender(); }; }
+    });
+  },
+  osInsRender() {
+    const u = this.osUI;
+    this.osReg("ins", this.insSig + "|" + this.liveSig, () => {
+      [["acts", "actions"], ["rules", "rules"], ["ap", "progress"], ["files", "files"]].forEach(([k, w]) => {
+        const p = u[k], b = p.body; b.empty(); renderInsights(this, b, [w]); const d = b.querySelector("details"); if (!d) return;
+        const s = d.querySelector("summary"), cnt = s && s.querySelector(".lhq-cnt"); p.meta.setText(cnt ? cnt.textContent.toUpperCase() : ""); d.open = true; if (s) s.hide();
+      });
+    });
+  },
+  osTick() {
+    if (!this.os) return; this.osClockTick(); this.osCountTick(); this.osGate();
+    if (document.hidden || (this.contentEl.isShown && !this.contentEl.isShown())) return;
+    const now = Date.now();
+    if (now - (this.osVitAt || 0) >= 4000) { this.osVitAt = now; sampleVitals(); if (this.osUI) { this.osVitalsRender(); this.osTopRender(); this.osMidRender(); } }
+    this.osSessData(); this.osElevenCheck();
+  },
+});
+
 const DEFAULTS = { projects: [], last: "", claudeDir: "", excludeRe: "personal", person: "", chatView: "claudian-view", filesBesideHQ: true, textScale: 125 };
 const PFIELDS = [
   ["todo", "To-Do note path", "Vault path to a note with a numbered list under the Next heading, and checkboxes under Waiting on.", "Notes/To-Do.md"],
@@ -1096,6 +1472,9 @@ const PFIELDS = [
   ["daily", "Daily notes folder for metrics (optional)", "Vault folder with YYYY-MM-DD.md notes whose frontmatter holds numeric metrics.", "Notes/Daily"],
   ["metricsCmd", "Metrics command (optional)", "Runs hourly if today's note is missing or over 60 minutes old. Example: node tools/metrics.mjs", "node tools/metrics.mjs"],
   ["metricsCwd", "Metrics working directory (optional)", "Absolute path (or vault-relative). Defaults to the vault folder.", ""],
+  ["queue", "Post queue note (optional)", "Vault path to a note whose unchecked lines are the next posts (HQ_OS shows the next 5 and counts today's posted lines).", "Notes/Post Queue.md"],
+  ["slots", "Posting slots (optional)", "Daily times, 24 h, comma separated. HQ_OS counts down to the next one.", "8:43,13:13,19:13"],
+  ["creditsScript", "Credits script (optional)", "Vault-relative or absolute path to a Node script; HQ_OS runs `node <script> subscription` at most once an hour and shows the credits left (JSON with a numeric `left`).", "LumenAds/tools/eleven.mjs"],
   ["repo", "Git repo path (optional)", "Absolute path (or vault-relative); commits of the last 7 days show as dots in the week strip.", ""],
 ];
 
@@ -1124,6 +1503,8 @@ class ProjectHQSettings extends PluginSettingTab {
     g("chatView", "Chat view type", "Used by the Command center layout. Default: claudian-view", "claudian-view");
     new Setting(el).setName("Text size").setDesc("Scales all of Project HQ. 100% = original size.")
       .addSlider((s) => s.setLimits(90, 175, 5).setValue(st.textScale || 125).setDynamicTooltip().onChange((v) => { st.textScale = v; p.changed(); p.app.workspace.getLeavesOfType(VIEW).forEach((l) => { l.view.contentEl.style.zoom = String(v / 100); }); }));
+    new Setting(el).setName("Classic layout").setDesc("Safety fallback: turn on to use the original Project HQ pages instead of HQ_OS.")
+      .addToggle((t) => t.setValue(!!st.classicLayout).onChange((v) => { st.classicLayout = v; p.changed(true); }));
     new Setting(el).setName("Open files beside Project HQ").setDesc("Notes and files never open in the chat pane; they move to Project HQ's side.")
       .addToggle((t) => t.setValue(st.filesBesideHQ !== false).onChange((v) => { st.filesBesideHQ = v; p.changed(); }));
   }
