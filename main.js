@@ -1622,7 +1622,7 @@ Object.assign(HQView.prototype, {
     this.osReg("vit", JSON.stringify([vit.cpu, vit.mem, Math.floor(vit.up / 60)]), () => {
       b.empty(); const row = (k, v, p) => { const r = b.createDiv({ cls: "os-vrow" + (p > 85 ? " bad" : p > 70 ? " warn" : "") }); r.createSpan({ cls: "k", text: k }); r.createSpan({ cls: "v", text: v }); const bar = r.createDiv({ cls: "os-bar" }); bar.createEl("i").style.width = Math.max(2, p) + "%"; };
       row("CPU", vit.cpu + "%", vit.cpu); row("MEMORY", vit.mem + "%", vit.mem);
-      const sp = b.createDiv({ cls: "os-spark" }); spark(sp, vit.hist);
+      
       const up = b.createDiv({ cls: "os-vrow flat" }); up.createSpan({ cls: "k", text: "UPTIME" }); up.createSpan({ cls: "v", text: upText(vit.up) });
       if (warn) b.createDiv({ cls: "os-warn", text: "HIGH LOAD: " + (vit.cpu > 85 ? "CPU " + vit.cpu + "%" : "memory " + vit.mem + "%") + ". Close heavy apps." });
       u.vit.meta.setText(warn ? "WARNING" : "NOMINAL"); u.vit.meta.toggleClass("bad", warn);
