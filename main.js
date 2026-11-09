@@ -1468,7 +1468,7 @@ Object.assign(HQView.prototype, {
     ui.hint = tb.createSpan({ cls: "os-hint", text: "ENTER sends · SHIFT+ENTER new line" }); ui.cnt = tb.createSpan({ cls: "os-cnt2", attr: { "aria-live": "off" } });
     ui.compact = tb.createEl("button", { cls: "os-chb os-compact", text: "COMPACT", attr: { "aria-label": "Compact this chat (shrinks its history so each message costs less)", title: "Shrink this chat's history so each message costs less" } });
     ui.compact.onclick = () => { if (ui.target.value === "hq") { const hq = this.hq(), c = hq && hq.get(hq.activeId); if (!c || !c.sessionId) { ui.cmdMsg.setText("Open a chat with some history first."); return; } if (c.busy) { ui.cmdMsg.setText("Wait for Claude to finish, then compact."); return; } this.osChatSend("/compact"); } else this.osSend("/compact", ui.target.value); };
-    ui.exp = tb.createEl("button", { cls: "os-chb", text: "EXPAND", attr: { "aria-label": "Expand the message box to compose a long message", "aria-pressed": "false" } });
+    ui.exp = tb.createEl("button", { cls: "os-pmax os-expb", text: "⤢", attr: { "aria-label": "Expand the message box to compose a long message", "aria-pressed": "false" } });
     ui.grip = cmd.createDiv({ cls: "os-grip", attr: { role: "separator", "aria-orientation": "horizontal", "aria-label": "Resize message box (drag, or Up and Down arrows). Double-click resets.", tabindex: "0", title: "Drag to resize the message box" } });
     const box = cmd.createDiv({ cls: "os-cbox" }), left = box.createDiv({ cls: "os-cleft" });
     ui.chips = left.createDiv({ cls: "os-atts os-hide" });
@@ -1521,7 +1521,7 @@ Object.assign(HQView.prototype, {
   },
   osSetFull(on) { const u = this.osUI; if (!u) return; u.full = !!on; u.grid.toggleClass("cmd-full", u.full);
     if (u.fullOut) { document.removeEventListener("pointerdown", u.fullOut, true); u.fullOut = null; }
-    if (u.full) { u.fullOut = (e) => { if (!u.cmd.contains(e.target)) { e.preventDefault(); e.stopPropagation(); this.osSetFull(false); } }; setTimeout(() => { if (u.full && u.fullOut) document.addEventListener("pointerdown", u.fullOut, true); }, 0); } u.cmd.toggleClass("full", u.full); u.exp.setText(u.full ? "COLLAPSE" : "EXPAND"); u.exp.setAttr("aria-pressed", String(u.full)); this.osAutoGrow(true); u.cmdIn.focus(); },
+    if (u.full) { u.fullOut = (e) => { if (!u.cmd.contains(e.target)) { e.preventDefault(); e.stopPropagation(); this.osSetFull(false); } }; setTimeout(() => { if (u.full && u.fullOut) document.addEventListener("pointerdown", u.fullOut, true); }, 0); } u.cmd.toggleClass("full", u.full); u.exp.setText(u.full ? "✕" : "⤢"); u.exp.setAttr("aria-pressed", String(u.full)); this.osAutoGrow(true); u.cmdIn.focus(); },
   osAddImage(f) {
     const u = this.osUI; if (!u) return; const say = (m) => { u.cmdMsg.setText(m); u.cmdMsg.addClass("bad"); setTimeout(() => { u.cmdMsg.removeClass("bad"); this.osCtxHint(); }, 4000); };
     if (u.imgs.length >= 5) return say("At most 5 images per message."); if (f.size > 5 * 1024 * 1024) return say("Image is over 5 MB.");
