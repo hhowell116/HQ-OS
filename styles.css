@@ -735,3 +735,4 @@
 .hqos .os-left>.os-fill{min-height:96px;flex-shrink:0}
 .hqos .os-fillsw{position:absolute;top:4px;left:4px;z-index:2;height:auto;padding:1px 6px;font-family:var(--os-mono);font-size:9px;letter-spacing:.15em;line-height:1.4;background:rgba(var(--os-bgrgb,0,0,0),.4);border:1px solid rgba(var(--os-acrgb),.35);border-radius:2px;color:rgba(var(--os-acrgb),.75);box-shadow:none;cursor:pointer;opacity:.55;transition:opacity .15s}
 .hqos .os-fillsw:hover,.hqos .os-fillsw:focus-visible{opacity:1;border-color:rgba(var(--os-acrgb),.8)}
+.hqos .os-q-sent{font-family:var(--os-mono);font-size:9px;letter-spacing:.15em;color:var(--os-am);opacity:.85;white-space:nowrap;padding:0 6px}
