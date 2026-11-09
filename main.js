@@ -828,7 +828,7 @@ const MOD_LIST = [
 ];
 const MOD_DEFAULTS = {
   progress: { on: true, cost: true, refresh: 3, prices: JSON.parse(JSON.stringify(PRICES)) },
-  files: { on: true, max: 6, collapsed: true },
+  files: { on: true, max: 6, collapsed: false },
   cache: { on: true, warn: 50, cold: 60, compact: 150 },
   rules: { on: true, triggers: RULE_TRIGGERS.slice(), days: 7, targets: [{ label: "Rules.md", path: "Claude'sWorkspace/Rules.md", kind: "rules" }, { label: "Marketing Playbook", path: "", kind: "playbook" }] },
   actions: { on: true, need: true, money: true, sec: true, fail: true, keywords: "" },

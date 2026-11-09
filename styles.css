@@ -603,3 +603,5 @@
 .hqos .os-r{flex:none;margin-left:auto;display:flex;align-items:center;gap:6px;flex-wrap:nowrap}
 .hqos .os-clock{white-space:nowrap;letter-spacing:.1em}
 .hqos .os-online{gap:0}
+.hqos .os-right .os-files{margin-top:auto;position:sticky;bottom:0;z-index:3;background:var(--os-solid)}
+.hqos .os-right .os-files .os-pb{max-height:170px;overflow-y:auto;scrollbar-width:thin}
