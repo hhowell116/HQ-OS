@@ -1,15 +1,33 @@
-# Project HQ
+# HQ OS
 
-A console-style project dashboard for Obsidian. One full-page view with your plan, live Claude Code agents, a "needs you" list, Claude usage rings, daily metrics with sparklines, and a review inbox. Desktop only.
+## Requirements
+- Obsidian desktop 1.4 or newer.
+- Optional: [Claude Code](https://claude.com/claude-code), signed in. This powers the agent list and usage rings.
+- Optional: the Claudian plugin, for the built-in chat panel (send, queue, SEND NOW, images, handoff).
+- Optional, Windows only: the "now playing" track title uses `nowplaying.ps1` (PowerShell, no install needed).
 
-![screenshot](docs/screenshot.png) <!-- screenshot placeholder: add docs/screenshot.png -->
+## Setup
+1. **Get the files.** In a terminal, open your vault folder and run:
+   ```
+   git clone https://github.com/hhowell116/HQ-OS.git .obsidian/plugins/project-hq
+   ```
+   You can also download the ZIP from GitHub and unzip it into `<vault>/.obsidian/plugins/project-hq`. The folder must hold `main.js`, `manifest.json` and `styles.css` directly (not in a subfolder).
+2. **Turn it on.** Restart Obsidian, open Settings, then Community plugins. Turn off Restricted mode if asked, and enable **Project HQ**.
+3. **Open it.** Click the dashboard icon in the left ribbon, or run the command **Open Project HQ**. **Command center layout** opens HQ with the chat beside it.
+4. **Add a project.** Settings, Project HQ, **Add project**. Give it a name, and point it at a To-Do note (format below). Everything else is optional; tiles with no source simply hide. Projects in a `Claude'sWorkspace/<Project>/Notes/` folder are picked up automatically.
+5. **Pick a look.** Choose a theme (colour wave) and switch modules on or off in Settings. The orb, visualizer and chat all follow the theme.
 
-## Install
-1. Clone or download this repo into `<vault>/.obsidian/plugins/project-hq` (the folder must contain `main.js`, `manifest.json` and `styles.css`).
-2. In Obsidian: Settings, Community plugins, turn on Project HQ.
-3. Open it from the ribbon icon or the command "Open Project HQ".
+To update later, run `git pull` inside `.obsidian/plugins/project-hq`, then turn the plugin off and on again (or restart Obsidian).
 
-## Set up a project
+### Troubleshooting
+- **Plugin not listed:** check that `manifest.json` sits directly in `.obsidian/plugins/project-hq/`.
+- **No agents or usage rings:** Claude Code isn't installed or signed in, or the Claude projects folder setting is wrong (default `~/.claude/projects`).
+- **No chat panel:** install and enable Claudian, or point the chat view setting at your chat plugin.
+- **Visualizer is blank:** it only shows while audio is playing.
+
+A console-style command center for Obsidian. One full-page view with a live orb and audio visualizer, a Claude chat panel, your project plan, live Claude Code agents, a "needs you" list, Claude usage rings, daily metrics with sparklines, and a review inbox. Desktop only (Windows, macOS, Linux).
+
+## Project settings
 Settings, Project HQ, **Add project**. Every field except the name is optional; a tile whose source is not set simply hides.
 
 | Field | What it does |
