@@ -1510,7 +1510,7 @@ Object.assign(HQView.prototype, {
       const r = t.createDiv({ cls: "os-r" }); this.osClock = r.createDiv({ cls: "os-clock" });
       { const ts = r.createEl("select", { cls: "os-sel os-modsw", attr: { "aria-label": "Colour theme" } }), th = this.plugin.settings.theme;
         HQ_PRESETS.forEach((p) => ts.createEl("option", { value: p.id, text: p.name.toUpperCase() })); Object.keys(th.saved).forEach((n) => ts.createEl("option", { value: "saved:" + n, text: n.toUpperCase() })); if (th.id === "custom") ts.createEl("option", { value: "custom", text: "CUSTOM" });
-        ts.value = th.id; ts.onchange = () => this.plugin.setThemeId(ts.value);
+        ts.value = th.id; const fit = () => { const o = ts.options[ts.selectedIndex]; ts.style.width = "calc(" + ((o ? o.text.length : 6) + 1) + "ch + 34px)"; }; fit(); ts.onchange = () => { fit(); this.plugin.setThemeId(ts.value); };
         this.osAccentPicker(r);
         const mb = r.createEl("button", { cls: "os-chb", text: this.osPage === "mods" ? "BACK" : "MODS", attr: { "aria-label": this.osPage === "mods" ? "Back to HQ" : "Open the MODS page (switches, settings, theme)" } }); mb.onclick = () => this.osModsToggle(); }
       const ib = (icon, label, fn) => { const b = r.createEl("button", { cls: "os-ib", attr: { "aria-label": label, title: label } }); setIcon(b, icon); b.onclick = fn; };

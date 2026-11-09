@@ -585,7 +585,7 @@
 .hqos .os-logo{color:var(--os-ac);text-shadow:0 0 12px rgba(var(--os-acrgb),.55)}
 .hqos .os-ring circle,.hqos .os-ring path{stroke:var(--os-ac)}
 /* theme box fits its name */
-.hqos .os-modsw{max-width:none;width:auto;min-width:12ch;padding:0 26px 0 10px;height:28px;border:1px solid var(--os-line)}
+.hqos .os-modsw{max-width:none;min-width:0;flex:none;padding:0 24px 0 10px;height:28px;border:1px solid var(--os-line);letter-spacing:.06em}
 /* instant tooltip + task rows */
 .hqos .os-wrap{position:relative}
 .hqos .os-tip{position:absolute;z-index:100;max-width:340px;padding:5px 9px;background:var(--os-solid);color:var(--tx);border:1px solid var(--os-ac);box-shadow:0 0 12px rgba(var(--os-acrgb),.35),0 6px 18px rgba(0,0,0,.6);font-size:.88em;line-height:1.45;letter-spacing:.02em;white-space:pre-wrap;pointer-events:none}
