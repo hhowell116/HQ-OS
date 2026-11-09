@@ -978,7 +978,7 @@ class HQView extends ItemView {
   async reload(id) {
     if (id) { this.plugin.settings.last = id; await this.plugin.saveSettings(); }
     this.applyProject(); this.resetData(); this.buildSwitcher(); this.buildDock();
-    if (this.os && this.osUI) { this.osUI.sig = {}; this.osTaskAdd = null; this.osTaskAll = false; this.osRevAll = false; this.osEleven = undefined; this.osProjSwitch(); this.osElevenCheck(true); }
+    if (this.os && this.osUI) { this.osUI.sig = {}; this.osTaskAdd = null; this.osTaskAll = false; this.osRevAll = false; this.osEleven = undefined; this.osProjSwitch(); }
     this.touchedAt = 0; this.show("home"); await this.loadAll(); this.touchedAt = 0; this.renderPage(false, true);
   }
   async loadAll() { await this.loadFiles(); await this.loadReview(); this.loadDays(); this.runMetrics(false); this.loadLive(); this.loadCommits(true); await this.loadUsage(); }
@@ -1371,12 +1371,12 @@ Object.assign(HQView.prototype, {
       wrap.addEventListener("mouseleave", () => tip.addClass("os-hide")); wrap.addEventListener("pointerdown", () => tip.addClass("os-hide"), true); wrap.addEventListener("scroll", () => tip.addClass("os-hide"), true); }
     ui.chatBody.addEventListener("click", (e) => { const a = e.target.closest && e.target.closest("a.os-lk"); if (a) { e.preventDefault(); this.osChatLink(a.getAttribute("data-u")); } });
     this.osBuildInput(M, ui);
-    ui.tick = M.createDiv({ cls: "os-ticker" });
+    ui.tick = createDiv(); // bottom ticker removed (2026-11-08): it repeated the top bar and had project-specific stats
     this.orb = new Orb(ui.cv); this.osRO = new ResizeObserver(() => { if (this.orb) this.orb.resize(); }); this.osRO.observe(orbw);
     this.osIO = new IntersectionObserver((es) => { ui.inView = es[es.length - 1].isIntersecting; this.osGate(); }); this.osIO.observe(orbw);
     if (!this.usage) { try { const c = JSON.parse(localStorage.getItem("project-hq-usage") || "null"); if (c) { this.usage = c.u; this.at = new Date(c.at); } } catch (e) {} }
     sampleVitals(); setTimeout(() => { if (this.osUI === ui) { sampleVitals(); this.osVitalsRender(); } }, 1500);
-    this.osSessData(true); this.osElevenCheck(true); this.osChatInit(); setTimeout(() => this.osGate(), 300);
+    this.osSessData(true); this.osChatInit(); setTimeout(() => this.osGate(), 300);
   },
   // ---- the Claude input: toolbar (target, model, effort, hint, counter, expand), drag grip, auto-growing textarea, attachments ----
   osBuildInput(M, ui) {
@@ -1606,6 +1606,7 @@ Object.assign(HQView.prototype, {
     const u = this.osUI, pr = this.project || {}, nx = nextSlot(pr.slots, new Date()), wait = this.needsCount(), q = this.queue || { open: [] };
     this.osReg("next", JSON.stringify([nx && nx.getTime(), wait, q.open[0] && q.open[0].text]), () => {
       const b = u.next.body; b.empty(); u.next.meta.setText(wait ? wait + " WAITING" : "CLEAR");
+      u.next.p.toggleClass("os-hide", !(nx || (pr.queue && q.open.length))); // only for projects that post on a schedule
       if (nx) { const r = b.createDiv({ cls: "os-nrow" }); r.createSpan({ cls: "k", text: "NEXT POST" }); r.createSpan({ cls: "v", text: ((nx.getHours() % 12) || 12) + ":" + osMono(nx.getMinutes()) + (nx.getHours() < 12 ? " AM" : " PM") }); this.osCount = b.createDiv({ cls: "os-count" }); this.osCountAt = nx.getTime(); this.osCountTick(); }
       else { this.osCount = null; b.createDiv({ cls: "os-muted", text: "No posting slots set (Settings: Posting slots)." }); }
       if (q.open[0]) b.createDiv({ cls: "os-muted os-qn", text: "Queue: " + q.open[0].text });
@@ -1621,7 +1622,7 @@ Object.assign(HQView.prototype, {
     const msg = hqBusy && run === 1 ? "Claude is working" : run ? run + (run === 1 ? " agent" : " agents") + " running" : cold ? "Cache cold: next message re-reads the chat" : hot ? "High system load" : "All systems operational", cls = run ? "run" : (cold || hot) ? "warn" : "ok";
     this.osReg("mid", JSON.stringify([msg, cls, run, posts, el && el.left, this.osEleven && this.osEleven.err, lv]), () => {
       u.status.empty(); u.status.className = "os-status " + cls; u.status.createSpan({ cls: "os-dot" }); u.status.createSpan({ text: msg.toUpperCase() });
-      const t = u.tick; t.empty(); const it = (k, v, c, tip) => { const e = t.createSpan({ cls: "os-ti " + (c || "") }); e.createSpan({ cls: "k", text: k }); e.createSpan({ cls: "v", text: v }); if (tip) e.title = tip; };
+      if (true) return; const t = u.tick; t.empty(); const it = (k, v, c, tip) => { const e = t.createSpan({ cls: "os-ti " + (c || "") }); e.createSpan({ cls: "k", text: k }); e.createSpan({ cls: "v", text: v }); if (tip) e.title = tip; };
       it("AGENTS", run + " running", run ? "run" : ""); if (posts !== null) it("POSTS TODAY", String(posts));
       if (this.osEleven) it("ELEVENLABS", el ? fmtN(el.left) + " chars left" : (this.osEleven.err ? "n/a" : "checking…"), el && el.left < 20000 ? "warn" : "", this.osEleven.err);
       it("SITE", lv ? "LIVE · " + lv.slice(0, 40) : "n/a", lv ? "ok" : "");
@@ -1715,7 +1716,7 @@ Object.assign(HQView.prototype, {
     if (document.hidden || (this.contentEl.isShown && !this.contentEl.isShown())) return;
     const now = Date.now();
     if (now - (this.osVitAt || 0) >= 4000) { this.osVitAt = now; if (this.osPage === "mods") { guardVerify(); this.osModsStatus(); if (this.osUI.guardLog) this.osUI.guardLog.setText(guardLogTail(50)); } sampleVitals(); if (this.osUI) { this.osVitalsRender(); this.osTopRender(); this.osMidRender(); } }
-    this.osSessData(); this.osElevenCheck();
+    this.osSessData();
   },
 });
 
