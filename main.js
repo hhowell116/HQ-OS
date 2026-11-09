@@ -180,7 +180,7 @@ async function scanOne(metaFile, now) {
   }
   if (start === undefined) start = ms.birthtimeMs;
   const lastTool = [...steps].reverse().find((x) => x.kind === "tool"), lastText = [...steps].reverse().find((x) => x.kind === "text");
-  const out = { id: path.basename(base), type: meta.agentType || "agent", title: meta.description || meta.agentType || "agent", model: meta.model || "", finished: meta.finished === true, waiting: [...bgStarted].filter((x) => !bgDone.has(x)).length, mtime, start, count, tool: lastTool || null, text: lastText ? lastText.text : "", steps: steps.slice(-8) };
+  const out = { jf: js ? jf : "", id: path.basename(base), type: meta.agentType || "agent", title: meta.description || meta.agentType || "agent", model: meta.model || "", finished: meta.finished === true, waiting: [...bgStarted].filter((x) => !bgDone.has(x)).length, mtime, start, count, tool: lastTool || null, text: lastText ? lastText.text : "", steps: steps.slice(-8) };
   liveCache.set(metaFile, { mtime, metaM: ms.mtimeMs, steps, count, off, start, bgStarted: [...bgStarted], bgDone: [...bgDone], out });
   return out;
 }
@@ -249,6 +249,278 @@ function reviewCard(v, p, it) {
   act("Changes", "ch", () => { const on = !v.fbOpen.has(key); on ? v.fbOpen.add(key) : v.fbOpen.delete(key); showFb(on); if (on) setTimeout(() => ta.focus(), 0); });
   send.onclick = async () => { await v.decide(it, "changes", ta.value); v.fbOpen.delete(key); delete v.fbText[key]; };
   act("Reject", "no", () => v.decide(it, "rejected", ""));
+}
+
+// ===== Insights: agent progress, files, cache clock, rule cards, action items (all deterministic, no LLM, read-only on transcripts) =====
+// One shared 3 s poll (HQView.insTick) that only runs while HQ is visible. Transcripts are tailed with byte offsets, never re-read.
+const RULES_PATH = "Claude'sWorkspace/Rules.md", PLAYBOOK_PATH = "Claude'sWorkspace/LumenAds/Notes/Marketing Playbook.md";
+const CACHE_TTL_MIN = 60, CACHE_WARN_MIN = 50, COMPACT_AT = 150000;
+// ESTIMATE ONLY: API list prices in USD per million tokens (in = input, out = output, cr = cache read, c5/c1 = cache write 5 min / 1 h). Edit here.
+const PRICES = { opus: { in: 5, out: 25, cr: 0.5, c5: 6.25, c1: 10 }, sonnet: { in: 3, out: 15, cr: 0.3, c5: 3.75, c1: 6 }, haiku: { in: 1, out: 5, cr: 0.1, c5: 1.25, c1: 2 } };
+const family = (m) => { m = String(m || "").toLowerCase(); return m.includes("opus") ? "opus" : m.includes("haiku") ? "haiku" : m.includes("sonnet") ? "sonnet" : ""; };
+const shortModel = (m) => String(m || "").replace(/^claude-/, "").replace(/-\d{8}$/, "");
+function usageCost(u, model) {
+  const p = PRICES[family(model)]; if (!u || !p) return 0;
+  const cc = u.cache_creation || {}, c1 = cc.ephemeral_1h_input_tokens || 0, c5 = cc.ephemeral_5m_input_tokens !== undefined ? cc.ephemeral_5m_input_tokens : Math.max(0, (u.cache_creation_input_tokens || 0) - c1);
+  return ((u.input_tokens || 0) * p.in + (u.output_tokens || 0) * p.out + (u.cache_read_input_tokens || 0) * p.cr + c5 * p.c5 + c1 * p.c1) / 1e6;
+}
+const kfmt = (n) => n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1000 ? Math.round(n / 1000) + "k" : String(Math.round(n || 0));
+const usd = (n) => n < 0.01 ? "<$0.01" : "$" + (n < 10 ? n.toFixed(2) : n.toFixed(1));
+
+// Secrets never reach the screen: redact common key formats and long opaque strings from anything shown out of a transcript.
+const SECRET_RES = [[/\b(?:ak|sk|pk|rk)[-_][A-Za-z0-9_-]{8,}/g, "[redacted]"], [/\bgh[pousr]_[A-Za-z0-9]{16,}/g, "[redacted]"], [/\bAIza[\w-]{16,}/g, "[redacted]"], [/\bxox[abprs]-[\w-]{8,}/g, "[redacted]"], [/\bAKIA[0-9A-Z]{12,}/g, "[redacted]"], [/\bBearer\s+[A-Za-z0-9._~+/=-]{16,}/gi, "Bearer [redacted]"], [/\beyJ[\w-]{8,}\.[\w-]{8,}\.[\w-]{4,}/g, "[redacted]"], [/((?:key|token|secret|passw(?:or)?d|pwd|auth)\w*["']?\s*[:=]\s*["']?)[A-Za-z0-9+/_=-]{16,}/gi, "$1[redacted]"], [/\b[0-9a-f]{32,}\b/gi, "[redacted]"], [/(?<![\w/\\.])[A-Za-z0-9+/]{40,}={0,2}(?![\w/\\.])/g, "[redacted]"]];
+const redact = (s) => SECRET_RES.reduce((t, [re, to]) => t.replace(re, to), String(s || ""));
+const sensitivePath = (p) => /personal|PWs\.md|\.env\b|credentials/i.test(p || "");
+const djb = (s) => { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return (h >>> 0).toString(36); };
+
+async function readBuf(file, from, len) {
+  const fh = await fsp.open(file, "r");
+  try { const b = Buffer.alloc(len); const { bytesRead } = await fh.read(b, 0, len, from); return b.subarray(0, bytesRead); } finally { await fh.close(); }
+}
+// Reads only complete new lines after st.off (advancing the offset to the last newline) and hands each to fn.
+async function tailLines(file, st, fn, startAt) {
+  let size; try { size = (await fsp.stat(file)).size; } catch (e) { return false; }
+  if (st.off === undefined) { st.off = startAt ? Math.max(0, size - startAt) : 0; st.skipFirst = st.off > 0; }
+  if (size < st.off) { st.off = 0; st.skipFirst = false; st.reset = true; }
+  let moved = false;
+  while (size > st.off) {
+    const len = Math.min(8 * 1048576, size - st.off), buf = await readBuf(file, st.off, len), nl = buf.lastIndexOf(10);
+    if (nl < 0) { if (len < 8 * 1048576) break; st.off += len; continue; } // one enormous line: skip it
+    const lines = buf.subarray(0, nl).toString("utf8").split("\n");
+    if (st.skipFirst) { lines.shift(); st.skipFirst = false; }
+    for (const l of lines) if (l) fn(l);
+    st.off += nl + 1; moved = true;
+  }
+  return moved;
+}
+
+// ----- per-agent stats (tokens, cost, tool calls, files) -----
+const insCache = new Map();
+const EDIT_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
+function agentLine(st, l) {
+  if (!l.includes('"role":"assistant"') || !l.includes('"type":"assistant"')) return;
+  let o; try { o = JSON.parse(l); } catch (e) { return; }
+  const m = o.message; if (!m || o.type !== "assistant") return;
+  st.lastTs = Date.parse(o.timestamp) || st.lastTs;
+  if (m.model && m.model !== "<synthetic>") st.model = m.model;
+  if (m.usage && m.id) {
+    const old = st.ids.get(m.id), cost = usageCost(m.usage, m.model);
+    if (old) { st.tin -= old.i; st.tout -= old.o; st.tcr -= old.r; st.tcc -= old.c; st.cost -= old.cost; }
+    const e = { i: m.usage.input_tokens || 0, o: m.usage.output_tokens || 0, r: m.usage.cache_read_input_tokens || 0, c: m.usage.cache_creation_input_tokens || 0, cost };
+    st.ids.set(m.id, e); st.tin += e.i; st.tout += e.o; st.tcr += e.r; st.tcc += e.c; st.cost += cost;
+  }
+  for (const b of (Array.isArray(m.content) ? m.content : [])) {
+    if (b.type === "text" && b.text && b.text.trim()) st.lastText = b.text.slice(0, 6000);
+    if (b.type !== "tool_use") continue;
+    st.tools++; const inp = b.input || {}, t = Date.parse(o.timestamp) || Date.now();
+    const touch = (p, op) => { if (!p || typeof p !== "string") return; const k = p.replace(/\\/g, "/"), f = st.files.get(k); if (f && f.committed && op === "read") return; st.files.delete(k); st.files.set(k, { p, op: f && f.op === "edit" && op === "read" ? "edit" : op, t, committed: f && op === "read" ? f.committed : false }); if (st.files.size > 150) st.files.delete(st.files.keys().next().value); };
+    if (EDIT_TOOLS.has(b.name)) touch(inp.file_path || inp.notebook_path, "edit");
+    else if (b.name === "Read") touch(inp.file_path, "read");
+    else if (b.name === "Grep") touch(inp.path, "read");
+    else if ((b.name === "Bash" || b.name === "PowerShell") && /\bgit\s+(-C\s+\S+\s+)?commit\b/.test(inp.command || "")) st.files.forEach((f) => { if (f.op === "edit") f.committed = true; });
+  }
+}
+async function agentStats(jf) {
+  let size; try { size = (await fsp.stat(jf)).size; } catch (e) { return null; }
+  let st = insCache.get(jf);
+  if (!st || size < st.off) { st = { ids: new Map(), tin: 0, tout: 0, tcr: 0, tcc: 0, cost: 0, tools: 0, files: new Map(), model: "", lastText: "", lastTs: 0 }; insCache.set(jf, st); }
+  await tailLines(jf, st, (l) => agentLine(st, l));
+  return st;
+}
+
+// ----- main chat: cache clock, context size and Hayden's typed messages -----
+const mainState = { file: "", findAt: 0, st: {}, asst: [], typed: [], ts: 0, usage: null, model: "" };
+async function findMainFile() {
+  if (Date.now() - mainState.findAt < 20000 && mainState.file) return mainState.file;
+  mainState.findAt = Date.now(); let best = null, bt = 0, dirs = []; try { dirs = await fsp.readdir(PROJ); } catch (e) { return mainState.file; }
+  for (const d of dirs) {
+    if (EXCL && EXCL.test(d)) continue;
+    let fl = []; try { fl = await fsp.readdir(path.join(PROJ, d)); } catch (e) { continue; }
+    for (const f of fl) if (f.endsWith(".jsonl")) { try { const s = await fsp.stat(path.join(PROJ, d, f)); if (s.mtimeMs > bt) { bt = s.mtimeMs; best = path.join(PROJ, d, f); } } catch (e) {} }
+  }
+  return best || mainState.file;
+}
+const NOTE_TAG = /\n\s*<(?:current_note|editor_selection|context_files|browser_selection|canvas_selection|selected_text|system-reminder|ide_|!\[CDATA)/;
+function typedText(o) {
+  const m = o.message; if (!m || o.isMeta || o.isSidechain || o.promptSource === "system" || o.turnOrigin === "system") return "";
+  let t = m.content; if (Array.isArray(t)) { if (t.some((b) => b.type === "tool_result")) return ""; t = t.filter((b) => b.type === "text").map((b) => b.text).join("\n"); }
+  if (typeof t !== "string") return ""; t = t.split(NOTE_TAG)[0].trim();
+  if (!t || /^</.test(t) || /^\[Request interrupted/.test(t) || /^Caveat:/.test(t) || t.length > 700) return "";
+  return t;
+}
+// Corrections and standing rules: strong phrases anywhere, "no" only as an opening word.
+const RULE_RE = /\b(never|always|from now on|don'?t|do not|dont|stop|i wish|make sure|lets? not|let'?s not|shouldn'?t|should not|no more|instead of)\b|^\s*no\b[\s,.!]/i;
+function mainLine(l) {
+  if (l.includes('"role":"assistant"') && l.includes('"type":"assistant"') && !l.includes('"tool_result"')) { mainState.asst.push(l); if (mainState.asst.length > 4) mainState.asst.shift(); return; }
+  if (!l.includes('"type":"user"') || l.includes('"tool_result"') || l.length > 300000) return;
+  let o; try { o = JSON.parse(l); } catch (e) { return; }
+  if (o.type !== "user") return;
+  const t = typedText(o); if (!t || t.length < 10 || !RULE_RE.test(t)) return;
+  mainState.typed.push({ id: String(o.uuid || djb(t)), ts: Date.parse(o.timestamp) || 0, text: redact(t) });
+  if (mainState.typed.length > 120) mainState.typed.shift();
+}
+async function mainTick() {
+  const f = await findMainFile(); if (!f) return false;
+  if (f !== mainState.file) Object.assign(mainState, { file: f, st: {}, asst: [], typed: [], usage: null, ts: 0 });
+  const moved = await tailLines(f, mainState.st, mainLine, 6 * 1048576);
+  if (moved || !mainState.usage) for (let i = mainState.asst.length - 1; i >= 0; i--) {
+    try { const o = JSON.parse(mainState.asst[i]), m = o.message; if (m && m.usage && m.model !== "<synthetic>") { mainState.usage = m.usage; mainState.model = m.model || ""; mainState.ts = Date.parse(o.timestamp) || mainState.ts; break; } } catch (e) {}
+  }
+  return moved;
+}
+function cacheInfo() {
+  const u = mainState.usage; if (!u || !mainState.ts) return null;
+  const age = (Date.now() - mainState.ts) / 60000, ctx = (u.input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0);
+  const state = age >= CACHE_TTL_MIN ? "cold" : age >= CACHE_WARN_MIN ? "warn" : "warm";
+  const left = Math.max(0, Math.ceil(CACHE_TTL_MIN - age));
+  const msg = state === "cold" ? "Cache cold: your next message re-reads the whole chat (~" + kfmt(ctx) + " tokens)" : state === "warn" ? "Cache going cold in " + left + " min" : "Cache warm · " + left + " min left";
+  return { age, ctx, state, msg, compact: ctx > COMPACT_AT, cost: usageCost({ input_tokens: ctx }, mainState.model) };
+}
+
+// ----- action items from agents' final reports -----
+const ACTION_CATS = [
+  ["need", "Needs you", /\b(hayden|you need to|needs your|need your|waiting on|please check|your call|your approval|your decision)\b/i],
+  ["money", "Money", /\$\s?\d|\b(paid|credits?|billing|invoice)\b/i],
+  ["sec", "Security", /\b(security|secrets?|keys?|passwords?|vulnerab\w*)\b/i],
+  ["fail", "Problem", /\b(failed|failing|fail|blocked|errors?|failures?)\b/i],
+];
+const ACTION_SKIP = /\b0 (failed|fail|failures?|errors?|vulnerabilities)\b|\bno (errors?|failures?|vulnerabilit\w+|issues)\b|\bwithout errors?\b|\b0 high\b|^\|?[-: |]+$/i;
+function actionItems(text, src) {
+  const out = [];
+  for (const raw of String(text || "").split(/\n+/)) {
+    const line = redact(raw.replace(/^[\s>*\-#]+/, "").replace(/^\d+[.)]\s+/, "").replace(/[*`_]/g, "").replace(/\s+/g, " ").trim());
+    if (line.length < 14 || ACTION_SKIP.test(line)) continue;
+    const c = ACTION_CATS.find((x) => x[2].test(line)); if (!c) continue;
+    out.push({ id: "a:" + djb(line.toLowerCase().replace(/[^a-z0-9]+/g, " ")), cat: c[0], label: c[1], text: line.length > 220 ? line.slice(0, 217) + "…" : line, src });
+    if (out.length >= 4) break;
+  }
+  return out;
+}
+let outCache = { at: 0, files: [] };
+async function taskOutputs() { // Temp\claude\<id>\<session>\tasks\*.output (JSONL for agents)
+  if (Date.now() - outCache.at < 30000) return outCache.files;
+  const res = [], root = path.join(os.tmpdir(), "claude"); outCache.at = Date.now();
+  try {
+    for (const a of await fsp.readdir(root)) for (const s of await fsp.readdir(path.join(root, a)).catch(() => [])) {
+      const td = path.join(root, a, s, "tasks"); for (const f of await fsp.readdir(td).catch(() => [])) if (f.endsWith(".output")) { const fp = path.join(td, f), st = await fsp.stat(fp).catch(() => null); if (st && Date.now() - st.mtimeMs < 864e5) res.push({ fp, size: st.size, m: st.mtimeMs }); }
+    }
+  } catch (e) {}
+  outCache.files = res.sort((a, b) => b.m - a.m).slice(0, 40); return outCache.files;
+}
+const outText = new Map();
+async function lastReportOf(o) {
+  let c = outText.get(o.fp); if (c && c.size === o.size) return c.text;
+  let text = ""; try {
+    const len = Math.min(96 * 1024, o.size), tail = (await readBuf(o.fp, o.size - len, len)).toString("utf8").split("\n");
+    if (!/^\s*\{/.test(tail[tail.length > 1 ? 1 : 0] || "")) text = ""; // plain shell output: skipped (test logs are noise)
+    else for (let i = tail.length - 1; i >= 0 && !text; i--) { if (!tail[i].includes('"role":"assistant"')) continue; try { const m = JSON.parse(tail[i]).message; text = (m.content || []).filter((b) => b.type === "text").map((b) => b.text).join("\n"); } catch (e) {} }
+  } catch (e) {}
+  outText.set(o.fp, { size: o.size, text }); return text;
+}
+
+// ----- saving rules (append only) -----
+const todayStr = () => new Date().toLocaleDateString("en-CA");
+function ruleSection(t) {
+  const hits = [[/\b(browser|chrome|brave)\b/i, "Browser Rules"], [/\b(vault|personal|outside the workspace)\b/i, "Vault Boundaries"], [/\b(token|tokens|usage|compact|context window)\b/i, "Token Efficiency"], [/\b(agents?|subagents?|deploys?|deployment)\b/i, "Agent Team"]].filter(([re]) => re.test(t));
+  return hits.length === 1 ? hits[0][1] : "Inbox (to sort)";
+}
+function insertInSection(data, heading, bullet, beforeChangelog) {
+  const nl = data.includes("\r\n") ? "\r\n" : "\n", lines = data.split(/\r?\n/), h = heading.toLowerCase();
+  const hi = lines.findIndex((l) => /^##\s/.test(l) && l.replace(/^##\s+/, "").trim().toLowerCase().startsWith(h));
+  if (hi < 0) {
+    const at = beforeChangelog ? lines.findIndex((l) => /^##\s+Changelog/i.test(l)) : -1;
+    if (at >= 0) lines.splice(at, 0, "## " + heading, "", bullet, "");
+    else { while (lines.length && !lines[lines.length - 1].trim()) lines.pop(); lines.push("", "## " + heading, "", bullet, ""); }
+  } else {
+    let e = hi + 1; while (e < lines.length && !/^##\s/.test(lines[e])) e++;
+    while (e > hi + 1 && !lines[e - 1].trim()) e--;
+    lines.splice(e, 0, bullet);
+  }
+  return lines.join(nl);
+}
+async function appendTo(app, rel, section, text, isRules) {
+  const bullet = "- " + text.replace(/\s+/g, " ").trim() + " (Added " + todayStr() + ")";
+  let f = app.vault.getAbstractFileByPath(rel);
+  if (!(f instanceof TFile)) { if (isRules) throw new Error(rel + " not found"); f = await app.vault.create(rel, "# Marketing Playbook\n"); }
+  await app.vault.process(f, (d) => insertInSection(d, section, bullet, isRules && /^inbox/i.test(section)));
+}
+
+// ----- the Insights page -----
+const catCls = { need: "need", money: "money", sec: "sec", fail: "fail" };
+function insPanel(v, el, id, title, count) {
+  const d = el.createEl("details", { cls: "lhq-ins" }); d.open = !v.insClosed.has(id); d.ontoggle = () => { d.open ? v.insClosed.delete(id) : v.insClosed.add(id); };
+  const s = d.createEl("summary"); s.createSpan({ text: title }); if (count !== undefined && count !== "") s.createSpan({ cls: "lhq-cnt", text: String(count) });
+  return d.createDiv({ cls: "lhq-insb" });
+}
+function openPath(v, p) {
+  const base = (BASE || "").replace(/\\/g, "/").toLowerCase(), q = p.replace(/\\/g, "/");
+  if (sensitivePath(q)) return;
+  if (q.toLowerCase().startsWith(base + "/")) { const f = v.app.vault.getAbstractFileByPath(q.slice(base.length + 1)); if (f instanceof TFile) { v.app.workspace.getLeaf("tab").openFile(f); return; } } // keepFilesBesideHQ moves it next to HQ
+  try { require("electron").shell.showItemInFolder(p.replace(/\//g, path.sep)); } catch (e) { new Notice("Not in the vault: " + p); }
+}
+function renderInsights(v, el) {
+  const now = Date.now(), run = v.live.filter((a) => a.status === "running"), recent = v.live.filter((a) => a.status === "done" && now - a.mtime < 30 * 60000);
+  // action strip
+  const acts = v.insActions();
+  { const b = insPanel(v, el, "actions", "Action items", acts.length);
+    if (!acts.length) b.createDiv({ cls: "lhq-muted", text: "Nothing flagged in agent reports." });
+    const strip = b.createDiv({ cls: "lhq-astrip" });
+    acts.slice(0, 12).forEach((a) => { const c = strip.createDiv({ cls: "lhq-achip " + catCls[a.cat] }); c.createSpan({ cls: "lhq-ak", text: a.label }); const t = c.createSpan({ cls: "lhq-at2", text: a.text }); t.title = a.text; c.createSpan({ cls: "lhq-asrc", text: a.src }); const x = c.createSpan({ cls: "lhq-x", text: "×" }); x.title = "Dismiss"; x.onclick = () => v.insHandle(a.id, "dismissed"); }); }
+  // cache
+  { const ci = cacheInfo(), b = insPanel(v, el, "cache", "Chat cache", ci ? ci.state : "");
+    if (!ci) b.createDiv({ cls: "lhq-muted", text: "No main chat found yet." });
+    else {
+      const m = b.createDiv({ cls: "lhq-cache " + ci.state }); m.createDiv({ cls: "lhq-cmsg", text: ci.msg });
+      b.createDiv({ cls: "lhq-muted", text: "Last reply " + agoText(ci.age) + " · context ~" + kfmt(ci.ctx) + " tokens · cache lasts " + CACHE_TTL_MIN + " min" });
+      if (ci.compact) b.createDiv({ cls: "lhq-line", text: "The chat is large (" + kfmt(ci.ctx) + "). Consider running /compact." });
+    } }
+  // agent progress
+  { const b = insPanel(v, el, "progress", "Agent progress", run.length + " running");
+    const list = run.concat(recent).slice(0, 10); let tot = 0;
+    if (!list.length) b.createDiv({ cls: "lhq-muted", text: "No agents running." });
+    list.forEach((a) => {
+      const st = a.st, done = a.status !== "running", c = b.createDiv({ cls: "lhq-pcard" + (done ? " done" : "") });
+      const h = c.createDiv({ cls: "lhq-top" }); h.createDiv({ cls: "lhq-name", text: a.title, title: a.title });
+      const ch = h.createDiv({ cls: "lhq-chips" }); ch.createSpan({ text: a.type }); const mm = shortModel(st && st.model || a.model); if (mm) ch.createSpan({ text: mm }); if (done) ch.createSpan({ text: "Done" });
+      const bar = c.createDiv({ cls: "lhq-pbar" + (done ? " done" : " run") }); bar.createEl("i");
+      const row = v.agents.find((x) => x.name === a.type && x.state !== "idle");
+      c.createDiv({ cls: "lhq-psub", text: redact(row && row.task ? clean(row.task) : a.tool ? stepText(a.tool) : "starting…").slice(0, 140) });
+      const m = c.createDiv({ cls: "lhq-meta" });
+      const el1 = m.createSpan({ cls: done ? "" : "lhq-el", text: dur((done ? a.mtime : now) - a.start) }); if (!done) el1.dataset.start = a.start;
+      m.createSpan({ text: (st ? st.tools : a.count) + " tool calls" });
+      if (st) { tot += st.cost; m.createSpan({ text: "in " + kfmt(st.tin) + " · out " + kfmt(st.tout) + " · cache " + kfmt(st.tcr + st.tcc) }); const e = m.createSpan({ cls: "lhq-est", text: "~" + usd(st.cost) + " est." }); e.title = "Estimate from API list prices, not your plan's billing"; }
+    });
+    if (list.length) b.createDiv({ cls: "lhq-muted", text: "Costs are rough estimates from API list prices (subscription use is not billed per token)." }); }
+  // files
+  { const withFiles = run.filter((a) => a.st && a.st.files.size).slice(0, 5), b = insPanel(v, el, "files", "Files in play", withFiles.reduce((n, a) => n + Math.min(6, a.st.files.size), 0));
+    if (!withFiles.length) b.createDiv({ cls: "lhq-muted", text: "No running agent has touched files yet." });
+    withFiles.forEach((a) => {
+      b.createDiv({ cls: "lhq-fg", text: a.title });
+      [...a.st.files.values()].filter((f) => !sensitivePath(f.p)).reverse().slice(0, 6).forEach((f) => {
+        const live = now - f.t < 90000, kind = f.committed ? "committed" : f.op === "edit" ? (live ? "editing" : "edited") : (now - f.t < 120000 ? "reading" : "read");
+        const r = b.createDiv({ cls: "lhq-frow " + kind }); r.createSpan({ cls: "lhq-fdot" });
+        const nm = r.createSpan({ cls: "lhq-fn", text: f.p.split(/[\\/]/).pop() }); nm.title = f.p;
+        r.createSpan({ cls: "lhq-fd", text: f.p.split(/[\\/]/).slice(-3, -1).join("/") }); r.createSpan({ cls: "lhq-fk", text: kind });
+        r.onclick = () => openPath(v, f.p);
+      });
+    }); }
+  // rule cards
+  { const cards = v.insRules(), b = insPanel(v, el, "rules", "Save as rule", cards.length);
+    if (!cards.length) b.createDiv({ cls: "lhq-muted", text: "No new corrections or standing rules spotted in your messages." });
+    v.insText = v.insText || {};
+    cards.slice(0, 6).forEach((c) => {
+      const card = b.createDiv({ cls: "lhq-rule" }); card.createDiv({ cls: "lhq-muted", text: when(new Date(c.ts).toISOString()) });
+      const ta = card.createEl("textarea", { cls: "lhq-fb", attr: { rows: "3", "aria-label": "Rule text" } }); ta.style.display = "";
+      ta.value = v.insText[c.id] !== undefined ? v.insText[c.id] : c.text;
+      ta.addEventListener("input", () => { v.insText[c.id] = ta.value; v.touchedAt = Date.now(); }); ta.addEventListener("keydown", (e) => e.stopPropagation());
+      const bar = card.createDiv({ cls: "lhq-acts" }), sec = ruleSection(ta.value);
+      const btn = (label, cls, fn, tip) => { const x = bar.createEl("button", { cls: "lhq-btn " + cls, text: label }); if (tip) x.title = tip; x.onclick = fn; };
+      btn("Save to Rules.md", "ok", () => v.insSave(c, ta.value, "rules"), "Appends under: " + sec);
+      btn("Save to Marketing Playbook", "ch", () => v.insSave(c, ta.value, "playbook"), "Appends under: Inbox (to sort)");
+      btn("Dismiss", "no", () => v.insHandle(c.id, "dismissed"));
+    });
+    if (cards.length > 6) b.createDiv({ cls: "lhq-muted", text: "+" + (cards.length - 6) + " more" });
+    if (cards.length) { const all = b.createEl("button", { cls: "lhq-btn", text: "Dismiss all" }); all.onclick = () => v.insHandleMany(cards.map((c) => c.id), "dismissed"); } }
 }
 
 const col2 = (p) => p >= 90 ? "var(--color-red)" : p >= 75 ? "var(--color-orange)" : p >= 50 ? "var(--color-yellow)" : "var(--color-green)";
@@ -491,6 +763,7 @@ const SECTIONS = [
       if (!keys.length) g.createDiv({ cls: "lhq-muted", text: "No numeric metrics in the latest daily note yet." });
     },
   },
+  { id: "insights", label: "Insights", icon: "activity", render: renderInsights },
 ];
 
 // Whole-dashboard colour themes: page gradient (bg), panels (teal), muted text (tx2), landscape sky + 3 mountain layers (m), matching accent.
@@ -571,8 +844,8 @@ class HQView extends ItemView {
     this.sw.value = this.project ? this.project.id : ""; this.sw.toggle(st.projects.length > 0);
   }
   buildDock() {
-    this.dock.empty(); this.dockBtns = {}; this.badge = null;
-    SECTIONS.filter((s) => sectionOn(s.id)).forEach((s) => { const b = this.dock.createEl("button", { cls: "lhq-d" }); setIcon(b, s.icon); b.setAttr("aria-label", s.label); b.title = s.label; b.onclick = () => this.show(s.id); this.dockBtns[s.id] = b; if (s.id === "view") this.badge = b.createSpan({ cls: "lhq-badge zero", text: "0" }); });
+    this.dock.empty(); this.dockBtns = {}; this.badge = null; this.insBadge = null;
+    SECTIONS.filter((s) => sectionOn(s.id)).forEach((s) => { const b = this.dock.createEl("button", { cls: "lhq-d" }); setIcon(b, s.icon); b.setAttr("aria-label", s.label); b.title = s.label; b.onclick = () => this.show(s.id); this.dockBtns[s.id] = b; if (s.id === "view") this.badge = b.createSpan({ cls: "lhq-badge zero", text: "0" }); if (s.id === "insights") this.insBadge = b.createSpan({ cls: "lhq-badge zero", text: "0" }); });
   }
   async reload(id) {
     if (id) { this.plugin.settings.last = id; await this.plugin.saveSettings(); }
@@ -593,7 +866,7 @@ class HQView extends ItemView {
     return out;
   }
   async onOpen() {
-    this.resetData(); Object.assign(this, { rfilter: "needs", boardOpen: false, liveAt: 0, usage: null, err: "", at: null, slide: 0, showIdle: false });
+    this.resetData(); Object.assign(this, { insClosed: new Set(), insActs: [], insSig: "", insActAt: 0, insText: {}, rfilter: "needs", boardOpen: false, liveAt: 0, usage: null, err: "", at: null, slide: 0, showIdle: false });
     this.applyProject();
     const root = this.contentEl; root.empty(); root.addClass("lhq"); root.style.zoom = String((this.plugin.settings.textScale || 125) / 100); // text size setting (Hayden: text was too small)
     const touch = () => { this.touchedAt = Date.now(); };
@@ -603,6 +876,7 @@ class HQView extends ItemView {
     this.crumb = bar.createDiv({ cls: "lhq-crumb" });
     this.sw = bar.createEl("select", { cls: "lhq-sw" }); this.sw.onchange = () => this.reload(this.sw.value);
     this.chip = bar.createDiv({ cls: "lhq-livechip" });
+    this.cacheChip = bar.createDiv({ cls: "lhq-livechip lhq-cachechip" }); this.cacheChip.hide(); this.cacheChip.onclick = () => this.show("insights");
     const right = bar.createDiv({ cls: "lhq-right" });
     const tm = right.createDiv({ cls: "lhq-time" }); this.clockEl = tm.createDiv({ cls: "lhq-clock" }); this.dateEl = tm.createDiv({ cls: "lhq-date" });
     const ib = (icon, label, fn) => { const b = right.createEl("button", { cls: "lhq-ib" }); setIcon(b, icon); b.setAttr("aria-label", label); b.title = label; b.onclick = () => fn(b); return b; };
@@ -628,9 +902,49 @@ class HQView extends ItemView {
       this.register(() => { try { w.close(); } catch (e) {} clearTimeout(this.watchT); });
     } catch (e) { /* no recursive watch on this platform: the interval still covers it */ }
     this.registerInterval(window.setInterval(() => this.clock(), 1000));
+    this.registerInterval(window.setInterval(() => this.insTick(), 3000)); // one shared throttled poll for the Insights panels; skips work while HQ is hidden
     this.registerInterval(window.setInterval(() => { if (this.page === "home" && !this.hover && this.go && this.slideCount > 1) this.go(this.slide + 1); }, 8000));
     this.clock(); this.show("home");
+    this.insTick(true);
     await this.loadAll();
+  }
+  insHandled() { const s = this.plugin.settings; s.insights = s.insights || {}; s.insights.handled = s.insights.handled || []; return s.insights.handled; }
+  async insHandleMany(ids, why) { const h = this.insHandled(); ids.forEach((id) => { if (!h.includes(id)) h.push(id); }); if (h.length > 800) h.splice(0, h.length - 800); await this.plugin.saveSettings(); this.touchedAt = 0; this.insActAt = 0; await this.insTick(true); this.renderPage(false, true); }
+  insHandle(id, why) { return this.insHandleMany([id], why); }
+  insRules() { const h = new Set(this.insHandled()), cut = Date.now() - 7 * 864e5; return mainState.typed.filter((c) => !h.has(c.id) && c.ts > cut).slice().reverse(); }
+  insActions() { return this.insActs; }
+  async insSave(c, text, where) {
+    text = String(text || "").trim(); if (!text) return;
+    try {
+      if (where === "rules") await appendTo(this.app, RULES_PATH, ruleSection(text), text, true); else await appendTo(this.app, PLAYBOOK_PATH, "Inbox (to sort)", text, false);
+      new Notice("Saved to " + (where === "rules" ? "Rules.md" : "Marketing Playbook")); delete this.insText[c.id]; await this.insHandle(c.id, "saved");
+    } catch (e) { console.error("Project HQ save rule", e); new Notice("Could not save: " + (e && e.message || e)); }
+  }
+  async insActionsUpdate(force) {
+    if (!force && Date.now() - this.insActAt < 30000) return; this.insActAt = Date.now();
+    const done = new Set(this.insHandled()), seen = new Set(), out = [];
+    const add = (text, src) => actionItems(text, src).forEach((a) => { if (!seen.has(a.id) && !done.has(a.id)) { seen.add(a.id); out.push(a); } });
+    for (const a of this.live.filter((x) => x.status !== "running" && Date.now() - x.mtime < 864e5 && x.jf).slice(0, 25)) {
+      const s = await fsp.stat(a.jf).catch(() => null); if (s) add(await lastReportOf({ fp: a.jf, size: s.size, m: s.mtimeMs }), a.title.slice(0, 40));
+    }
+    for (const o of (await taskOutputs()).slice(0, 25)) add(await lastReportOf(o), "task " + path.basename(o.fp, ".output"));
+    this.insActs = out.slice(0, 30);
+  }
+  async insTick(force) {
+    if (this.insBusy) return;
+    if (!force && ((this.contentEl.isShown && !this.contentEl.isShown()) || document.hidden)) return;
+    this.insBusy = true;
+    try {
+      await mainTick();
+      const now = Date.now();
+      for (const a of this.live) { if (a.jf && (a.status === "running" || (a.status === "done" && now - a.mtime < 30 * 60000))) a.st = await agentStats(a.jf); }
+      await this.insActionsUpdate(force);
+      const ci = cacheInfo(), cards = this.insRules();
+      if (this.cacheChip) { const show = ci && (ci.state !== "warm" || ci.compact); this.cacheChip.toggle(!!show); if (show) { this.cacheChip.setText(ci.state !== "warm" ? ci.msg : "Context ~" + kfmt(ci.ctx) + ": consider /compact"); this.cacheChip.toggleClass("cold", ci.state === "cold"); this.cacheChip.title = ci.compact ? "Large chat (" + kfmt(ci.ctx) + " tokens): consider /compact" : ci.msg; } }
+      if (this.insBadge) { const n = cards.length + this.insActs.length; this.insBadge.setText(String(n)); this.insBadge.toggleClass("zero", !n); }
+      const sig = JSON.stringify([ci && [ci.state, ci.msg], cards.map((c) => c.id), this.insActs.map((a) => a.id), this.live.map((a) => [a.id, a.status, a.st && [a.st.tools, a.st.tin + a.st.tout + a.st.tcr, a.st.files.size, [...a.st.files.values()].slice(-3).map((f) => f.op + f.committed + (now - f.t < 90000))]])]);
+      if (sig !== this.insSig) { this.insSig = sig; if (this.page === "insights") this.renderPage(); }
+    } catch (e) { console.error("Project HQ insights", e); } finally { this.insBusy = false; }
   }
   async loadLive() {
     if (this.scanning) return; this.scanning = true; this.liveAt = Date.now();
@@ -658,7 +972,7 @@ class HQView extends ItemView {
   renderPage(anim, force) {
     // The page redraws every few seconds (live agents, files). On the review page a redraw between press and release
     // swallowed Approve/Changes/Reject clicks and wiped typed feedback, so hold redraws there while the user is interacting.
-    if (!force && this.page === "view" && (Date.now() - (this.touchedAt || 0) < 20000 || (document.activeElement && document.activeElement.tagName === "TEXTAREA" && this.contentEl.contains(document.activeElement)))) return;
+    if (!force && (this.page === "view" || this.page === "insights") && (Date.now() - (this.touchedAt || 0) < 20000 || (document.activeElement && document.activeElement.tagName === "TEXTAREA" && this.contentEl.contains(document.activeElement)))) return;
     { const lv = (this.todo && this.todo.live) || "", b = /batch (\d+)/i.exec(lv), c = /[0-9a-f]{7,}/.exec(lv); this.chip.setText(lv ? "Live: " + (b ? "batch " + b[1] : "") + (b && c ? " · " : "") + (c ? c[0] : "") : ""); this.chip.toggle(!!lv); }
     if (!this.project) { this.pageEl.empty(); const e = this.pageEl.createDiv({ cls: "lhq-empty" }); e.createDiv({ cls: "lhq-big", text: "Welcome to Project HQ" }); e.createDiv({ cls: "lhq-sub", text: "Add your first project in Settings → Project HQ" }); const b = e.createEl("button", { cls: "lhq-btn", text: "Open settings" }); b.onclick = () => { this.app.setting.open(); this.app.setting.openTabById("project-hq"); }; return; }
     const s = SECTIONS.find((x) => x.id === this.page), keep = this.pageEl.scrollTop;

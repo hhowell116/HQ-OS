@@ -238,3 +238,43 @@
 .lhq-tile{display:flex;flex-direction:column;gap:4px;padding:4px;height:auto;border-radius:12px;background:var(--glass);border:2px solid transparent;color:var(--tx2);font-size:.72em;cursor:pointer;box-shadow:none}
 .lhq-tile:hover{border-color:var(--glass-b);color:var(--tx)}.lhq-tile.on{border-color:var(--amber);color:var(--tx)}
 .lhq-tprev{height:34px;border-radius:8px}
+
+/* ===== Insights page ===== */
+.lhq-pg-insights{display:flex;flex-direction:column;gap:10px}
+.lhq-ins{border:1px solid var(--glass-b);border-radius:18px;background:color-mix(in srgb,var(--bg1) 55%,transparent);padding:8px 14px}
+.lhq-ins>summary{cursor:pointer;display:flex;justify-content:space-between;text-transform:uppercase;letter-spacing:.14em;font-size:.72em;font-weight:700;color:var(--amber);padding:4px 0}
+.lhq-insb{display:flex;flex-direction:column;gap:8px;padding:6px 0 8px}
+.lhq-astrip{display:flex;flex-direction:column;gap:6px}
+.lhq-achip{display:flex;gap:8px;align-items:baseline;padding:6px 10px;border-radius:12px;background:var(--glass);border:1px solid var(--glass-b);font-size:.85em}
+.lhq-achip .lhq-ak{flex:none;font-size:.7em;font-weight:700;text-transform:uppercase;letter-spacing:.08em;padding:1px 8px;border-radius:99px}
+.lhq-achip.need .lhq-ak{background:rgba(245,184,61,.2);color:#f5b83d}.lhq-achip.money .lhq-ak{background:rgba(74,222,128,.2);color:#4ade80}
+.lhq-achip.sec .lhq-ak{background:rgba(255,107,107,.2);color:#ff8a8a}.lhq-achip.fail .lhq-ak{background:rgba(255,138,61,.22);color:#ff9f5a}
+.lhq-at2{flex:1;min-width:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.lhq-asrc{flex:none;color:var(--tx2);font-size:.8em;max-width:30%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lhq-achip .lhq-x{cursor:pointer;color:var(--tx2);padding:0 4px}.lhq-achip .lhq-x:hover{color:var(--amber)}
+.lhq-cache{padding:8px 12px;border-radius:12px;border:1px solid rgba(74,222,128,.4);background:rgba(74,222,128,.08)}
+.lhq-cache.warn{border-color:rgba(245,184,61,.6);background:rgba(245,184,61,.1)}.lhq-cache.cold{border-color:rgba(255,107,107,.6);background:rgba(255,107,107,.1)}
+.lhq-cmsg{font-weight:600}
+.lhq-cachechip{cursor:pointer;margin-left:0;background:color-mix(in srgb,#f5b83d 22%,transparent);color:#f5b83d}.lhq-cachechip.cold{background:rgba(255,107,107,.22);color:#ff8a8a}
+.lhq-pcard{padding:10px 12px;border-radius:14px;background:var(--glass);border:1px solid var(--glass-b);display:flex;flex-direction:column;gap:5px;transition:opacity .6s}
+.lhq-pcard.done{opacity:.5}
+.lhq-pbar{height:5px;border-radius:99px;background:rgba(255,255,255,.1);overflow:hidden;position:relative}
+.lhq-pbar i{position:absolute;inset:0;border-radius:99px;background:#4ade80}
+.lhq-pbar.run i{width:35%;animation:lhq-ind 1.6s ease-in-out infinite}.lhq-pbar.done i{width:100%;background:var(--tx2)}
+@keyframes lhq-ind{0%{left:-35%}100%{left:100%}}
+.lhq-psub{font-size:.82em;color:var(--tx2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lhq-pcard .lhq-meta{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:.78em;color:var(--tx2)}
+.lhq-est{font-style:italic}
+.lhq-fg{font-size:.72em;text-transform:uppercase;letter-spacing:.1em;color:var(--tx2);margin-top:4px}
+.lhq-frow{display:flex;gap:8px;align-items:center;padding:3px 8px;border-radius:8px;cursor:pointer;font-size:.85em}
+.lhq-frow:hover{background:var(--glass)}
+.lhq-fdot{flex:none;width:7px;height:7px;border-radius:50%;background:var(--tx2)}
+.lhq-fn{font-weight:600;white-space:nowrap}.lhq-fd{flex:1;min-width:0;color:var(--tx2);font-size:.85em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:rtl;text-align:left}
+.lhq-fk{flex:none;font-size:.72em;color:var(--tx2)}
+.lhq-frow.read{opacity:.55}.lhq-frow.reading .lhq-fdot{background:#4dabf7}.lhq-frow.edited .lhq-fdot{background:var(--amber)}
+.lhq-frow.editing .lhq-fn,.lhq-frow.editing .lhq-fk{background:linear-gradient(90deg,var(--tx) 0%,var(--amber) 50%,var(--tx) 100%);background-size:200% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:lhq-shim 1.4s linear infinite}
+.lhq-frow.editing .lhq-fdot{background:var(--amber);animation:lhq-pulse 1.4s infinite}
+@keyframes lhq-shim{0%{background-position:200% 0}100%{background-position:-200% 0}}
+.lhq-frow.committed .lhq-fdot{background:#4ade80}.lhq-frow.committed .lhq-fn,.lhq-frow.committed .lhq-fk{color:#4ade80}
+.lhq-rule{display:flex;flex-direction:column;gap:6px;padding:10px 12px;border-radius:14px;background:var(--glass);border:1px solid var(--glass-b)}
+.lhq-rule .lhq-fb{display:block}
