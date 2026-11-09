@@ -796,3 +796,19 @@
 /* Font: Georgia serif in the chat only (Hayden 2026-11-09, same face Claudian falls back to); code stays monospace */
 .hqos .os-cbody,.hqos .os-cbody *:not(code):not(pre):not(kbd):not(code *):not(pre *){font-family:Copernicus,"Tiempos Headline",Tiempos,Georgia,"Times New Roman",serif!important}
 .hqos .os-cbody code,.hqos .os-cbody pre,.hqos .os-cbody code *,.hqos .os-cbody pre *{font-family:ui-monospace,"Cascadia Mono",Consolas,monospace!important}
+/* live step line + STOP */
+.hqos .os-live{display:flex;align-items:center;gap:10px}
+.hqos .os-live-t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hqos .os-stop{flex:none;color:var(--os-red,#ff4d5e)!important;border-color:var(--os-red,#ff4d5e)!important;height:22px!important;padding:0 10px!important}
+/* task checklist above the input */
+.hqos .os-todo{flex:none;border-top:1px solid var(--os-line);padding:6px 10px;max-height:160px;overflow:auto;background:rgba(var(--os-bgrgb),.6)}
+.hqos .os-todo-h{all:unset;cursor:pointer;font-family:var(--os-mono);font-size:10px;letter-spacing:.15em;color:var(--os-ac,var(--os-cy));display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hqos .os-todo-l{margin-top:6px;display:flex;flex-direction:column;gap:3px}
+.hqos .os-todo-i{display:flex;gap:8px;font-size:12px;opacity:.75}
+.hqos .os-todo-i .k{flex:none;width:12px;text-align:center}
+.hqos .os-todo-i.now{opacity:1;color:var(--os-am)}.hqos .os-todo-i.done{opacity:.45;text-decoration:line-through}
+/* @ mention popup */
+.hqos .os-mention{position:absolute;left:0;right:0;bottom:100%;z-index:30;max-height:240px;overflow:auto;background:var(--os-solid,#071217);border:1px solid var(--os-cy);margin-bottom:4px}
+.hqos .os-mi{display:flex;gap:10px;align-items:baseline;padding:5px 10px;cursor:pointer}
+.hqos .os-mi.on,.hqos .os-mi:hover{background:rgba(var(--os-acrgb),.15)}
+.hqos .os-mi .n{font-weight:600;white-space:nowrap}.hqos .os-mi .p{font-size:.85em;opacity:.55;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

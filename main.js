@@ -1032,6 +1032,7 @@ class HQView extends ItemView {
     this.registerInterval(window.setInterval(() => this.loadCommits(), 10 * 60 * 1000));
     // Agents show up instantly: watch the Claude projects folder (recursive; Windows and macOS) and rescan as soon as any
     // subagent file appears or changes. The interval stays as a fallback (5 s on Home, 3 s on the Agents page).
+    this.registerInterval(window.setInterval(() => { try { this.osLiveTick(); } catch (e) {} }, 1500));
     this.registerInterval(window.setInterval(() => { if (Date.now() - this.liveAt >= (this.page === "agents" ? 2900 : 4900)) this.loadLive(); }, 1000));
     try {
       const w = fs.watch(PROJ, { recursive: true }, (_e, f) => {
@@ -1446,7 +1447,7 @@ Object.assign(HQView.prototype, {
     const npShow = (d) => { if (this.osUI !== ui) return; const x = HQNow.pick(d); ui.np.toggleClass("os-hide", !x); if (!x) return; const t = String(x.title).slice(0, 120), a = [x.artist, HQNow.appName(x.app)].filter(Boolean).join("  ·  ").slice(0, 100); if (ui.npT.textContent !== "\u266A " + t) ui.npT.setText("\u266A " + t); if (ui.npS.textContent !== a) ui.npS.setText(a); };
     HQNow.subs.add(npShow); this.osNpUnsub = () => HQNow.subs.delete(npShow); npShow(HQNow.data);
     ui.status = M.createDiv({ cls: "os-status", attr: { role: "status", "aria-live": "polite" } });
-    ui.mid = M; ui.chatBox = M.createDiv({ cls: "os-chat os-hide" }); ui.showChat = M.createEl("button", { cls: "os-showchat os-hide", text: "SHOW CHAT", attr: { title: "Show chat" } }); ui.showChat.onclick = () => { ui.chatHidden = false; this.osChatLayout(); ui.claudKey = ""; setTimeout(() => this.osClaudRender(true), 0); }; this.osChatHeader(ui.chatBox); ui.chatList = ui.chatBox.createDiv({ cls: "os-clist os-hide" }); ui.chatBody = ui.chatBox.createDiv({ cls: "os-cbody", attr: { role: "log", "aria-live": "polite" } }); ui.chatBody.addEventListener("scroll", () => { const b = ui.chatBody; ui.stick = b.scrollHeight - b.scrollTop - b.clientHeight < 40; }, { passive: true }); ui.queue = ui.chatBox.createDiv({ cls: "os-queue os-hide", attr: { "aria-label": "Queued messages" } });
+    ui.mid = M; ui.chatBox = M.createDiv({ cls: "os-chat os-hide" }); ui.showChat = M.createEl("button", { cls: "os-showchat os-hide", text: "SHOW CHAT", attr: { title: "Show chat" } }); ui.showChat.onclick = () => { ui.chatHidden = false; this.osChatLayout(); ui.claudKey = ""; setTimeout(() => this.osClaudRender(true), 0); }; this.osChatHeader(ui.chatBox); ui.chatList = ui.chatBox.createDiv({ cls: "os-clist os-hide" }); ui.chatBody = ui.chatBox.createDiv({ cls: "os-cbody", attr: { role: "log", "aria-live": "polite" } }); ui.chatBody.addEventListener("scroll", () => { const b = ui.chatBody; ui.stick = b.scrollHeight - b.scrollTop - b.clientHeight < 40; }, { passive: true }); ui.todo = ui.chatBox.createDiv({ cls: "os-todo os-hide" }); ui.queue = ui.chatBox.createDiv({ cls: "os-queue os-hide", attr: { "aria-label": "Queued messages" } });
     { const tip = ui.tip = wrap.createDiv({ cls: "os-tip os-hide", attr: { "aria-hidden": "true" } });
       // follows the cursor; screen px are divided by the HQ text-scale zoom so it lands right under the pointer
       const place = (e) => { const w = wrap.getBoundingClientRect(), z = (w.width / wrap.offsetWidth) || 1, W = wrap.offsetWidth, H = wrap.offsetHeight, tw = tip.offsetWidth, th = tip.offsetHeight;
@@ -1490,7 +1491,7 @@ Object.assign(HQView.prototype, {
     ui.grip = cmd.createDiv({ cls: "os-grip", attr: { role: "separator", "aria-orientation": "horizontal", "aria-label": "Resize message box (drag, or Up and Down arrows). Double-click resets.", tabindex: "0", title: "Drag to resize the message box" } });
     const box = cmd.createDiv({ cls: "os-cbox" }), left = box.createDiv({ cls: "os-cleft" });
     ui.chips = left.createDiv({ cls: "os-atts os-hide" });
-    ui.cmdIn = left.createEl("textarea", { cls: "os-in", attr: { rows: "1", placeholder: "Message Claude Code… (type / for commands)", autocomplete: "off", spellcheck: "false" } });
+    ui.cmdIn = left.createEl("textarea", { cls: "os-in", attr: { rows: "1", placeholder: "Message Claude Code… (type / for commands)", autocomplete: "off", spellcheck: "false" } }); this.osMentionInit(ui.cmdIn);
     ui.slash = cmd.createDiv({ cls: "os-slash os-hide", attr: { role: "listbox", "aria-label": "Commands" } });
     ui.go = box.createEl("button", { cls: "os-go", text: "SEND", attr: { "aria-label": "Send message" } }); ui.cmdMsg = M.createDiv({ cls: "os-cmdmsg" });
     const t = ui.cmdIn, zoom = () => (this.plugin.settings.textScale || 125) / 100;
@@ -1534,7 +1535,7 @@ Object.assign(HQView.prototype, {
     ui.grip.addEventListener("dblclick", () => { ui.userH = 0; lsSet("hqos-in-h", 0); this.osAutoGrow(true); });
     ui.exp.onclick = () => this.osSetFull(!ui.full);
     ui.fx = cmd.createEl("button", { cls: "os-fx", text: "✕", attr: { "aria-label": "Close the big message box", title: "Close (Esc)" } }); ui.fx.onclick = () => this.osSetFull(false);
-    ui.model.onchange = ui.effort.onchange = () => { const c = this.hq().get(this.hq().activeId); if (c && !c.busy) { c.model = ui.model.value; c.effort = ui.effort.value; this.hq().save(c); } };
+    ui.model.onchange = ui.effort.onchange = () => { if (ui.target.value !== "hq") { this.osClaudPick(); return; } const c = this.hq().get(this.hq().activeId); if (c && !c.busy) { c.model = ui.model.value; c.effort = ui.effort.value; this.hq().save(c); } };
     ui.model.value = MODS.chat.model || ""; ui.effort.value = MODS.chat.effort || ""; this.osAutoGrow();
   },
   osSetFull(on) { const u = this.osUI; if (!u) return; u.full = !!on; u.grid.toggleClass("cmd-full", u.full);
@@ -1753,16 +1754,7 @@ Object.assign(HQView.prototype, {
     this.osClaudBusy = true;
     try {
       const t = await cp.sessionMessaging.loadTranscript(id); if (u.target.value !== id) return; u.claudKey = key;
-      const all = (t && t.conversation && t.conversation.messages) || [], msgs = [];
-      for (const m of all.slice(-40)) {
-        if (m.role === "user") { const tx = String(m.displayContent || m.content || "").split(NOTE_TAG)[0].trim(); if (tx) msgs.push({ r: "user", text: tx }); continue; }
-        if (m.role !== "assistant") continue; const tc = m.toolCalls || [], blocks = [];
-        (m.contentBlocks && m.contentBlocks.length ? m.contentBlocks : [{ type: "text", content: m.content }]).forEach((b) => {
-          if (b.type === "text" && b.content) blocks.push({ k: "text", text: String(b.content) });
-          else if (b.type === "tool_use") { const x = tc.find((y) => y.id === b.toolId) || {}; const res = x.result; blocks.push({ k: "tool", name: x.name || "tool", input: x.input || {}, target: toolTarget(x.name, x.input), result: typeof res === "string" ? res.slice(0, 1500) : res ? JSON.stringify(res).slice(0, 1500) : "", isErr: x.status === "error" || !!x.isError }); }
-        });
-        msgs.push({ r: "asst", blocks });
-      }
+      const all = (t && t.conversation && t.conversation.messages) || [], msgs = this.osParseMsgs(all.slice(-40));
       const b = u.chatBody, near = u.stick !== false || force; b.empty(); u.liveEl = null;
       if (all.length > 40) b.createDiv({ cls: "os-muted os-chint", text: "Showing the last 40 messages. Open it in Claudian for the full chat." });
       msgs.forEach((m) => this.osChatMsg(b, m, false));
@@ -1770,7 +1762,9 @@ Object.assign(HQView.prototype, {
       { const Q = this.osQ && this.osQ[id]; if (Q) for (let i = Q.length - 1; i >= 0; i--) if (Q[i].sent && (Date.now() - Q[i].sent > 900000 || seen.some((x) => x.includes(Q[i].text.slice(0, 60))))) Q.splice(i, 1); }
       if (P[id].length && !(st === "running" && this.claudBusy(id))) b.createDiv({ cls: "os-think os-working", text: "Sent. Waiting for Claude…" });
       if (st === "running" && this.claudBusy(id)) { const since = meta.lastActivityAt ? Math.max(0, Math.round((Date.now() - meta.lastActivityAt) / 60000)) : 0;
-        const w = b.createDiv({ cls: "os-think os-working" }); w.createDiv({ text: "Claude is replying…" + (since ? " (last update " + since + " min ago)" : "") }); }
+        const w = b.createDiv({ cls: "os-think os-working os-live" }), lv = this.osLiveMsgs(id), step = this.osStepLabel(lv || msgs); u.liveLine = w.createDiv({ cls: "os-live-t", text: step ? step + "…" : "Claude is working…" });
+        const sb = w.createEl("button", { cls: "os-chb os-stop", text: "STOP", attr: { title: "Stop Claude now (your queued messages stay queued)" } }); sb.onclick = () => { sb.disabled = true; sb.setText("STOPPING…"); this.osClaudStop(id).then(() => setTimeout(() => { if (this.osUI) this.osUI.claudKey = ""; this.osClaudRender(true); }, 800)); }; }
+      this.osTodoRender(this.osLiveMsgs(id) || msgs, st === "running" && this.claudBusy(id)); this.osClaudPickSync(id, meta);
       this.osAskRender(b, id);
       if (near) b.scrollTop = b.scrollHeight;
       this.osCQRender(); u.chatTitle.setText("CLAUDIAN \u00B7 " + (meta.title || "Untitled")); const act = st === "running" && this.claudBusy(id); u.chatCost.setText(act ? "WORKING" : st === "awaiting-user" ? "NEEDS YOU" : "READY"); u.chatCost.toggleClass("run", act); this.osPermLabel(); this.osTidyLabel();
@@ -1836,6 +1830,82 @@ Object.assign(HQView.prototype, {
       if (qs.length > 1 || qs.some((q) => q.multiSelect) || qs.some((q) => q.isOther !== false)) { sendBtn = row.createEl("button", { cls: "os-chb os-ask-send", text: "SEND ANSWER" }); sendBtn.onclick = () => ready() && submit(); upd(); }
       const sk = row.createEl("button", { cls: "os-chb", text: "SKIP", attr: { title: "Dismiss without answering" } }); sk.onclick = () => { card.addClass("sent"); try { d.abort(); } catch (e) {} if (this.osUI) this.osUI.claudKey = ""; setTimeout(() => this.osClaudRender(true), 300); };
     }
+  },
+  osParseMsgs(list) { // Claudian messages (saved transcript or live in-memory state) -> HQ chat items
+    const msgs = [];
+    for (const m of list) {
+      if (!m) continue;
+      if (m.role === "user") { const tx = String(m.displayContent || m.content || "").split(NOTE_TAG)[0].trim(); if (tx) msgs.push({ r: "user", text: tx }); continue; }
+      if (m.role !== "assistant") continue; const tc = m.toolCalls || [], blocks = [];
+      (m.contentBlocks && m.contentBlocks.length ? m.contentBlocks : [{ type: "text", content: m.content }]).forEach((b) => {
+        if (b.type === "text" && b.content) blocks.push({ k: "text", text: String(b.content) });
+        else if (b.type === "tool_use") { const x = tc.find((y) => y.id === b.toolId) || {}; const res = x.result; blocks.push({ k: "tool", name: x.name || "tool", input: x.input || {}, target: toolTarget(x.name, x.input), result: typeof res === "string" ? res.slice(0, 1500) : res ? JSON.stringify(res).slice(0, 1500) : "", isErr: x.status === "error" || !!x.isError }); }
+      });
+      msgs.push({ r: "asst", blocks });
+    }
+    return msgs;
+  },
+  osLiveMsgs(id) { // the chat's in-memory messages (includes the turn in progress), or null
+    try { const rt = [...this.claudian().chatHost.sessionRuntimes.getAll()].find((r) => r.conversationId === id), s = rt && rt.currentModel && rt.currentModel.state; return s && Array.isArray(s.messages) ? this.osParseMsgs(s.messages.slice(-12)) : null; } catch (e) { return null; }
+  },
+  osLiveTick() { // every 1.5 s: refresh the live step line and the task checklist from the turn in progress
+    const u = this.osUI; if (!u || !u.target || u.target.value === "hq" || document.hidden) return; const id = u.target.value, live = this.osLiveMsgs(id); if (!live) return;
+    const busy = this.claudBusy(id) || (() => { try { return !![...this.claudian().chatHost.sessionRuntimes.getAll()].find((r) => r.conversationId === id && r.isWorking); } catch (e) { return false; } })();
+    if (u.liveLine && u.liveLine.isConnected) { const step = this.osStepLabel(live), tx = step ? step + "…" : "Claude is working…"; if (u.liveLine.textContent !== tx) u.liveLine.setText(tx); }
+    this.osTodoRender(live, busy);
+  },
+  // ---- live step line, task checklist, model/effort for Claudian chats, @file mentions ----
+  osStepLabel(msgs) { // what Claude is doing right now, from the newest block of the last reply
+    const last = [...msgs].reverse().find((m) => m.r === "asst"); if (!last || !last.blocks || !last.blocks.length) return "";
+    const bl = last.blocks[last.blocks.length - 1]; if (bl.k === "text") return "Writing a reply";
+    if (bl.k !== "tool") return ""; const n = bl.name || "", i = bl.input || {}, base = (p) => String(p || "").split(/[\\/]/).pop();
+    const f = base(i.file_path || i.notebook_path || i.path), cmd = String(i.description || i.command || "").replace(/\s+/g, " ").slice(0, 60);
+    if (/^(Edit|MultiEdit|Write|NotebookEdit)$/.test(n)) return (n === "Write" ? "Writing " : "Editing ") + (f || "a file");
+    if (n === "Read") return "Reading " + (f || "a file"); if (/^(Grep|Glob)$/.test(n)) return "Searching files" + (i.pattern ? " for " + String(i.pattern).slice(0, 30) : "");
+    if (/^(Bash|PowerShell)$/.test(n)) return "Running: " + (cmd || "a command"); if (n === "WebSearch") return "Searching the web" + (i.query ? ": " + String(i.query).slice(0, 40) : "");
+    if (n === "WebFetch") { try { return "Reading " + new URL(i.url).host; } catch (e) { return "Reading a web page"; } }
+    if (n === "Agent" || n === "Task") return "Running an agent" + (i.description ? ": " + String(i.description).slice(0, 40) : "");
+    if (/Todo|Task/i.test(n)) return "Updating the task list"; if (n === "AskUserQuestion") return "Asking you a question"; if (n === "Skill") return "Using a skill" + (i.skill ? ": " + i.skill : "");
+    return n.startsWith("mcp__") ? "Using " + n.split("__").slice(1).join(" ").replace(/_/g, " ") : n ? "Using " + n : "";
+  },
+  osTodoRender(msgs, busy) {
+    const u = this.osUI; if (!u || !u.todo) return; let list = null;
+    for (const m of [...msgs].reverse()) { if (m.r !== "asst") continue; const t = [...(m.blocks || [])].reverse().find((b) => b.k === "tool" && /^(TodoWrite|ManageTasks)$/.test(b.name || "")); if (t) { const i = t.input || {}; list = i.todos || i.tasks || null; break; } }
+    const items = Array.isArray(list) ? list.map((x) => ({ text: String(x.content || x.subject || x.title || x.description || ""), now: String(x.activeForm || ""), st: String(x.status || "pending") })).filter((x) => x.text) : [];
+    const done = items.filter((x) => /complete|done/i.test(x.st)).length, show = items.length && (busy || done < items.length);
+    const sig = JSON.stringify([show, items, u.todoOpen]); if (sig === u.todoSig) return; u.todoSig = sig; u.todo.empty(); u.todo.toggleClass("os-hide", !show); if (!show) return;
+    const h = u.todo.createEl("button", { cls: "os-todo-h", text: (u.todoOpen === false ? "▸ " : "▾ ") + "TASKS " + done + "/" + items.length }); h.onclick = () => { u.todoOpen = u.todoOpen === false; u.todoSig = ""; this.osTodoRender(msgs, busy); };
+    if (u.todoOpen === false) { const cur = items.find((x) => /progress/i.test(x.st)); if (cur) h.appendText("  ·  " + (cur.now || cur.text)); return; }
+    const ul = u.todo.createDiv({ cls: "os-todo-l" }); items.forEach((x) => { const dn = /complete|done/i.test(x.st), ip = /progress/i.test(x.st); const r = ul.createDiv({ cls: "os-todo-i" + (dn ? " done" : ip ? " now" : "") }); r.createSpan({ cls: "k", text: dn ? "✓" : ip ? "▸" : "○" }); r.createSpan({ text: ip && x.now ? x.now : x.text }); });
+  },
+  osClaudPickSync(id, meta) { // show the chat's current model + effort in the pickers
+    const u = this.osUI, cp = this.claudian(); if (!u || !u.model || document.activeElement === u.model || document.activeElement === u.effort) return;
+    const m = String(meta.selectedModel || ""), mm = [...u.model.options].some((o) => o.value === m) ? m : ""; if (u.model.value !== mm) u.model.value = mm;
+    let ef = ""; try { const rt = [...cp.chatHost.sessionRuntimes.getAll()].find((r) => r.conversationId === id); ef = (rt && rt.reasoningSelections && rt.reasoningSelections.get("claude:" + (m || "opus"))) || ""; } catch (e) {}
+    if ([...u.effort.options].some((o) => o.value === ef) && u.effort.value !== ef) u.effort.value = ef;
+  },
+  async osClaudPick() {
+    const u = this.osUI, id = u && u.target.value, cp = this.claudian(); if (!cp || !id || id === "hq" || id === "new") return; const h = cp.chatHost, m = u.model.value;
+    try { if (m) await h.updateConversation(id, { selectedModel: m }); const meta = h.getConversationList().find((x) => x.id === id), mod = (meta && meta.selectedModel) || m || "opus";
+      const rt = [...h.sessionRuntimes.getAll()].find((r) => r.conversationId === id); if (rt && rt.reasoningSelections && u.effort.value) rt.reasoningSelections.set("claude:" + mod, u.effort.value);
+      new Notice("This chat now uses " + String(mod).toUpperCase() + (u.effort.value ? " · " + u.effort.value + " effort" : "") + " from the next message."); }
+    catch (e) { new Notice("Could not change the model: " + (e && e.message || e)); }
+  },
+  osMentionInit(t) { // type @ in the message box to attach a vault note/file by path
+    const host = t.parentElement; host.style.position = "relative"; const pop = host.createDiv({ cls: "os-mention os-hide" }); let items = [], sel = 0;
+    const close = () => { pop.addClass("os-hide"); items = []; };
+    const query = () => { const m = t.value.slice(0, t.selectionStart).match(/(^|\s)@([^\s@"]*)$/); return m ? m[2] : null; };
+    const render = (q) => { const ql = q.toLowerCase(), score = (f) => { const n = f.name.toLowerCase(), p = f.path.toLowerCase(); return n.startsWith(ql) ? 0 : n.includes(ql) ? 1 : p.includes(ql) ? 2 : 9; };
+      items = this.app.vault.getFiles().filter((f) => !/(^|\/)(\.|💀)/.test(f.path) && !/💀personal|(^|\/)(node_modules|dist|build|out|data|tmp|temp|coverage)\//i.test(f.path)).map((f) => [score(f), f]).filter((x) => x[0] < 9).sort((a, b) => a[0] - b[0] || b[1].stat.mtime - a[1].stat.mtime).slice(0, 8).map((x) => x[1]);
+      if (sel >= items.length) sel = 0; pop.empty(); items.forEach((f, i) => { const r = pop.createDiv({ cls: "os-mi" + (i === sel ? " on" : "") }); r.createSpan({ cls: "n", text: f.name }); r.createSpan({ cls: "p", text: f.parent ? f.parent.path : "" }); r.onmousedown = (e) => { e.preventDefault(); pick(i); }; });
+      pop.toggleClass("os-hide", !items.length); };
+    const pick = (i) => { const f = items[i]; if (!f) return; const pos = t.selectionStart, ref = /\s/.test(f.path) ? '"' + f.path + '"' : f.path, before = t.value.slice(0, pos).replace(/@([^\s@"]*)$/, "@" + ref + " ");
+      t.value = before + t.value.slice(pos); t.selectionStart = t.selectionEnd = before.length; close(); this.osAutoGrow(); this.osGoLabel(); t.focus(); };
+    t.addEventListener("input", () => { const q = query(); if (q === null) { close(); return; } sel = 0; render(q); });
+    t.addEventListener("keydown", (e) => { if (pop.hasClass("os-hide") || !items.length) return; const k = e.key;
+      if (k === "ArrowDown" || k === "ArrowUp") { sel = (sel + (k === "ArrowDown" ? 1 : items.length - 1)) % items.length; render(query() || ""); }
+      else if (k === "Enter" || k === "Tab") pick(sel); else if (k === "Escape") close(); else return; e.preventDefault(); e.stopImmediatePropagation(); }, true);
+    t.addEventListener("blur", () => setTimeout(close, 150));
   },
   osPendAdd(id, text) { this.osPend = this.osPend || {}; (this.osPend[id] = this.osPend[id] || []).push({ text, t: Date.now() }); if (this.osUI) this.osUI.claudKey = ""; },
   async osClaudStop(id) { const cp = this.claudian(); try { await cp.api.send(id, { mode: "interrupt" }); } catch (e) { new Notice("Could not stop: " + (e && e.message || e)); } },
@@ -1916,7 +1986,8 @@ Object.assign(HQView.prototype, {
     u.target.value = pend || (convs.some((c) => c[0] === prev) || (prev === "hq" && hqOn) ? prev : (act || (hqOn ? "hq" : "new"))); this.osChatLayout(); this.osTargetLabel(); if (!u.tpop.hasClass("os-hide")) this.osTargetMenu(true);
   },
   // ---- Claudian path (only when a Claudian session is picked in the target list; HQ chat is the default) ----
-  claudBusy(id) { const cp = this.claudian(); try { if (!(cp && cp.sessionMessaging && cp.sessionMessaging.status(id) === "running")) return false; const m = cp.chatHost.getConversationList().find((x) => x.id === id); return !m || !m.lastActivityAt || Date.now() - m.lastActivityAt < 180000; } catch (e) { return false; } },
+  claudBusy(id) { const cp = this.claudian(); try { // live flag first: the chat's in-memory state says whether a reply is streaming right now
+    const rt = [...cp.chatHost.sessionRuntimes.getAll()].find((r) => r.conversationId === id), lst = rt && rt.currentModel && rt.currentModel.state; if (lst && typeof lst.isStreaming === "boolean") return lst.isStreaming; } catch (e) {} try { if (!(cp && cp.sessionMessaging && cp.sessionMessaging.status(id) === "running")) return false; const m = cp.chatHost.getConversationList().find((x) => x.id === id); return !m || !m.lastActivityAt || Date.now() - m.lastActivityAt < 180000; } catch (e) { return false; } },
   async osSend(text, target) {
     const u = this.osUI; if (u) u.stick = true; text = String(text || "").trim(); if (!target || target === "hq") return;
     if (u.imgs && u.imgs.length) { try { const dir = require("path").join(require("os").tmpdir(), "hq-images"); require("fs").mkdirSync(dir, { recursive: true }); const ps = u.imgs.map((im, i) => { const p = require("path").join(dir, Date.now() + "-" + i + "." + ((im.media || "image/png").split("/")[1] || "png").replace("jpeg", "jpg")); require("fs").writeFileSync(p, Buffer.from(im.data, "base64")); return p; }); text = (text || "See the attached image" + (ps.length > 1 ? "s" : "") + ".") + "\n\n" + ps.map((p) => "[Attached image: " + p + "]").join("\n"); u.imgs = []; this.osRenderAtts(); } catch (e) { new Notice("Could not attach image: " + (e && e.message || e)); return; } }
@@ -2400,7 +2471,7 @@ Object.assign(HQView.prototype, {
     u.mid.toggleClass("chatting", open); u.chatBox.toggleClass("os-hide", !open);
     this.osGoLabel();
     const hqT = u.target.value === "hq"; u.cmdIn.placeholder = hqT ? "Message Claude Code" + (this.project ? " about " + this.project.name : "") + "…  (type / for commands)" : "Message the selected Claudian session…"; u.hint.setText(hqT ? "ENTER sends · SHIFT+ENTER new line · / commands · UP recalls last" : "ENTER sends to Claudian · SHIFT+ENTER new line");
-    u.model.toggleClass("os-hide", !hqT); u.effort.toggleClass("os-hide", !hqT);
+    u.model.toggleClass("os-hide", u.target.value === "new"); u.effort.toggleClass("os-hide", u.target.value === "new"); if (u.todo && hqT) u.todo.addClass("os-hide");
     if (c && hqT) { u.model.value = c.model || ""; u.effort.value = c.effort || ""; } this.osTargetLabel();
   },
   osChatRender(full) {
