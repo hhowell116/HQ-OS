@@ -405,3 +405,42 @@
   .os-top{padding:6px 10px}.os-r{margin-left:0;width:100%;justify-content:space-between}.os-mid{min-height:400px}
 }
 @media (prefers-reduced-motion:reduce){.os-sweep,.os-bar::after,.os-ring .r1{animation:none}.os-dot,.os-srow .os-sd{animation:none!important}}
+
+/* ---- HQ chat (centre column) ---- */
+.hqos .os-hide{display:none!important}
+.hqos .os-mid.chatting .os-orbw{flex:none;height:84px;min-height:0}
+.hqos .os-mid.chatting .os-ring{opacity:.55}
+.hqos .os-chat{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;border:1px solid var(--os-line);background:rgba(4,10,13,.82);position:relative}
+.hqos .os-chh{flex:none;display:flex;align-items:center;gap:8px;padding:5px 8px;border-bottom:1px solid var(--os-line)}
+.hqos .os-cht{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--os-cy);letter-spacing:.08em;font-weight:700;font-size:.9em}
+.hqos .os-chc{flex:none;color:var(--os-dim);font-size:.8em;letter-spacing:.14em}.hqos .os-chc.run{color:var(--os-cy)}
+.hqos .os-chb{flex:none;border:1px solid var(--os-line);background:transparent;color:var(--os-cy);font-family:var(--os-mono);font-size:.78em;letter-spacing:.12em;padding:2px 8px;border-radius:0;cursor:pointer;box-shadow:none;height:auto}
+.hqos .os-chb:hover{background:var(--os-cy);color:#04080b}.hqos .os-chb:focus-visible{outline:2px solid var(--os-cy);outline-offset:1px}
+.hqos .os-cbody{flex:1;min-height:0;overflow-y:auto;padding:8px 10px;display:flex;flex-direction:column;gap:10px}
+.hqos .os-msg{max-width:100%;font-size:.95em;line-height:1.5}
+.hqos .os-msg.user .os-mt{background:rgba(25,227,208,.1);border-left:2px solid var(--os-cy);padding:5px 9px;white-space:pre-wrap;overflow-wrap:anywhere}
+.hqos .os-msg.asst .os-mt{overflow-wrap:anywhere}
+.hqos .os-md p{margin:0 0 4px}.hqos .os-md .os-gap{height:6px}.hqos .os-md ul,.hqos .os-md ol{margin:2px 0 4px 18px;padding:0}
+.hqos .os-md h3,.hqos .os-md h4,.hqos .os-md h5,.hqos .os-md h6{margin:6px 0 2px;color:var(--os-cy);font-size:1em;letter-spacing:.05em}
+.hqos .os-md code{background:rgba(25,227,208,.1);padding:0 4px;font-family:var(--os-mono);font-size:.92em}
+.hqos .os-md pre{margin:4px 0;padding:6px 8px;background:rgba(0,0,0,.45);border:1px solid var(--os-line);overflow-x:auto}.hqos .os-md pre code{background:none;padding:0}
+.hqos .os-lk{color:var(--os-cy);text-decoration:underline;cursor:pointer}
+.hqos .os-tool{margin:2px 0;border-left:2px solid var(--os-line);font-size:.86em}
+.hqos .os-tool summary{display:flex;gap:8px;padding:1px 6px;cursor:pointer;color:var(--os-dim);list-style:none;overflow:hidden;white-space:nowrap}
+.hqos .os-tool summary::-webkit-details-marker{display:none}
+.hqos .os-tn{flex:none;color:var(--os-cy);letter-spacing:.08em;font-weight:700}.hqos .os-tt{overflow:hidden;text-overflow:ellipsis}
+.hqos .os-tool.run .os-tn{animation:os-pulse 1.4s ease-in-out infinite}.hqos .os-tool.err{border-left-color:var(--os-red)}
+.hqos .os-tb pre{margin:2px 6px;padding:4px 6px;background:rgba(0,0,0,.4);max-height:160px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font-size:.92em}
+.hqos .os-think{color:var(--os-dim);letter-spacing:.12em;font-size:.82em;animation:os-pulse 1.6s ease-in-out infinite}
+.hqos .os-err{color:var(--os-red);font-size:.88em;margin-top:2px}
+.hqos .os-use{color:var(--os-dim);font-size:.75em;letter-spacing:.06em;margin-top:2px}
+.hqos .os-chint{padding:10px}
+.hqos .os-clist{position:absolute;z-index:3;top:30px;left:0;right:0;max-height:70%;overflow-y:auto;background:#05090c;border:1px solid var(--os-cy);box-shadow:0 8px 24px rgba(0,0,0,.6)}
+.hqos .os-cli{display:flex;align-items:center;gap:8px;padding:6px 10px;cursor:pointer;border-bottom:1px solid var(--os-line)}
+.hqos .os-cli:hover,.hqos .os-cli.cur{background:rgba(25,227,208,.1)}.hqos .os-cli:focus-visible{outline:2px solid var(--os-cy);outline-offset:-2px}
+.hqos .os-clt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.hqos .os-cld{flex:none;color:var(--os-dim);font-size:.8em}
+.hqos .os-sel.os-sm{max-width:15%;font-size:.8em;padding:0 4px}
+.hqos textarea.os-in{resize:none;height:34px;max-height:120px;padding:7px 10px;line-height:20px;overflow-y:auto}
+.hqos .os-go.stop{background:var(--os-red);color:#04080b}
+@keyframes os-pulse{50%{opacity:.45}}
+@media (prefers-reduced-motion:reduce){.hqos .os-think,.hqos .os-tool.run .os-tn{animation:none}}

@@ -1,3 +1,6 @@
 data.json
 node_modules/
 
+chats/
+*.log
+*.log.1

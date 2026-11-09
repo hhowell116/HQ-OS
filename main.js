@@ -491,6 +491,7 @@ function renderInsights(v, el, only) {
       m.createSpan({ text: (st ? st.tools : a.count) + " tool calls" });
       if (st) { tot += st.cost; m.createSpan({ text: "in " + kfmt(st.tin) + " · out " + kfmt(st.tout) + " · cache " + kfmt(st.tcr + st.tcc) }); const e = m.createSpan({ cls: "lhq-est", text: "~" + usd(st.cost) + " est." }); e.title = "Estimate from API list prices, not your plan's billing"; }
     });
+    const hqT = v.plugin.hq && v.plugin.hq.todayTotals(); if (hqT && hqT.n) { const c = b.createDiv({ cls: "lhq-pcard done" }), h = c.createDiv({ cls: "lhq-top" }); h.createDiv({ cls: "lhq-name", text: "HQ chat (today)" }); h.createDiv({ cls: "lhq-chips" }).createSpan({ text: hqT.n + " turns" }); const m = c.createDiv({ cls: "lhq-meta" }); m.createSpan({ text: "in " + kfmt(hqT.tin) + " · out " + kfmt(hqT.tout) + " · cache " + kfmt(hqT.cache) }); m.createSpan({ cls: "lhq-est", text: "~" + usd(hqT.cost) + " est." }); }
     if (list.length) b.createDiv({ cls: "lhq-muted", text: "Costs are rough estimates from API list prices (subscription use is not billed per token)." }); }
   // files
   if (W("files")) { const withFiles = run.filter((a) => a.st && a.st.files.size).slice(0, 5), b = insPanel(v, el, "files", "Files in play", withFiles.reduce((n, a) => n + Math.min(6, a.st.files.size), 0));
@@ -1208,7 +1209,7 @@ Object.assign(HQView.prototype, {
     this.contentEl.toggleClass("hqos", on); this.osStop(); if (this.pageEl) { this.pageEl.empty(); this.pageEl.toggleClass("os", on); }
     if (!on) ["--tx", "--glass", "--glass-b"].forEach((k) => this.contentEl.style.removeProperty(k));
   },
-  osStop() { if (this.orb) this.orb.run(false); if (this.osIO) this.osIO.disconnect(); if (this.osRO) this.osRO.disconnect(); this.orb = null; this.osIO = this.osRO = null; this.osUI = null; },
+  osStop() { if (this.osUnsub) { this.osUnsub(); this.osUnsub = null; } clearTimeout(this.osStreamT); this.osStreamT = 0; if (this.orb) this.orb.run(false); if (this.osIO) this.osIO.disconnect(); if (this.osRO) this.osRO.disconnect(); this.orb = null; this.osIO = this.osRO = null; this.osUI = null; },
   osBuild() {
     const page = this.pageEl; page.empty(); page.addClass("os"); const ui = this.osUI = { sig: {}, inView: true }, wrap = page.createDiv({ cls: "os-wrap" });
     wrap.createDiv({ cls: "os-sweep" }); ui.top = wrap.createDiv({ cls: "os-top" });
@@ -1221,16 +1222,23 @@ Object.assign(HQView.prototype, {
     const orbw = M.createDiv({ cls: "os-orbw" }); ui.cv = orbw.createEl("canvas", { cls: "os-cv", attr: { "aria-hidden": "true" } });
     orbw.insertAdjacentHTML("beforeend", '<svg class="os-ring" viewBox="0 0 200 200" aria-hidden="true"><circle cx="100" cy="100" r="96" class="r1"/><circle cx="100" cy="100" r="88" class="r2"/><path class="r3" d="M100 2v10M100 188v10M2 100h10M188 100h10"/></svg>');
     ui.status = M.createDiv({ cls: "os-status", attr: { role: "status", "aria-live": "polite" } });
-    const cmd = M.createDiv({ cls: "os-cmd" }); ui.target = cmd.createEl("select", { cls: "os-sel", attr: { "aria-label": "Send to which Claudian session" } });
-    ui.cmdIn = cmd.createEl("input", { cls: "os-in", attr: { type: "text", placeholder: "Type a command for HQ…", "aria-label": "Command for Claudian", autocomplete: "off", spellcheck: "false" } });
-    const sendB = cmd.createEl("button", { cls: "os-go", text: "SEND", attr: { "aria-label": "Send command" } }); ui.cmdMsg = M.createDiv({ cls: "os-cmdmsg" });
-    const go = () => this.osSend(ui.cmdIn.value, ui.target.value); sendB.onclick = go; ui.cmdIn.addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Enter" && !e.isComposing) go(); });
+    ui.mid = M; ui.chatBox = M.createDiv({ cls: "os-chat os-hide" }); this.osChatHeader(ui.chatBox); ui.chatList = ui.chatBox.createDiv({ cls: "os-clist os-hide" }); ui.chatBody = ui.chatBox.createDiv({ cls: "os-cbody", attr: { role: "log", "aria-live": "polite", "aria-label": "Claude Code conversation" } });
+    ui.chatBody.addEventListener("click", (e) => { const a = e.target.closest && e.target.closest("a.os-lk"); if (a) { e.preventDefault(); this.osChatLink(a.getAttribute("data-u")); } });
+    const cmd = M.createDiv({ cls: "os-cmd" }); ui.target = cmd.createEl("select", { cls: "os-sel", attr: { "aria-label": "Send to HQ chat or a Claudian session" } });
+    ui.model = cmd.createEl("select", { cls: "os-sel os-sm", attr: { "aria-label": "Model" } }); HQ_MODELS.forEach((m) => ui.model.createEl("option", { value: m, text: m ? m.toUpperCase() : "MODEL: DEFAULT" }));
+    ui.effort = cmd.createEl("select", { cls: "os-sel os-sm", attr: { "aria-label": "Effort" } }); HQ_EFFORTS.forEach((m) => ui.effort.createEl("option", { value: m, text: m ? m.toUpperCase() : "EFFORT: DEFAULT" }));
+    ui.cmdIn = cmd.createEl("textarea", { cls: "os-in", attr: { rows: "1", placeholder: "Message Claude Code…", "aria-label": "Message for Claude Code", autocomplete: "off", spellcheck: "false" } });
+    ui.go = cmd.createEl("button", { cls: "os-go", text: "SEND", attr: { "aria-label": "Send message" } }); ui.cmdMsg = M.createDiv({ cls: "os-cmdmsg" });
+    const go = () => { const c = this.hq().get(this.hq().activeId); if (ui.target.value === "hq" && c && c.busy) return this.hq().stop(c); if (ui.target.value === "hq") return this.osChatSend(ui.cmdIn.value); this.osSend(ui.cmdIn.value, ui.target.value); };
+    ui.go.onclick = go; ui.target.onchange = () => this.osChatLayout(); ui.cmdIn.addEventListener("input", () => this.osAutoGrow());
+    ui.cmdIn.addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); const c = this.hq().get(this.hq().activeId); if (!(c && c.busy && ui.target.value === "hq")) go(); } });
+    ui.model.onchange = ui.effort.onchange = () => { const c = this.hq().get(this.hq().activeId); if (c && !c.busy) { c.model = ui.model.value; c.effort = ui.effort.value; this.hq().save(c); } };
     ui.tick = M.createDiv({ cls: "os-ticker" });
     this.orb = new Orb(ui.cv); this.osRO = new ResizeObserver(() => { if (this.orb) this.orb.resize(); }); this.osRO.observe(orbw);
     this.osIO = new IntersectionObserver((es) => { ui.inView = es[es.length - 1].isIntersecting; this.osGate(); }); this.osIO.observe(orbw);
     if (!this.usage) { try { const c = JSON.parse(localStorage.getItem("project-hq-usage") || "null"); if (c) { this.usage = c.u; this.at = new Date(c.at); } } catch (e) {} }
     sampleVitals(); setTimeout(() => { if (this.osUI === ui) { sampleVitals(); this.osVitalsRender(); } }, 1500);
-    this.osSessData(true); this.osElevenCheck(true); setTimeout(() => this.osGate(), 300);
+    this.osSessData(true); this.osElevenCheck(true); this.osChatInit(); setTimeout(() => this.osGate(), 300);
   },
   osGate() { const ui = this.osUI; if (!ui || !this.orb) return; this.orb.run(!document.hidden && ui.inView && (!this.contentEl.isShown || this.contentEl.isShown())); },
   // ---- render everything (cheap; each region redraws only when its signature changed) ----
@@ -1291,6 +1299,7 @@ Object.assign(HQView.prototype, {
       } else this.osConvs = [];
       const now = Date.now();
       this.live.filter((a) => a.status === "running" || (a.status === "done" && now - a.mtime < 3600000)).slice(0, 8).forEach((a) => rows.push({ kind: "agent", id: a.id, title: clean(a.title), st: a.status === "running" ? "running in background" : "done", ts: a.mtime, snip: redact(a.tool ? stepText(a.tool) : a.text || "").replace(/\s+/g, " ").slice(0, 180), type: a.type }));
+      if (this.hq()) this.hq().list().slice(0, 3).forEach((c) => rows.unshift({ kind: "hq", id: c.id, title: "HQ: " + clean(c.title), st: c.busy ? "thinking" : "idle", ts: c.updated, snip: (() => { const m = c.msgs.filter((x) => x.r === "asst").pop(); const t = m && m.blocks.filter((b) => b.k === "text").map((b) => b.text).join(" "); return clean(redact(t || "")).replace(/\s+/g, " ").slice(0, 180); })() }));
       this.osRows = rows; this.osFillTarget(); this.osSessRender();
       for (const [id, key, sn] of reads) { let t = ""; try { t = String(await cp.api.read(id) || ""); } catch (e) {} this.osSnip[id] = { key, at: Date.now(), text: /^.no reply.$/.test(t) ? (sn && sn.text || "") : clean(redact(t)).replace(/\s+/g, " ").trim().slice(0, 180) }; const r = rows.find((x) => x.id === id); if (r) r.snip = this.osSnip[id].text; }
       if (reads.length) this.osSessRender();
@@ -1302,10 +1311,10 @@ Object.assign(HQView.prototype, {
       const b = u.sess.body; b.empty(); u.sess.meta.setText(rows.filter((r) => r.st === "thinking" || r.st === "running in background").length + " ACTIVE");
       if (!rows.length) b.createDiv({ cls: "os-muted", text: "No sessions yet." });
       rows.forEach((r) => {
-        const c = b.createDiv({ cls: "os-srow " + r.kind + " s-" + r.st.replace(/\s+/g, "-"), attr: r.kind === "chat" ? { role: "button", tabindex: "0", "aria-label": "Open session " + r.title } : {} });
+        const c = b.createDiv({ cls: "os-srow " + r.kind + " s-" + r.st.replace(/\s+/g, "-"), attr: r.kind !== "agent" ? { role: "button", tabindex: "0", "aria-label": "Open session " + r.title } : {} });
         const h = c.createDiv({ cls: "os-sh" }); h.createSpan({ cls: "os-sd" }); h.createSpan({ cls: "os-sn", text: r.title }).title = r.title; h.createSpan({ cls: "os-ss", text: r.st.toUpperCase() });
         c.createDiv({ cls: "os-sm", text: (r.kind === "agent" ? r.type + " · " : "") + (r.snip || "(no messages yet)") });
-        if (r.kind === "chat") { const open = () => this.osOpenSession(r.id); c.onclick = open; c.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } }); }
+        if (r.kind !== "agent") { const open = () => r.kind === "hq" ? this.osChatOpenConv(r.id) : this.osOpenSession(r.id); c.onclick = open; c.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } }); }
       });
     });
   },
@@ -1315,31 +1324,17 @@ Object.assign(HQView.prototype, {
     const leaf = ws.getLeavesOfType(type)[0]; if (leaf) ws.revealLeaf(leaf);
   },
   osFillTarget() {
-    const u = this.osUI; if (!u || !u.target) return; const prev = u.target.value, convs = this.osConvs || [], sig = JSON.stringify(convs); if (u.tsig === sig) return; u.tsig = sig; u.target.empty();
-    u.target.createEl("option", { value: "new", text: "+ NEW SESSION" }); convs.forEach(([id, t, act]) => u.target.createEl("option", { value: id, text: (act ? "* " : "") + t.slice(0, 34) }));
-    u.target.value = convs.some((c) => c[0] === prev) || prev === "new" ? prev : "new";
+    const u = this.osUI; if (!u || !u.target) return; const prev = u.target.value || "hq", convs = this.osConvs || [], sig = JSON.stringify(convs); if (u.tsig === sig) return; u.tsig = sig; u.target.empty();
+    u.target.createEl("option", { value: "hq", text: "HQ CHAT" }); convs.forEach(([id, t, act]) => u.target.createEl("option", { value: id, text: "CLAUDIAN: " + (act ? "* " : "") + t.slice(0, 28) }));
+    u.target.value = convs.some((c) => c[0] === prev) || prev === "hq" ? prev : "hq"; this.osChatLayout();
   },
-  // ---- command bar -> Claudian (api.send queues the text as a user message; new session via chatHost.createConversation) ----
+  // ---- Claudian path (only when a Claudian session is picked in the target list; HQ chat is the default) ----
   async osSend(text, target) {
-    const u = this.osUI; text = String(text || "").trim(); if (!text) return; const say = (m, bad) => { u.cmdMsg.setText(m); u.cmdMsg.toggleClass("bad", !!bad); };
-    const cp = this.claudian(), ws = this.app.workspace, type = (this.plugin.settings.chatView || "claudian-view").trim();
-    if (!(cp && cp.api && cp.api.send && cp.chatHost)) { // no safe API: copy and focus the chat input
-      try { await navigator.clipboard.writeText(text); } catch (e) {}
-      const leaf = ws.getLeavesOfType(type)[0]; if (leaf) { ws.revealLeaf(leaf); setTimeout(() => { const ta = leaf.view.contentEl.querySelector("textarea"); if (ta) ta.focus(); }, 150); }
-      say("Claudian API not found: copied to clipboard, paste it into the chat."); return;
-    }
+    const u = this.osUI; text = String(text || "").trim(); if (!text || !target || target === "hq") return; const say = (m, bad) => { u.cmdMsg.setText(m); u.cmdMsg.toggleClass("bad", !!bad); };
+    const cp = this.claudian(); if (!(cp && cp.api && cp.api.send)) { say("Claudian is not available.", true); return; }
     u.cmdIn.disabled = true; say("Sending…");
-    try {
-      let id = target, title = "";
-      if (!id || id === "new") {
-        const s = cp.chatHost.getCommittedSettings ? cp.chatHost.getCommittedSettings() : {}, ms = cp.chatHost.getActiveModelSelection ? cp.chatHost.getActiveModelSelection() : null;
-        const conv = await cp.chatHost.createConversation(Object.assign({ providerId: (ms && ms.providerId) || s.settingsProvider || "claude" }, ms && ms.model ? { selectedModel: ms.model } : {})); id = conv.id; title = "a new session";
-      } else title = ((this.osConvs || []).find((c) => c[0] === id) || [])[1] || "session";
-      await cp.api.send(id, { text });
-      u.cmdIn.value = ""; say("Sent to " + title + ".");
-      if (!target || target === "new") { this.osSessAt = 0; this.osOpenSession(id); }
-      this.osSessData(true);
-    } catch (e) { console.error("Project HQ command", e); say("Could not send: " + redact(e && e.message || e), true); }
+    try { const title = ((this.osConvs || []).find((c) => c[0] === target) || [])[1] || "session"; await cp.api.send(target, { text }); u.cmdIn.value = ""; this.osAutoGrow(); say("Sent to Claudian: " + title + " (open it from ACTIVE AI SESSIONS to read the reply)."); this.osSessData(true); }
+    catch (e) { console.error("Project HQ command", e); say("Could not send: " + redact(e && e.message || e), true); }
     finally { u.cmdIn.disabled = false; u.cmdIn.focus(); }
   },
   // ---- project progress rings ----
@@ -1370,10 +1365,10 @@ Object.assign(HQView.prototype, {
   osCountTick() { if (this.osCount && this.osCountAt) { const ms = this.osCountAt - Date.now(), s = Math.max(0, Math.floor(ms / 1000)); this.osCount.setText("T-" + osMono(Math.floor(s / 3600)) + ":" + osMono(Math.floor(s % 3600 / 60)) + ":" + osMono(s % 60)); if (ms < 0 && this.osUI) { this.osUI.sig.next = ""; this.osNextRender(); } } },
   // ---- centre: status line + ticker; orb mood ----
   osMidRender() {
-    const u = this.osUI, run = this.live.filter((a) => a.status === "running").length, ci = cacheInfo(), cold = ci && ci.state === "cold", hot = vit.cpu > 85;
+    const u = this.osUI, hqBusy = this.hq() && this.hq().isBusy() ? 1 : 0, run = this.live.filter((a) => a.status === "running").length + hqBusy, ci = cacheInfo(), cold = ci && ci.state === "cold", hot = vit.cpu > 85;
     const el = this.osEleven && this.osEleven.ok ? this.osEleven : null, posts = this.queue ? this.queue.posted : null, lv = this.todo && this.todo.live;
     if (this.orb) this.orb.mode(run ? 1 : cold ? 0.15 : 0.28, !!cold);
-    const msg = run ? run + (run === 1 ? " agent" : " agents") + " running" : cold ? "Cache cold: next message re-reads the chat" : hot ? "High system load" : "All systems operational", cls = run ? "run" : (cold || hot) ? "warn" : "ok";
+    const msg = hqBusy && run === 1 ? "Claude is working" : run ? run + (run === 1 ? " agent" : " agents") + " running" : cold ? "Cache cold: next message re-reads the chat" : hot ? "High system load" : "All systems operational", cls = run ? "run" : (cold || hot) ? "warn" : "ok";
     this.osReg("mid", JSON.stringify([msg, cls, run, posts, el && el.left, this.osEleven && this.osEleven.err, lv]), () => {
       u.status.empty(); u.status.className = "os-status " + cls; u.status.createSpan({ cls: "os-dot" }); u.status.createSpan({ text: msg.toUpperCase() });
       const t = u.tick; t.empty(); const it = (k, v, c, tip) => { const e = t.createSpan({ cls: "os-ti " + (c || "") }); e.createSpan({ cls: "k", text: k }); e.createSpan({ cls: "v", text: v }); if (tip) e.title = tip; };
@@ -1464,7 +1459,243 @@ Object.assign(HQView.prototype, {
   },
 });
 
-const DEFAULTS = { projects: [], last: "", claudeDir: "", excludeRe: "personal", person: "", chatView: "claudian-view", filesBesideHQ: true, textScale: 125 };
+// ===== HQ chat engine: runs the installed Claude Code CLI headless (stream-json) so HQ is a real chat surface. =====
+// One long-lived child process per conversation. User turns go in as stream-json lines; session ids persist for --resume.
+// Safety: text typed into HQ is only ever sent to Claude as a message (never run as a command). Permission mode matches Claudian's "yolo" (= bypassPermissions);
+// the vault's .claude/settings.json deny rules and PreToolUse delete-guard hook still apply because the CLI runs with cwd = vault root and default setting sources.
+const HQ_MODELS = ["", "sonnet", "opus", "haiku"], HQ_EFFORTS = ["", "low", "medium", "high", "xhigh", "max"];
+const toolTarget = (name, inp) => {
+  inp = inp || {}; const v = inp.file_path || inp.path || inp.command || inp.pattern || inp.url || inp.query || inp.description || inp.prompt || inp.skill || "";
+  if (v) return String(v); const k = Object.keys(inp).find((x) => typeof inp[x] === "string"); return k ? String(inp[k]) : "";
+};
+const escH = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+// Safe markdown: everything is HTML-escaped first; only a fixed set of tags is generated. Links carry data-u (no href) and are opened by a click handler.
+function mdSafe(src) {
+  return String(src || "").split(/(```[\s\S]*?(?:```|$))/).map((seg) => {
+    if (seg.startsWith("```")) return "<pre><code>" + escH(seg.replace(/^```[^\n]*\n?/, "").replace(/```$/, "")) + "</code></pre>";
+    const stash = [];
+    let h = escH(seg).replace(/`([^`\n]+)`/g, (m, c) => { const raw = c.replace(/&amp;/g, "&"); stash.push(/^[^\s<>|*?"]+\.(md|canvas)$/.test(raw) ? '<a class="os-lk" data-u="' + c + '"><code>' + c + "</code></a>" : "<code>" + c + "</code>"); return "\u0000" + (stash.length - 1) + "\u0000"; });
+    h = h.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (m, t, a) => '<a class="os-lk" data-u="[[' + t + ']]">' + (a || t) + "</a>")
+      .replace(/\[([^\]\n]+)\]\(([^)\s]+)\)/g, '<a class="os-lk" data-u="$2">$1</a>')
+      .replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>").replace(/(^|[\s(])\*([^*\n]+)\*(?=[\s).,;:!?]|$)/g, "$1<em>$2</em>");
+    const out = []; let list = "";
+    const close = () => { if (list) { out.push("</" + list + ">"); list = ""; } };
+    h.split("\n").forEach((l) => {
+      let m;
+      if ((m = /^(#{1,4})\s+(.*)/.exec(l))) { close(); out.push("<h" + (m[1].length + 2) + ">" + m[2] + "</h" + (m[1].length + 2) + ">"); }
+      else if ((m = /^\s*[-*]\s+(.*)/.exec(l))) { if (list !== "ul") { close(); out.push("<ul>"); list = "ul"; } out.push("<li>" + m[1] + "</li>"); }
+      else if ((m = /^\s*\d+[.)]\s+(.*)/.exec(l))) { if (list !== "ol") { close(); out.push("<ol>"); list = "ol"; } out.push("<li>" + m[1] + "</li>"); }
+      else if (!l.trim()) { close(); out.push('<div class="os-gap"></div>'); }
+      else { close(); out.push("<p>" + l + "</p>"); }
+    });
+    close();
+    return out.join("").replace(/\u0000(\d+)\u0000/g, (m, i) => stash[+i]);
+  }).join("");
+}
+class HQChats {
+  constructor(plugin) {
+    this.plugin = plugin; this.convs = new Map(); this.activeId = ""; this.subs = new Set(); this.dead = false; this.loaded = false;
+    this.dir = path.join(plugin.app.vault.adapter.getBasePath(), plugin.manifest.dir || ".obsidian/plugins/project-hq");
+    this.chats = path.join(this.dir, "chats"); this.logFile = path.join(this.dir, "hq-chat.log");
+    this.root = plugin.app.vault.adapter.getBasePath();
+    this._quit = () => this.killAll(); window.addEventListener("beforeunload", this._quit);
+    this.idle = setInterval(() => { for (const c of this.convs.values()) if (c.proc && !c.busy && Date.now() - c.lastUse > 30 * 60000) this.kill(c, "idle"); }, 60000);
+    this.load();
+  }
+  exe() { return (this.plugin.settings.claudePath || "").trim() || path.join(os.homedir(), ".local", "bin", "claude.exe"); }
+  on(fn) { this.subs.add(fn); return () => this.subs.delete(fn); }
+  emit(c, what) { this.subs.forEach((f) => { try { f(c, what); } catch (e) { console.error("Project HQ chat ui", e); } }); }
+  log(m) { try { fs.mkdirSync(this.dir, { recursive: true }); try { if (fs.statSync(this.logFile).size > 400000) fs.renameSync(this.logFile, this.logFile + ".1"); } catch (e) {} fs.appendFileSync(this.logFile, new Date().toISOString() + " " + redact(String(m)).slice(0, 2000) + "\n"); } catch (e) {} }
+  load() {
+    try { fs.mkdirSync(this.chats, { recursive: true }); for (const f of fs.readdirSync(this.chats)) if (f.endsWith(".json")) { try { const c = JSON.parse(fs.readFileSync(path.join(this.chats, f), "utf8")); if (c && c.id) { c.proc = null; c.busy = false; c.lastUse = 0; this.convs.set(c.id, c); } } catch (e) {} } } catch (e) { this.log("load " + e.message); }
+    this.loaded = true;
+  }
+  save(c) {
+    clearTimeout(c._st); c._st = setTimeout(() => { try { const o = {}; for (const k of ["id", "sessionId", "title", "model", "effort", "created", "updated", "turns"]) o[k] = c[k]; o.msgs = c.msgs.slice(-200); fs.mkdirSync(this.chats, { recursive: true }); fs.writeFileSync(path.join(this.chats, c.id + ".json"), redact(JSON.stringify(o))); } catch (e) { this.log("save " + e.message); } }, 400);
+  }
+  list() { return [...this.convs.values()].sort((a, b) => (b.updated || 0) - (a.updated || 0)); }
+  get(id) { return this.convs.get(id); }
+  create(model, effort) {
+    const id = "hq-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const c = { id, sessionId: "", title: "New conversation", model: model || "", effort: effort || "", created: Date.now(), updated: Date.now(), turns: [], msgs: [], proc: null, busy: false, lastUse: Date.now(), cur: null };
+    this.convs.set(id, c); this.activeId = id; this.save(c); this.emit(c, "list"); return c;
+  }
+  remove(c) {
+    this.kill(c, "delete"); this.convs.delete(c.id); clearTimeout(c._st); try { fs.unlinkSync(path.join(this.chats, c.id + ".json")); } catch (e) {}
+    if (this.activeId === c.id) this.activeId = ""; this.emit(c, "list");
+  }
+  isBusy() { for (const c of this.convs.values()) if (c.busy) return true; return false; }
+  todayTotals() { const d0 = new Date(); d0.setHours(0, 0, 0, 0); let cost = 0, tin = 0, tout = 0, cache = 0, n = 0; for (const c of this.convs.values()) for (const t of c.turns || []) if (t.at >= d0.getTime()) { cost += t.cost || 0; tin += t.in || 0; tout += t.out || 0; cache += t.cache || 0; n++; } return { cost, tin, tout, cache, n }; }
+  // ---- process ----
+  spawnProc(c) {
+    const exe = this.exe(); if (!fs.existsSync(exe)) throw new Error("Claude Code was not found at " + exe + ". Install it, or set its path in Project HQ settings (Claude Code path).");
+    const args = ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--include-partial-messages", "--permission-mode", "bypassPermissions"];
+    if (c.model) args.push("--model", c.model); if (c.effort) args.push("--effort", c.effort); if (c.sessionId) args.push("--resume", c.sessionId);
+    this.log("spawn " + path.basename(exe) + " " + args.join(" ") + " (conv " + c.id + ")");
+    const p = require("child_process").spawn(exe, args, { cwd: this.root, windowsHide: true, stdio: ["pipe", "pipe", "pipe"], env: Object.assign({}, process.env) });
+    c.proc = p; c.procModel = c.model; c.procEffort = c.effort; c.buf = ""; c.err = ""; c.costBase = 0; c.cur = null; c.idx = {};
+    p.stdout.on("data", (d) => { c.buf += d.toString("utf8"); let i; while ((i = c.buf.indexOf("\n")) >= 0) { const line = c.buf.slice(0, i).trim(); c.buf = c.buf.slice(i + 1); if (line) this.onLine(c, line); } });
+    p.stderr.on("data", (d) => { c.err = (c.err + d.toString("utf8")).slice(-4000); });
+    p.on("error", (e) => { this.log("proc error " + e.message); if (c.proc === p) { c.proc = null; this.finish(c, "Could not start Claude Code: " + e.message); } });
+    p.on("exit", (code, sig) => { this.log("exit " + code + " " + sig + " (conv " + c.id + ") " + c.err.slice(-300)); if (c.proc === p) { c.proc = null; if (c.busy) this.finish(c, c.stopping ? "" : "Claude Code stopped unexpectedly (code " + code + ")." + (c.err ? " " + redact(c.err.trim().split("\n").slice(-2).join(" ")).slice(0, 300) : "")); } });
+    p.stdin.on("error", () => {});
+    return p;
+  }
+  kill(c, why) {
+    const p = c.proc; if (!p) return; c.proc = null; this.log("kill " + why + " pid " + p.pid + " (conv " + c.id + ")");
+    try { p.stdin.end(); } catch (e) {}
+    try { require("child_process").execFile("taskkill", ["/PID", String(p.pid), "/T", "/F"], { windowsHide: true }, () => {}); } catch (e) { try { p.kill(); } catch (e2) {} }
+  }
+  killAll() { for (const c of this.convs.values()) if (c.proc) this.kill(c, "shutdown"); }
+  destroy() { this.dead = true; clearInterval(this.idle); window.removeEventListener("beforeunload", this._quit); this.killAll(); for (const c of this.convs.values()) { clearTimeout(c._st); if (c.busy) { c.busy = false; } } }
+  send(c, text) {
+    if (c.busy) return; text = String(text || "").trim(); if (!text) return;
+    if (c.proc && (c.procModel !== c.model || c.procEffort !== c.effort)) this.kill(c, "settings changed");
+    let p = c.proc; if (!p) { try { p = this.spawnProc(c); } catch (e) { this.addMsgs(c, text, e.message); return; } }
+    if (c.title === "New conversation") c.title = text.replace(/\s+/g, " ").slice(0, 48);
+    c.msgs.push({ r: "user", text: redact(text) }); c.cur = { r: "asst", blocks: [], at: Date.now() }; c.msgs.push(c.cur); c.idx = {}; c.busy = true; c.stopping = false; c.lastUse = Date.now(); c.updated = Date.now();
+    try { p.stdin.write(JSON.stringify({ type: "user", message: { role: "user", content: text } }) + "\n"); } catch (e) { this.finish(c, "Could not write to Claude Code: " + e.message); return; }
+    this.save(c); this.emit(c, "turn");
+  }
+  addMsgs(c, text, err) { c.msgs.push({ r: "user", text: redact(text) }, { r: "asst", blocks: [{ k: "error", text: err }] }); this.save(c); this.emit(c, "turn"); }
+  stop(c) {
+    if (!c.busy || !c.proc) return; c.stopping = true; this.log("stop requested (conv " + c.id + ")");
+    try { c.proc.stdin.write(JSON.stringify({ type: "control_request", request_id: "hq-int-" + Date.now(), request: { subtype: "interrupt" } }) + "\n"); } catch (e) {}
+    const p = c.proc; setTimeout(() => { if (c.busy && c.proc === p) { this.kill(c, "stop timeout"); this.finish(c, ""); } }, 4000);
+  }
+  finish(c, err) {
+    const cur = c.cur; if (err && cur) cur.blocks.push({ k: "error", text: err }); if (cur) { cur.blocks.forEach((b) => { if (b.k === "tool") b.open = false; }); if (c.stopping) cur.stopped = true; }
+    c.busy = false; c.stopping = false; c.cur = null; c.lastUse = Date.now(); this.save(c); this.emit(c, "done");
+  }
+  onLine(c, line) {
+    let j; try { j = JSON.parse(line); } catch (e) { this.log("bad line " + line.slice(0, 120)); return; }
+    const t = j.type; c.lastUse = Date.now();
+    if (t === "system") { if (j.subtype === "init" && j.session_id) { c.sessionId = j.session_id; this.save(c); } return; }
+    if (j.parent_tool_use_id) return; // subagent chatter stays out of the transcript
+    const cur = c.cur;
+    if (t === "stream_event" && cur) {
+      const e = j.event || {};
+      if (e.type === "message_start") c.idx = {};
+      else if (e.type === "content_block_start") {
+        const b = e.content_block || {}; let nb;
+        if (b.type === "text") nb = { k: "text", text: "" }; else if (b.type === "thinking" || b.type === "redacted_thinking") nb = { k: "think" };
+        else if (b.type === "tool_use") nb = { k: "tool", id: b.id, name: b.name, json: "", target: "", result: "", open: true }; else return;
+        cur.blocks.push(nb); c.idx[e.index] = nb; this.emit(c, "stream");
+      } else if (e.type === "content_block_delta") {
+        const b = c.idx[e.index], d = e.delta || {}; if (!b) return;
+        if (d.type === "text_delta" && b.k === "text") b.text += d.text; else if (d.type === "input_json_delta" && b.k === "tool") b.json += d.partial_json || "";
+        this.emit(c, "stream");
+      } else if (e.type === "content_block_stop") {
+        const b = c.idx[e.index]; if (b && b.k === "tool") { try { b.input = JSON.parse(b.json || "{}"); } catch (x) { b.input = {}; } b.target = toolTarget(b.name, b.input); b.json = ""; this.emit(c, "stream"); }
+      }
+    } else if (t === "user" && cur) {
+      const ct = j.message && j.message.content; if (!Array.isArray(ct)) return;
+      for (const r of ct) if (r.type === "tool_result") { const b = cur.blocks.find((x) => x.k === "tool" && x.id === r.tool_use_id); if (b) { b.open = false; b.result = redact(typeof r.content === "string" ? r.content : Array.isArray(r.content) ? r.content.map((x) => x.text || "").join("\n") : "").slice(0, 1500); if (r.is_error) b.isErr = true; this.emit(c, "stream"); } }
+    } else if (t === "result") {
+      const u = j.usage || {}, tot = typeof j.total_cost_usd === "number" ? j.total_cost_usd : 0, cost = Math.max(0, tot - (c.costBase || 0)); c.costBase = tot;
+      const turn = { at: Date.now(), cost, in: u.input_tokens || 0, out: u.output_tokens || 0, cache: (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0), model: c.model || "default" };
+      c.turns = c.turns || []; c.turns.push(turn); if (cur) cur.usage = turn;
+      let err = ""; if (j.is_error) { const r = String(j.result || ""); err = /login|log in|authenticat|401|api key|credential/i.test(r) ? "Claude Code is not logged in. Open a terminal, run `claude`, then /login." : (r || "Claude Code reported an error.").slice(0, 400); }
+      if (j.session_id) c.sessionId = j.session_id;
+      if (c.stopping && cur) cur.stopped = true;
+      this.finish(c, c.stopping ? "" : err);
+    }
+  }
+}
+
+// ===== HQ chat UI (centre column): orb shrinks while a conversation is open; the command bar is the chat input =====
+Object.assign(HQView.prototype, {
+  hq() { return this.plugin.hq; },
+  osChatInit() {
+    const u = this.osUI, hq = this.hq(); if (!hq) return;
+    if (this.osUnsub) this.osUnsub(); this.osUnsub = hq.on((c, what) => this.osChatEvent(c, what));
+    u.chatOpen = !!(hq.activeId && this.osChatWas); this.osChatLayout(); this.osChatRender(true);
+  },
+  osChatEvent(c, what) {
+    const u = this.osUI; if (!u) return;
+    if (what === "stream") { if (hqChatIsActive(this, c)) this.osChatScheduleStream(); return; }
+    if (what === "turn" && hqChatIsActive(this, c)) { u.chatOpen = true; this.osChatWas = true; }
+    this.osChatLayout(); this.osChatRender(true); u.sig.mid = ""; this.osMidRender();
+  },
+  osChatScheduleStream() { if (this.osStreamT) return; this.osStreamT = setTimeout(() => { this.osStreamT = 0; this.osChatRender(false); }, 60); },
+  osChatLayout() {
+    const u = this.osUI, hq = this.hq(), c = hq && hq.get(hq.activeId), open = !!(u.chatOpen && c);
+    u.mid.toggleClass("chatting", open); u.chatBox.toggleClass("os-hide", !open);
+    const busy = !!(c && c.busy); u.go.setText(busy ? "STOP" : "SEND"); u.go.toggleClass("stop", busy); u.go.setAttr("aria-label", busy ? "Stop Claude" : "Send message");
+    const hqT = u.target.value === "hq"; u.cmdIn.placeholder = hqT ? "Message Claude Code…  (Enter sends, Shift+Enter new line)" : "Message the selected Claudian session…";
+    u.model.toggleClass("os-hide", !hqT); u.effort.toggleClass("os-hide", !hqT);
+    if (c && hqT) { u.model.value = c.model || ""; u.effort.value = c.effort || ""; }
+  },
+  osChatRender(full) {
+    const u = this.osUI, hq = this.hq(), c = hq && hq.get(hq.activeId); if (!u || !c || !u.chatOpen) { if (u && u.chatBody && full) u.chatBody.empty(); return; }
+    const sig = c.id + "|" + c.msgs.length + "|" + c.busy;
+    if (full || u.chatSig !== sig) { u.chatSig = sig; this.osChatFull(c); } else this.osChatLive(c);
+    u.chatTitle.setText(c.title); const tot = (c.turns || []).reduce((n, t) => n + (t.cost || 0), 0); u.chatCost.setText(c.busy ? "WORKING" : tot ? "~" + usd(tot) : "READY"); u.chatCost.toggleClass("run", !!c.busy);
+  },
+  osChatFull(c) {
+    const u = this.osUI, b = u.chatBody, near = b.scrollHeight - b.scrollTop - b.clientHeight < 80; b.empty(); u.liveEl = null;
+    if (!c.msgs.length) b.createDiv({ cls: "os-muted os-chint", text: "Ask Claude Code anything. It runs in this vault with your CLAUDE.md rules. Files it mentions open beside HQ." });
+    c.msgs.forEach((m) => this.osChatMsg(b, m, m === c.cur));
+    if (c.busy && !(c.cur && c.cur.blocks.length)) b.createDiv({ cls: "os-think", text: "Claude is thinking…" });
+    if (near || c.busy) b.scrollTop = b.scrollHeight;
+  },
+  osChatLive(c) { // streaming: re-render only the last assistant message
+    const u = this.osUI, b = u.chatBody, near = b.scrollHeight - b.scrollTop - b.clientHeight < 80, last = [...b.querySelectorAll(".os-msg.asst")].pop(); if (!last || !c.cur) { this.osChatFull(c); return; }
+    const nw = createDiv(); this.osChatMsg(nw, c.cur, true); last.replaceWith(nw.firstChild); if (near) b.scrollTop = b.scrollHeight;
+  },
+  osChatMsg(parent, m, live) {
+    if (m.r === "user") { const d = parent.createDiv({ cls: "os-msg user" }); d.createDiv({ cls: "os-mt", text: redact(m.text) }); return; }
+    const d = parent.createDiv({ cls: "os-msg asst" + (live ? " live" : "") });
+    (m.blocks || []).forEach((bl, i) => {
+      if (bl.k === "text") { if (!bl.text.trim()) return; const t = d.createDiv({ cls: "os-mt os-md" }); t.insertAdjacentHTML("beforeend", mdSafe(redact(bl.text))); }
+      else if (bl.k === "think") { if (live && i === m.blocks.length - 1) d.createDiv({ cls: "os-think", text: "Claude is thinking…" }); }
+      else if (bl.k === "error") d.createDiv({ cls: "os-err", text: redact(bl.text) });
+      else if (bl.k === "tool") {
+        const det = d.createEl("details", { cls: "os-tool" + (bl.isErr ? " err" : "") + (bl.open ? " run" : "")}), s = det.createEl("summary");
+        s.createSpan({ cls: "os-tn", text: bl.name }); s.createSpan({ cls: "os-tt", text: redact(bl.target || "").replace(/\s+/g, " ").slice(0, 110) });
+        const body = det.createDiv({ cls: "os-tb" }); const inp = bl.input ? redact(JSON.stringify(bl.input, null, 1)).slice(0, 1200) : ""; if (inp) body.createEl("pre", { text: inp }); if (bl.result) body.createEl("pre", { text: bl.result.slice(0, 800) });
+      }
+    });
+    if (m.stopped) d.createDiv({ cls: "os-err", text: "Stopped." });
+    if (m.usage) { const t = m.usage; d.createDiv({ cls: "os-use", text: "in " + kfmt(t.in) + " · out " + kfmt(t.out) + " · cache " + kfmt(t.cache) + " · ~" + usd(t.cost) + " est." }); }
+  },
+  osChatHeader(box) {
+    const u = this.osUI, h = box.createDiv({ cls: "os-chh" });
+    u.chatTitle = h.createSpan({ cls: "os-cht", text: "" }); u.chatCost = h.createSpan({ cls: "os-chc", text: "" });
+    const bt = (t, label, fn) => { const b = h.createEl("button", { cls: "os-chb", text: t, attr: { "aria-label": label, title: label } }); b.onclick = fn; return b; };
+    bt("NEW", "New conversation", () => this.osChatNew()); bt("CHATS", "Conversation list", () => this.osChatList()); bt("×", "Close chat (keeps running)", () => { u.chatOpen = false; this.osChatWas = false; this.osChatLayout(); u.sig.mid = ""; this.osMidRender(); });
+  },
+  osChatNew() { const u = this.osUI, hq = this.hq(); hq.activeId = ""; const c = hq.create(u.model.value, u.effort.value); u.chatOpen = true; this.osChatWas = true; this.osChatLayout(); this.osChatRender(true); u.cmdIn.focus(); },
+  osChatOpenConv(id) { const u = this.osUI, hq = this.hq(); if (!hq.get(id)) return; hq.activeId = id; u.chatOpen = true; this.osChatWas = true; u.target.value = "hq"; u.chatList.addClass("os-hide"); this.osChatLayout(); this.osChatRender(true); const b = u.chatBody; b.scrollTop = b.scrollHeight; },
+  osChatList() {
+    const u = this.osUI, hq = this.hq(), L = u.chatList; if (!L.hasClass("os-hide")) { L.addClass("os-hide"); return; } L.empty(); L.removeClass("os-hide");
+    const list = hq.list(); if (!list.length) L.createDiv({ cls: "os-muted", text: "No HQ conversations yet." });
+    list.slice(0, 30).forEach((c) => {
+      const r = L.createDiv({ cls: "os-cli" + (c.id === hq.activeId ? " cur" : ""), attr: { role: "button", tabindex: "0" } }), tot = (c.turns || []).reduce((n, t) => n + (t.cost || 0), 0);
+      r.createSpan({ cls: "os-clt", text: c.title }); r.createSpan({ cls: "os-cld", text: (c.busy ? "WORKING · " : "") + new Date(c.updated).toLocaleDateString([], { day: "2-digit", month: "short" }) + (tot ? " · ~" + usd(tot) : "") });
+      const del = r.createEl("button", { cls: "os-chb", text: "DEL", attr: { "aria-label": "Delete conversation " + c.title } }); del.onclick = (e) => { e.stopPropagation(); hq.remove(c); u.chatList.addClass("os-hide"); this.osChatLayout(); this.osChatRender(true); };
+      const open = () => this.osChatOpenConv(c.id); r.onclick = open; r.addEventListener("keydown", (e) => { if (e.target === r && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); open(); } });
+    });
+  },
+  osChatLink(raw) { // open a link from assistant text: web links externally, vault files beside HQ, never personal paths
+    const ws = this.app.workspace, app = this.app, base = app.vault.adapter.getBasePath().replace(/\\/g, "/"); let u = String(raw || "").trim();
+    if (/^https?:\/\//i.test(u)) { try { require("electron").shell.openExternal(u); } catch (e) { window.open(u); } return; }
+    let f = null; const wl = /^\[\[(.+)\]\]$/.exec(u);
+    if (wl) f = app.metadataCache.getFirstLinkpathDest(wl[1].split("#")[0], ""); else { u = decodeURIComponent(u.replace(/^file:\/\/\/?/, "")).replace(/\\/g, "/").replace(/#.*$/, ""); if (u.toLowerCase().startsWith(base.toLowerCase() + "/")) u = u.slice(base.length + 1); u = u.replace(/^\.\//, ""); const g = app.vault.getAbstractFileByPath(u); if (g instanceof TFile) f = g; else f = app.metadataCache.getFirstLinkpathDest(u, ""); }
+    if (!f) { new Notice("Not a vault file: " + u.slice(0, 80)); return; } if (OS_PERSONAL.test(f.path)) { new Notice("HQ will not open personal files."); return; }
+    ws.getLeaf("tab").openFile(f); // keepFilesBesideHQ places it next to HQ
+  },
+  osChatSend(text) {
+    const u = this.osUI, hq = this.hq(); text = String(text || "").trim(); if (!text) return;
+    let c = hq.get(hq.activeId); if (!c) c = hq.create(u.model.value, u.effort.value);
+    if (c.busy) return; c.model = u.model.value; c.effort = u.effort.value; u.chatOpen = true; this.osChatWas = true; u.cmdIn.value = ""; this.osAutoGrow();
+    hq.send(c, text); this.osChatLayout(); this.osChatRender(true);
+  },
+  osAutoGrow() { const t = this.osUI && this.osUI.cmdIn; if (!t) return; t.style.height = "auto"; t.style.height = Math.min(120, Math.max(34, t.scrollHeight)) + "px"; },
+});
+function hqChatIsActive(view, c) { const hq = view.hq(); return !!hq && hq.activeId === c.id; }
+
+const DEFAULTS = { projects: [], last: "", claudeDir: "", excludeRe: "personal", person: "", chatView: "claudian-view", filesBesideHQ: true, textScale: 125, claudePath: "" };
 const PFIELDS = [
   ["todo", "To-Do note path", "Vault path to a note with a numbered list under the Next heading, and checkboxes under Waiting on.", "Notes/To-Do.md"],
   ["nextHead", "Next heading", "Heading text (prefix match) of the numbered plan list. Default: Next", "Next"],
@@ -1506,6 +1737,7 @@ class ProjectHQSettings extends PluginSettingTab {
     g("chatView", "Chat view type", "Used by the Command center layout. Default: claudian-view", "claudian-view");
     new Setting(el).setName("Text size").setDesc("Scales all of Project HQ. 100% = original size.")
       .addSlider((s) => s.setLimits(90, 175, 5).setValue(st.textScale || 125).setDynamicTooltip().onChange((v) => { st.textScale = v; p.changed(); p.app.workspace.getLeavesOfType(VIEW).forEach((l) => { l.view.contentEl.style.zoom = String(v / 100); }); }));
+    new Setting(el).setName("Claude Code path").setDesc("Used by the HQ chat. Leave empty for ~/.local/bin/claude.exe").addText((t) => t.setPlaceholder("~/.local/bin/claude.exe").setValue(st.claudePath || "").onChange((v) => { st.claudePath = v.trim(); p.changed(); }));
     new Setting(el).setName("Classic layout").setDesc("Safety fallback: turn on to use the original Project HQ pages instead of HQ_OS.")
       .addToggle((t) => t.setValue(!!st.classicLayout).onChange((v) => { st.classicLayout = v; p.changed(true); }));
     new Setting(el).setName("Open files beside Project HQ").setDesc("Notes and files never open in the chat pane; they move to Project HQ's side.")
@@ -1516,6 +1748,7 @@ class ProjectHQSettings extends PluginSettingTab {
 module.exports = class ProjectHQ extends Plugin {
   async onload() {
     const d = (await this.loadData()) || {}; this.settings = Object.assign({}, DEFAULTS, d); if (!Array.isArray(this.settings.projects)) this.settings.projects = [];
+    try { this.hq = new HQChats(this); } catch (e) { console.error("Project HQ chat engine", e); this.hq = null; }
     this.registerView(VIEW, (leaf) => new HQView(leaf, this));
     this.addSettingTab(new ProjectHQSettings(this.app, this));
     this.addRibbonIcon("layout-dashboard", "Project HQ", () => this.open());
@@ -1569,5 +1802,5 @@ module.exports = class ProjectHQ extends Plugin {
     if (!leaf) { leaf = ws.getLeaf("tab"); await leaf.setViewState({ type: VIEW, active: true }); }
     ws.revealLeaf(leaf);
   }
-  onunload() { this.app.workspace.detachLeavesOfType(VIEW); }
+  onunload() { this.app.workspace.detachLeavesOfType(VIEW); if (this.hq) { this.hq.destroy(); this.hq = null; } }
 };
