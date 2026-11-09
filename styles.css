@@ -586,3 +586,11 @@
 .hqos .os-ring circle,.hqos .os-ring path{stroke:var(--os-ac)}
 /* theme box fits its name */
 .hqos .os-modsw{max-width:none;width:auto;min-width:12ch;padding:0 26px 0 10px;height:28px;border:1px solid var(--os-line)}
+/* instant tooltip + task rows */
+.hqos .os-wrap{position:relative}
+.hqos .os-tip{position:absolute;z-index:100;max-width:340px;padding:5px 9px;background:var(--os-solid);color:var(--tx);border:1px solid var(--os-ac);box-shadow:0 0 12px rgba(var(--os-acrgb),.35),0 6px 18px rgba(0,0,0,.6);font-size:.88em;line-height:1.45;letter-spacing:.02em;white-space:pre-wrap;pointer-events:none}
+.hqos .os-tip::before{content:"";position:absolute;left:0;top:0;width:8px;height:2px;background:var(--os-ac)}
+.hqos .os-tlb{flex:1;min-width:0;line-height:1.45;cursor:default}
+.hqos .os-tlb.click{cursor:pointer}.hqos .os-tlb.click:hover{color:var(--os-ac);text-decoration:underline}
+.hqos .os-task.done .os-tlb{text-decoration:line-through;opacity:.55}
+.hqos .os-task input[type=checkbox]{cursor:pointer}

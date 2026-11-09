@@ -1357,6 +1357,11 @@ Object.assign(HQView.prototype, {
     orbw.insertAdjacentHTML("beforeend", '<svg class="os-ring" viewBox="0 0 200 200" aria-hidden="true"><circle cx="100" cy="100" r="96" class="r1"/><circle cx="100" cy="100" r="88" class="r2"/><path class="r3" d="M100 2v10M100 188v10M2 100h10M188 100h10"/></svg>');
     ui.status = M.createDiv({ cls: "os-status", attr: { role: "status", "aria-live": "polite" } });
     ui.mid = M; ui.chatBox = M.createDiv({ cls: "os-chat os-hide" }); this.osChatHeader(ui.chatBox); ui.chatList = ui.chatBox.createDiv({ cls: "os-clist os-hide" }); ui.chatBody = ui.chatBox.createDiv({ cls: "os-cbody", attr: { role: "log", "aria-live": "polite", "aria-label": "Claude Code conversation" } }); ui.queue = ui.chatBox.createDiv({ cls: "os-queue os-hide", attr: { "aria-label": "Queued messages" } });
+    { const tip = ui.tip = wrap.createDiv({ cls: "os-tip os-hide", attr: { "aria-hidden": "true" } });
+      const show = (el) => { const t = el.getAttribute("data-tip"); if (!t) return; tip.setText(t); tip.removeClass("os-hide"); const r = el.getBoundingClientRect(), w = wrap.getBoundingClientRect(), tw = tip.offsetWidth, th = tip.offsetHeight;
+        let x = r.left - w.left + r.width / 2 - tw / 2, y = r.bottom - w.top + 6; x = Math.max(4, Math.min(x, w.width - tw - 4)); if (y + th > w.height - 4) y = r.top - w.top - th - 6; tip.style.left = x + "px"; tip.style.top = y + wrap.scrollTop + "px"; };
+      wrap.addEventListener("mouseover", (e) => { const el = e.target.closest && e.target.closest("[title],[data-tip]"); if (!el || !wrap.contains(el)) { tip.addClass("os-hide"); return; } if (el.hasAttribute("title")) { el.setAttribute("data-tip", el.getAttribute("title")); el.removeAttribute("title"); } show(el); });
+      wrap.addEventListener("mouseleave", () => tip.addClass("os-hide")); wrap.addEventListener("pointerdown", () => tip.addClass("os-hide"), true); wrap.addEventListener("scroll", () => tip.addClass("os-hide"), true); }
     ui.chatBody.addEventListener("click", (e) => { const a = e.target.closest && e.target.closest("a.os-lk"); if (a) { e.preventDefault(); this.osChatLink(a.getAttribute("data-u")); } });
     this.osBuildInput(M, ui);
     ui.tick = M.createDiv({ cls: "os-ticker" });
@@ -1645,21 +1650,28 @@ Object.assign(HQView.prototype, {
       const pn = String(this.project ? this.project.name : "Project").toUpperCase();
       group(pn + " TO-DO", open.length, "todo", (l) => {
         if (!open.length) l.createDiv({ cls: "os-muted", text: "Nothing open." });
-        (this.osTaskAll ? open : open.slice(0, 8)).forEach(({ s, i }) => this.osTaskRow(l, i.text, false, () => this.osTickLine(i.line, i.raw), i.st === "~" ? "in progress" : "", s.name));
+        (this.osTaskAll ? open : open.slice(0, 8)).forEach(({ s, i }) => this.osTaskRow(l, i.text, false, (on) => this.osTickLine(i.line, i.raw, on), i.st === "~" ? "in progress" : "", s.name, i.line));
         if (open.length > 8) { const m = l.createEl("button", { cls: "os-more", text: this.osTaskAll ? "Show fewer" : "+" + (open.length - 8) + " more" }); m.onclick = () => { this.osTaskAll = !this.osTaskAll; this.osUI.sig.tasks = ""; this.osTasksRender(); }; }
       });
-      group("WAITING ON " + String(this.plugin.settings.person || "YOU").toUpperCase(), wait.length, "wait", (l) => { if (!wait.length) l.createDiv({ cls: "os-muted", text: "Nothing waiting." }); wait.forEach((w) => this.osTaskRow(l, clean(w.text), false, () => this.tick(w.line, w.text, true), "")); });
+      group("WAITING ON " + String(this.plugin.settings.person || "YOU").toUpperCase(), wait.length, "wait", (l) => { if (!wait.length) l.createDiv({ cls: "os-muted", text: "Nothing waiting." }); wait.forEach((w) => this.osTaskRow(l, clean(w.text), false, (on) => this.tick(w.line, w.text, on), "", "", w.line)); });
       if (this.project && this.project.queue) group("POST QUEUE · NEXT 5", q.open.length, "queue", (l) => { if (!q.open.length) l.createDiv({ cls: "os-muted", text: "Queue empty." }); q.open.slice(0, 5).forEach((o) => this.osTaskRow(l, o.text, true)); });
     });
   },
-  osTaskRow(list, text, ro, onTick, tag, tip) {
+  osTaskRow(list, text, ro, onTick, tag, tip, lineNo) {
     const r = list.createDiv({ cls: "os-task" }), id = "os" + Math.random().toString(36).slice(2, 8);
-    const cb = r.createEl("input", { attr: { type: "checkbox", id, "aria-label": ro ? "Queued post" : "Mark done: " + text } }); if (ro) { cb.disabled = true; cb.addClass("ro"); } else cb.onchange = () => { cb.disabled = true; onTick(); };
-    const lb = r.createEl("label", { attr: { for: id }, text: text.slice(0, 130) }); lb.title = (tip ? tip + ": " : "") + text; if (tag) r.createSpan({ cls: "os-tag", text: tag });
+    const cb = r.createEl("input", { attr: { type: "checkbox", id, "aria-label": ro ? "Queued post" : "Mark done: " + text } });
+    if (ro) { cb.disabled = true; cb.addClass("ro"); }
+    else cb.onchange = () => { // ticking marks the row done; it is written after 4 s, so a second click undoes it
+      this.touchedAt = Date.now(); r.toggleClass("done", cb.checked); clearTimeout(r._t);
+      if (cb.checked) r._t = setTimeout(() => { r._wrote = true; onTick(true); }, 4000); else if (r._wrote) { r._wrote = false; onTick(false); }
+    };
+    const lb = r.createEl("span", { cls: "os-tlb", text: text.slice(0, 130) }); lb.title = (tip ? tip + ": " : "") + text + (ro ? "" : "\nClick to open in the note"); if (tag) r.createSpan({ cls: "os-tag", text: tag });
+    if (!ro && lineNo !== undefined) { lb.addClass("click"); lb.onclick = () => this.osOpenTodoAt(lineNo); }
   },
-  async osTickLine(line, raw) {
+  osOpenTodoAt(line) { const f = this.app.vault.getAbstractFileByPath(TODO); if (!(f instanceof TFile)) return; this.app.workspace.getLeaf("tab").openFile(f, { eState: { line } }); },
+  async osTickLine(line, raw, on) {
     const f = this.app.vault.getAbstractFileByPath(TODO); if (!(f instanceof TFile)) return;
-    await this.app.vault.process(f, (d) => { const ls = d.split("\n"), L = ls[line]; if (L !== undefined && L.includes(String(raw).slice(0, 40))) ls[line] = L.replace(/\[[ ~]\]/, "[x]"); return ls.join("\n"); }); // only that one line
+    await this.app.vault.process(f, (d) => { const ls = d.split("\n"), L = ls[line]; if (L !== undefined && L.includes(String(raw).slice(0, 40))) ls[line] = on === false ? L.replace(/\[x\]/i, "[ ]") : L.replace(/\[[ ~]\]/, "[x]"); return ls.join("\n"); }); // only that one line
   },
   async osAddTask(where, text) {
     const rel = where === "queue" ? (this.project || {}).queue : TODO, head = where === "wait" ? "Waiting on" : where === "queue" ? "TikTok" : NEXTH;
