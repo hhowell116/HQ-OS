@@ -1851,7 +1851,7 @@ Object.assign(HQView.prototype, {
     if (this.claudBusy(target) || q.length) { q.push({ text }); this.osRemember(text); u.cmdIn.value = ""; this.osAutoGrow(); this.osGoLabel(); this.osCQRender(); return; } const say = (m, bad) => { u.cmdMsg.setText(m); u.cmdMsg.toggleClass("bad", !!bad); };
     const cp = this.claudian(); if (!(cp && cp.api && cp.api.send)) { say("Claudian is not available.", true); return; }
     u.cmdIn.disabled = true; say("Sending…");
-    try { const title = ((this.osConvs || []).find((c) => c[0] === target) || [])[1] || "session"; await cp.api.send(target, { text }); this.osPendAdd(target, text); this.osRemember(text); u.cmdIn.value = ""; this.osAutoGrow(); say("Sent to Claudian: " + title + "."); this.osSessData(true); setTimeout(() => this.osClaudRender(true), 800); }
+    try { const title = ((this.osConvs || []).find((c) => c[0] === target) || [])[1] || "session"; await cp.api.send(target, { text }); this.osPendAdd(target, text); this.osRemember(text); u.cmdIn.value = ""; this.osAutoGrow(); say(""); this.osSessData(true); setTimeout(() => this.osClaudRender(true), 800); }
     catch (e) { console.error("Project HQ command", e); say("Could not send: " + redact(e && e.message || e), true); }
     finally { u.cmdIn.disabled = false; u.cmdIn.focus(); }
   },
