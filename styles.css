@@ -847,3 +847,5 @@
 .hqos .os-msg.asst .os-mt{font-weight:400;letter-spacing:.005em}
 /* Hayden 2026-11-09: Inter (bundled with Obsidian) */
 .hqos .os-cbody,.hqos .os-cbody *:not(code):not(pre):not(kbd):not(code *):not(pre *){font-family:Inter,"Segoe UI",system-ui,sans-serif!important}
+/* Hayden 2026-11-09: darker chat background (was #071014) */
+.hqos .os-cbody{background:#020507}
