@@ -832,7 +832,7 @@ const MOD_DEFAULTS = {
   cache: { on: true, warn: 50, cold: 60, compact: 150 },
   rules: { on: true, triggers: RULE_TRIGGERS.slice(), days: 7, targets: [{ label: "Rules.md", path: "Claude'sWorkspace/Rules.md", kind: "rules" }, { label: "Marketing Playbook", path: "", kind: "playbook" }] },
   actions: { on: true, need: true, money: true, sec: true, fail: true, keywords: "" },
-  orb: { on: true, particles: 900, fps: 32, arcs: true },
+  orb: { on: true, particles: 900, fps: 32, arcs: true, audio: true, audioK: 100 },
   chat: { on: true, model: "", effort: "", tools: true, cost: true },
   guard: { on: true, folders: GUARD_FOLDERS.slice() },
 };
@@ -1270,6 +1270,26 @@ function osPanel(parent, title, cls) {
   return { p, h, meta, body: p.createDiv({ cls: "os-pb" }) };
 }
 // ----- the particle orb (2D canvas, projected sphere; ~30 fps; paused when HQ is not visible) -----
+const HQAudio = {
+  on: false, busy: false, err: "", bands: new Float32Array(24), level: 0, bass: 0,
+  async start() {
+    if (this.on || this.busy || Date.now() - (this.failAt || 0) < 60000) return; this.busy = true; this.err = "";
+    try {
+      const st = await navigator.mediaDevices.getUserMedia({ audio: { mandatory: { chromeMediaSource: "desktop" } }, video: { mandatory: { chromeMediaSource: "desktop", maxWidth: 1, maxHeight: 1, maxFrameRate: 1 } } });
+      this.stream = st; const at = st.getAudioTracks(); if (!at.length) throw new Error("no desktop audio track");
+      this.ctx = new AudioContext(); this.an = this.ctx.createAnalyser(); this.an.fftSize = 512; this.an.smoothingTimeConstant = 0.78;
+      this.ctx.createMediaStreamSource(new MediaStream(at)).connect(this.an); this.buf = new Uint8Array(this.an.frequencyBinCount); this.on = true;
+    } catch (e) { this.err = String(e && e.message || e); this.failAt = Date.now(); console.warn("Project HQ orb audio", e); this.stop(); }
+    this.busy = false;
+  },
+  stop() { this.on = false; try { if (this.stream) this.stream.getTracks().forEach((t) => t.stop()); } catch (e) {} try { if (this.ctx) this.ctx.close(); } catch (e) {} this.stream = this.ctx = this.an = null; this.level = this.bass = 0; this.bands.fill(0); },
+  read() { // 24 log-spaced bands, 0..1
+    if (!this.on || !this.an) { this.level *= 0.9; this.bass *= 0.9; for (let i = 0; i < 24; i++) this.bands[i] *= 0.9; return; }
+    const d = this.buf; this.an.getByteFrequencyData(d); const n = d.length; let tot = 0;
+    for (let i = 0; i < 24; i++) { const a = Math.floor(Math.pow(n * 0.7, i / 24)), b = Math.max(a + 1, Math.floor(Math.pow(n * 0.7, (i + 1) / 24))); let m = 0; for (let j = a; j < b; j++) m = Math.max(m, d[j]); this.bands[i] = m / 255; tot += m / 255; }
+    this.level = tot / 24; this.bass = (this.bands[2] + this.bands[3] + this.bands[4] + this.bands[5]) / 4;
+  },
+};
 class Orb {
   constructor(cv) {
     this.cv = cv; this.ctx = cv.getContext("2d"); this.seed(MODS.orb.particles);
@@ -1302,20 +1322,21 @@ class Orb {
     if (!this.w) { this.resize(); if (!this.w) return; }
     const ctx = this.ctx, W = this.w, H = this.h, cx = W / 2, cy = H / 2, dpr = this.dpr;
     this.int += (this.target - this.int) * Math.min(1, dt * 1.5); this.tint += (this.tintT - this.tint) * Math.min(1, dt * 2);
-    const I = this.int; this.rot += dt * (this.still ? 0.02 : 0.1 + 0.3 * I);
+    const I = this.int; HQAudio.read(); const ak = MODS.orb.audio ? (MODS.orb.audioK || 100) / 100 : 0, AL = HQAudio.level * ak, AB = HQAudio.bass * ak, AF = HQAudio.bands;
+    this.rot += dt * (this.still ? 0.02 : 0.1 + 0.3 * I + 0.6 * AL);
     ctx.clearRect(0, 0, W, H);
     const gs = this.gs, br = 1 + 0.03 * Math.sin(t / 700) + 0.04 * I * Math.sin(t / 530); // breathing stays well under 3 Hz
-    ctx.globalAlpha = Math.min(1, 0.45 + 0.6 * I); ctx.drawImage(this.glow, cx - gs / 2, cy - gs / 2);
+    ctx.globalAlpha = Math.min(1, 0.45 + 0.6 * I + 0.5 * AL); ctx.drawImage(this.glow, cx - gs / 2, cy - gs / 2);
     if (this.tint > 0.02) { ctx.globalAlpha = this.tint * 0.9; ctx.drawImage(this.glowA, cx - gs / 2, cy - gs / 2); } ctx.globalAlpha = 1;
-    const R = this.s * br, tilt = 0.38, cs = [Math.cos(tilt), Math.sin(tilt)], cr = Math.cos(this.rot), sr = Math.sin(this.rot);
+    const R = this.s * br * (1 + 0.12 * Math.min(1.5, AB)), tilt = 0.38, cs = [Math.cos(tilt), Math.sin(tilt)], cr = Math.cos(this.rot), sr = Math.sin(this.rot);
     this.bn[0] = this.bn[1] = this.bn[2] = this.bn[3] = 0;
     for (let i = 0; i < this.N; i++) {
-      const x = this.X[i], y = this.Y[i], z = this.Z[i], x1 = x * cr + z * sr, z1 = -x * sr + z * cr, y2 = y * cs[0] - z1 * cs[1], z2 = y * cs[1] + z1 * cs[0], p = 1 + z2 * 0.22;
+      const x = this.X[i], y = this.Y[i], z = this.Z[i], x1 = x * cr + z * sr, z1 = -x * sr + z * cr, y2 = y * cs[0] - z1 * cs[1], z2 = y * cs[1] + z1 * cs[0], p = (1 + z2 * 0.22) * (ak ? 1 + 0.32 * ak * AF[Math.min(23, ((1 - Math.abs(y)) * 23) | 0)] : 1);
       const b = z2 < -0.4 ? 0 : z2 < 0 ? 1 : z2 < 0.5 ? 2 : 3, a = this.bx[b], n = this.bn[b]; a[n] = cx + x1 * R * p; a[n + 1] = cy + y2 * R * p; this.bn[b] = n + 2;
     }
     const base = [0.22, 0.4, 0.7, 1], sz = [1.1, 1.5, 2, 2.5].map((s) => s * dpr), mix = this.tint;
     const col = (a) => "rgba(" + Math.round(THEME_RGB.a[0] + (THEME_RGB.w[0] - THEME_RGB.a[0]) * mix) + "," + Math.round(THEME_RGB.a[1] + (THEME_RGB.w[1] - THEME_RGB.a[1]) * mix) + "," + Math.round(THEME_RGB.a[2] + (THEME_RGB.w[2] - THEME_RGB.a[2]) * mix) + "," + a.toFixed(3) + ")";
-    for (let b = 0; b < 4; b++) { ctx.fillStyle = col(base[b] * (0.55 + 0.45 * I)); const a = this.bx[b], n = this.bn[b], s = sz[b]; for (let j = 0; j < n; j += 2) ctx.fillRect(a[j], a[j + 1], s, s); }
+    for (let b = 0; b < 4; b++) { ctx.fillStyle = col(Math.min(1, base[b] * (0.55 + 0.45 * I + 0.5 * AL))); const a = this.bx[b], n = this.bn[b], s = sz[b]; for (let j = 0; j < n; j += 2) ctx.fillRect(a[j], a[j + 1], s, s); }
     // lightning arcs: only while agents are working, at most 2 at once, each lives ~0.5 s and they spawn >= 0.55 s apart (never > 3 Hz)
     if (MODS.orb.arcs && !this.still && I > 0.6 && t > this.nextArc && this.arcs.length < 2) {
       this.nextArc = t + 550 + Math.random() * 900; const a = (Math.random() * this.N) | 0; let b = (Math.random() * this.N) | 0, g = 0;
@@ -1344,7 +1365,7 @@ Object.assign(HQView.prototype, {
     this.contentEl.toggleClass("hqos", on); this.osStop(); if (this.pageEl) { this.pageEl.empty(); this.pageEl.toggleClass("os", on); }
     if (!on) ["--tx", "--glass", "--glass-b"].forEach((k) => this.contentEl.style.removeProperty(k));
   },
-  osStop() { if (this.osTipMO) { this.osTipMO.disconnect(); this.osTipMO = null; } if (this.osUnsub) { this.osUnsub(); this.osUnsub = null; } clearTimeout(this.osStreamT); this.osStreamT = 0; if (this.orb) this.orb.run(false); if (this.osIO) this.osIO.disconnect(); if (this.osRO) this.osRO.disconnect(); this.orb = null; this.osIO = this.osRO = null; this.osUI = null; },
+  osStop() { HQAudio.stop(); if (this.osTipMO) { this.osTipMO.disconnect(); this.osTipMO = null; } if (this.osUnsub) { this.osUnsub(); this.osUnsub = null; } clearTimeout(this.osStreamT); this.osStreamT = 0; if (this.orb) this.orb.run(false); if (this.osIO) this.osIO.disconnect(); if (this.osRO) this.osRO.disconnect(); this.orb = null; this.osIO = this.osRO = null; this.osUI = null; },
   osBuild() {
     const page = this.pageEl; page.empty(); page.addClass("os"); const ui = this.osUI = { sig: {}, inView: true }, wrap = page.createDiv({ cls: "os-wrap" });
     wrap.createDiv({ cls: "os-sweep" }); ui.top = wrap.createDiv({ cls: "os-top" }); ui.run = wrap.createDiv({ cls: "os-run os-hide", attr: { role: "status", "aria-live": "polite", "aria-label": "Running agents" } });
@@ -1450,7 +1471,8 @@ Object.assign(HQView.prototype, {
     this.osAutoGrow();
   },
   osRemember(text) { const H = (this.osHist || []).filter((x) => x !== text); H.push(text); this.osHist = H.slice(-30); try { localStorage.setItem("hqos-hist", JSON.stringify(this.osHist)); } catch (e) {} if (this.osUI) this.osUI.hi = -1; },
-  osGate() { const ui = this.osUI; if (!ui || !this.orb) return; ui.cv.toggleClass("os-hide", !MODS.orb.on); this.orb.run(MODS.orb.on && !document.hidden && ui.inView && !(this.osPage === "mods") && (!this.contentEl.isShown || this.contentEl.isShown())); },
+  osGate() { const ui = this.osUI; if (!ui || !this.orb) return; ui.cv.toggleClass("os-hide", !MODS.orb.on); const go = MODS.orb.on && !document.hidden && ui.inView && !(this.osPage === "mods") && (!this.contentEl.isShown || this.contentEl.isShown()); this.orb.run(go);
+    if (go && MODS.orb.audio) HQAudio.start(); else HQAudio.stop(); },
   // ---- render everything (cheap; each region redraws only when its signature changed) ----
   osRender(force) {
     if (!this.osUI) this.osBuild();
@@ -1840,7 +1862,7 @@ Object.assign(HQView.prototype, {
     f = card("actions"); [["need", "Decisions (needs you)"], ["money", "Costs"], ["sec", "Security"], ["fail", "Failures"]].forEach(([fl, l]) => chk(f, "actions", fl, l));
     { const r = f.createDiv({ cls: "os-f" }), id = nid(); r.createEl("label", { text: "Custom keywords", attr: { for: id } }); const i = r.createEl("input", { attr: { id, type: "text", placeholder: "comma separated, e.g. deadline, refund" } }); i.value = MODS.actions.keywords; i.onkeydown = (e) => e.stopPropagation(); i.oninput = () => set("actions", { keywords: i.value }); }
     // --- orb
-    f = card("orb"); num(f, "orb", "particles", "Particles", 100, 1500, 50); num(f, "orb", "fps", "FPS cap", 10, 60); chk(f, "orb", "arcs", "Lightning arcs");
+    f = card("orb"); num(f, "orb", "particles", "Particles", 100, 1500, 50); num(f, "orb", "fps", "FPS cap", 10, 60); chk(f, "orb", "arcs", "Lightning arcs"); chk(f, "orb", "audio", "React to desktop audio"); num(f, "orb", "audioK", "Audio strength %", 10, 300, 10);
     // --- chat
     f = card("chat"); sel(f, "chat", "model", "Default model", HQ_MODELS.map((m) => [m, m ? m.toUpperCase() : "DEFAULT"])); sel(f, "chat", "effort", "Default effort", HQ_EFFORTS.map((m) => [m, m ? m.toUpperCase() : "DEFAULT"])); chk(f, "chat", "tools", "Show tool lines"); chk(f, "chat", "cost", "Show cost");
     // --- guard
