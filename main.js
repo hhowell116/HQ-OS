@@ -2513,7 +2513,7 @@ function hqDuel(host) {
   };
   const draw = () => {
     if (!host.isConnected) { clearInterval(iv); return; }
-    const r = host.getBoundingClientRect(); if (r.height < 40 || document.hidden || !host.offsetParent) return;
+    const r = host.getBoundingClientRect(); if (r.height < 30 || document.hidden || !host.offsetParent) return;
     const sc = Math.max(1, Math.floor(Math.min(r.width / W, (r.height * 0.8) / H)));
     if (cv.width !== W * sc || cv.height !== H * sc) { cv.width = W * sc; cv.height = H * sc; }
     const cs = getComputedStyle(host), A = cs.getPropertyValue("--os-acrgb").trim(), B = cs.getPropertyValue("--os-amrgb").trim();

@@ -732,3 +732,4 @@
 .hqos .os-fill{display:flex;align-items:center;justify-content:center}
 .hqos .os-fill::before{display:none}
 .hqos .os-duel{image-rendering:pixelated;display:block}
+.hqos .os-left>.os-fill{min-height:96px;flex-shrink:0}
