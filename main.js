@@ -2537,6 +2537,20 @@ const HQ_SCENES = [
     ctx.fillStyle = rgb(B, t % 6 < 3 ? 0.95 : 0.7); ctx.fillRect(st.apple[0] * cell, st.apple[1] * cell, cell, cell);
     st.body.forEach((b, i) => { ctx.fillStyle = rgb(A, i === 0 ? 1 : Math.max(0.35, 0.9 - i * 0.015)); ctx.fillRect(b[0] * cell, b[1] * cell, cell, cell); });
   } },
+  { name: "TV", draw(ctx, t, A, B, st, rgb) {
+    // bouncing TV, changes colour on every wall, sparkles when it nails a corner
+    const W = 64, H = 30, w = 11, h = 9;
+    if (!st.init) { st.init = 1; st.x = 5 + Math.random() * 40; st.y = 2 + Math.random() * 15; st.vx = 0.8; st.vy = 0.5; st.c = 0; st.fx = 0; }
+    st.x += st.vx; st.y += st.vy; let hx = false, hy = false;
+    if (st.x <= 0 || st.x >= W - w) { st.vx = -st.vx; st.x = Math.max(0, Math.min(W - w, st.x)); hx = true; }
+    if (st.y <= 0 || st.y >= H - 3 - h) { st.vy = -st.vy; st.y = Math.max(0, Math.min(H - 3 - h, st.y)); hy = true; }
+    if (hx || hy) st.c++; if (hx && hy) st.fx = 12;
+    const cols = [rgb(A, 0.95), rgb(B, 0.95), "rgba(255,255,255,.9)", "rgba(150,120,255,.95)", "rgba(90,230,140,.95)"], k = cols[st.c % cols.length];
+    const x = Math.round(st.x), y = Math.round(st.y);
+    hqSprite(ctx, x, y, ["..#...#....", "...#.#.....", "###########", "#.......#.#", "#.......###", "#.......#.#", "#.......###", "###########", ".#.......#."], k);
+    ctx.fillStyle = "rgba(255,255,255,.18)"; ctx.fillRect(x + 1, y + 3, 7, 4);
+    if (st.fx > 0) { st.fx--; ctx.fillStyle = "rgba(255,240,180," + (st.fx / 12) + ")"; for (let i = 0; i < 10; i++) ctx.fillRect(Math.floor(hqHash(i * 31 + st.c) * W), Math.floor(hqHash(i * 17 + st.c * 3) * (H - 3)), 1, 1); }
+  } },
   { name: "CITY", draw(ctx, t, A, B, st, rgb) {
     const W = 64, H = 30;
     if (!st.b) {
