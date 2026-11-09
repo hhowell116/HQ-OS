@@ -836,3 +836,6 @@
    layout height and pushes the side panels up (Hayden 2026-11-09). */
 .hqos .os-cmd .os-atts{position:absolute;left:0;right:0;bottom:100%;z-index:6;padding:6px 8px;background:var(--os-solid);border:1px solid rgba(var(--os-acrgb),.5);border-bottom:0}
 .hqos .os-cmd .os-atts.os-hide{display:none}
+
+/* Chat text a bit smaller (Hayden 2026-11-09): 1.12em -> 1em, line height kept airy */
+.hqos .os-msg{font-size:1em;line-height:1.6}
