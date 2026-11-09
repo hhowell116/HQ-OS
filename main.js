@@ -1566,7 +1566,7 @@ Object.assign(HQView.prototype, {
     this.osAutoGrow();
   },
   osRemember(text) { const H = (this.osHist || []).filter((x) => x !== text); H.push(text); this.osHist = H.slice(-30); try { localStorage.setItem("hqos-hist", JSON.stringify(this.osHist)); } catch (e) {} if (this.osUI) this.osUI.hi = -1; },
-  osGate() { const ui = this.osUI; if (!ui || !this.orb) return; const min = !!this.plugin.settings.minimal; this.contentEl.toggleClass("os-min", min); ui.cv.toggleClass("os-hide", !MODS.orb.on || min); const go = MODS.orb.on && !min && !document.hidden && ui.inView && !(this.osPage === "mods") && (!this.contentEl.isShown || this.contentEl.isShown()); this.orb.run(go);
+  osGate() { const ui = this.osUI; if (!ui || !this.orb) return; const min = !!this.plugin.settings.minimal, minHide = min && !!(ui.mid && ui.mid.hasClass("chatting")); this.contentEl.toggleClass("os-min", min); ui.cv.toggleClass("os-hide", !MODS.orb.on || minHide); const go = MODS.orb.on && !minHide && !document.hidden && ui.inView && !(this.osPage === "mods") && (!this.contentEl.isShown || this.contentEl.isShown()); this.orb.run(go);
     if (go && MODS.orb.audio) HQAudio.start(); else HQAudio.stop();
     if (go && MODS.orb.nowPlaying) HQNow.start(path.join(this.plugin.hq.dir, "nowplaying.ps1")); else HQNow.stop(); },
   // ---- render everything (cheap; each region redraws only when its signature changed) ----
@@ -2542,7 +2542,7 @@ Object.assign(HQView.prototype, {
   osChatLayout() {
     const u = this.osUI, hq = this.hq(), c = hq && hq.get(hq.activeId), claud = u.target.value !== "hq", open = !u.chatHidden && (claud || !!(u.chatOpen && c)); if (u.showChat) u.showChat.toggleClass("os-hide", !(u.chatHidden && (claud || (u.chatOpen && c))));
     u.chatBox.toggleClass("claud", claud); u.chatBox.toggleClass("nohq", !MODS.chat.on); if (claud && u.claudId !== u.target.value) { u.claudId = u.target.value; u.claudKey = ""; setTimeout(() => this.osClaudRender(true), 0); } if (!claud) u.claudId = "";
-    u.mid.toggleClass("chatting", open); u.chatBox.toggleClass("os-hide", !open);
+    u.mid.toggleClass("chatting", open); u.chatBox.toggleClass("os-hide", !open); if (this.plugin.settings.minimal) this.osGate();
     this.osGoLabel();
     const hqT = u.target.value === "hq"; u.cmdIn.placeholder = hqT ? "Message Claude Code" + (this.project ? " about " + this.project.name : "") + "…  (type / for commands)" : "Message the selected Claudian session…"; u.hint.setText(hqT ? "ENTER sends · SHIFT+ENTER new line · / commands · UP recalls last" : "ENTER sends to Claudian · SHIFT+ENTER new line");
     u.model.toggleClass("os-hide", u.target.value === "new"); this.osPickerOpts(hqT); u.effort.toggleClass("os-hide", u.target.value === "new"); if (u.todo && hqT) u.todo.addClass("os-hide");
