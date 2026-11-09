@@ -1371,7 +1371,7 @@ Object.assign(HQView.prototype, {
     wrap.createDiv({ cls: "os-sweep" }); ui.top = wrap.createDiv({ cls: "os-top" }); ui.run = wrap.createDiv({ cls: "os-run os-hide", attr: { role: "status", "aria-live": "polite", "aria-label": "Running agents" } });
     const grid = ui.grid = wrap.createDiv({ cls: "os-grid" }), modsEl = ui.modsEl = wrap.createDiv({ cls: "os-mods os-hide" }), L = grid.createDiv({ cls: "os-col os-left" }), M = grid.createDiv({ cls: "os-col os-mid" }), Rt = grid.createDiv({ cls: "os-col os-right" });
     ui.vit = osPanel(L, "SYSTEM VITALS", "os-vit"); ui.sess = osPanel(L, "AGENTS & CHATS", "os-sess"); ui.next = osPanel(L, "NEXT UP", "os-next");
-    ui.tasks = osPanel(Rt, "TOP TASKS", "os-tasks"); ui.rev = osPanel(Rt, "REVIEW QUEUE", "os-rev"); ui.acts = osPanel(Rt, "ACTION ITEMS", "os-acts"); ui.rules = osPanel(Rt, "SAVE AS RULE", "os-rules"); ui.files = osPanel(Rt, "FILES IN PLAY", "os-files");
+    ui.tasks = osPanel(Rt, "TOP TASKS", "os-tasks"); ui.rev = osPanel(Rt, "REVIEW QUEUE", "os-rev"); ui.acts = osPanel(Rt, "ACTION ITEMS", "os-acts"); ui.files = osPanel(Rt, "FILES IN PLAY", "os-files");
     this.osColl = this.osColl || new Set(MODS.files.collapsed ? ["files"] : []);
     [["files", ui.files]].forEach(([k, p]) => { p.p.addClass("os-coll"); p.p.toggleClass("collapsed", this.osColl.has(k)); p.h.setAttr("role", "button"); p.h.setAttr("tabindex", "0"); p.h.setAttr("aria-expanded", String(!this.osColl.has(k)));
       const tg = () => { this.osColl.has(k) ? this.osColl.delete(k) : this.osColl.add(k); p.p.toggleClass("collapsed", this.osColl.has(k)); p.h.setAttr("aria-expanded", String(!this.osColl.has(k))); }; p.h.onclick = tg; p.h.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); tg(); } }); });
@@ -1724,8 +1724,8 @@ Object.assign(HQView.prototype, {
   osInsRender() {
     const u = this.osUI;
     this.osReg("ins", this.insSig + "|" + this.liveSig + "|" + JSON.stringify(MODS), () => {
-      [["acts", "actions", "actions"], ["rules", "rules", "rules"], ["ap", "progress", "progress"], ["files", "files", "files"]].forEach(([k, w, mod]) => {
-        const p = u[k], b = p.body; b.empty();
+      [["acts", "actions", "actions"], ["files", "files", "files"]].forEach(([k, w, mod]) => {
+        const p = u[k]; if (!p) return; const b = p.body; b.empty();
         if (!MODS[mod].on) { b.createDiv({ cls: "os-muted", text: "Mod is off. Switch it on in MODS." }); p.meta.setText("OFF"); return; }
         try { renderInsights(this, b, [w]); modOk(mod); } catch (e) { modErr(mod, e); console.error("Project HQ mod " + mod, e); b.createDiv({ cls: "os-err", text: "Error: " + ((e && e.message) || e) }); p.meta.setText("ERROR"); return; }
         const d = b.querySelector("details"); if (!d) return;
