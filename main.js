@@ -1010,6 +1010,15 @@ class HQView extends ItemView {
     const root = this.contentEl; root.empty(); root.addClass("lhq"); root.style.zoom = String((this.plugin.settings.textScale || 125) / 100); // text size setting (Hayden: text was too small)
     const touch = (e) => { this.touchedAt = Date.now(); this.touchedIn = e && e.target; };
     this.registerDomEvent(root, "pointerdown", touch, true); this.registerDomEvent(root, "keydown", touch, true); this.registerDomEvent(root, "focusin", touch, true);
+    // Cursor always lives in the chat box (Hayden 2026-11-09): typing anywhere in HQ goes to the chat; clicking empty space
+    // puts the cursor back; switching to the HQ tab focuses it. Other inputs, buttons, links, menus and text selections are left alone.
+    const box = () => { const u = this.osUI; return u && u.cmdIn && u.cmdIn.isConnected && !u.cmdIn.disabled ? u.cmdIn : null; };
+    const typing = (el) => !!(el && el.closest && el.closest("input,textarea,select,[contenteditable=''],[contenteditable='true']"));
+    this.focusChat = () => { const c = box(); if (c && document.activeElement !== c) c.focus({ preventScroll: true }); };
+    this.registerDomEvent(root, "keydown", (e) => { const c = box(); if (!c || e.ctrlKey || e.metaKey || e.altKey || e.key.length !== 1 || typing(e.target) || typing(document.activeElement)) return; c.focus({ preventScroll: true }); }, true);
+    this.registerDomEvent(root, "pointerup", (e) => { if (typing(e.target) || (e.target.closest && e.target.closest("button,a,[role=button],[role=menu],.menu,summary,label"))) return; setTimeout(() => { const sel = window.getSelection(); if (sel && !sel.isCollapsed) return; if (!typing(document.activeElement)) this.focusChat(); }, 0); });
+    this.registerEvent(this.app.workspace.on("active-leaf-change", (leaf) => { if (leaf && leaf.view === this) setTimeout(() => this.focusChat(), 50); }));
+    setTimeout(() => this.focusChat && this.focusChat(), 600);
     landscape(root.createDiv({ cls: "lhq-bg" }));
     const bar = root.createDiv({ cls: "lhq-bar" });
     this.crumb = bar.createDiv({ cls: "lhq-crumb" });
