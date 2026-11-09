@@ -836,3 +836,6 @@
 .hqos .os-cmd .os-atts.os-hide{display:none}
 /* Typing box matches the chat text (Hayden 2026-11-09). */
 .hqos textarea.os-in{font-family:"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;font-size:1.09em;line-height:1.6;color:#f4ece0;-webkit-font-smoothing:antialiased}
+/* Links in chat use the theme highlight colour and show the hand cursor (Hayden 2026-11-09). */
+.hqos .os-cbody a.os-lk,.hqos .os-cbody a.os-lk *{color:var(--os-ac,var(--os-cy))!important;cursor:pointer!important;text-decoration-color:rgba(var(--os-acrgb),.6)}
+.hqos .os-cbody a.os-lk:hover{text-decoration-color:currentColor;filter:brightness(1.2)}
