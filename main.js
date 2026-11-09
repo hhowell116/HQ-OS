@@ -1843,6 +1843,14 @@ Object.assign(HQView.prototype, {
       setTimeout(() => { document.addEventListener("mousedown", out, true); document.addEventListener("keydown", esc, true); }, 0); };
     sel.addEventListener("mousedown", open); sel.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " " || e.key === "ArrowUp" || e.key === "ArrowDown") open(e); });
   },
+  osPickerOpts(hqT) { // model/effort options: Claudian chats use Claudian's visible-model list (Settings > Claudian), defaults spelled out
+    const u = this.osUI, cp = this.claudian(); if (!u || !u.model) return; let mods = [], defM = "OPUS 5.5", defE = "";
+    try { const c = cp.settings.providerConfigs.claude, disc = c.discoveredModels || [], d = disc.find((x) => x.value === "default"); if (d && d.description) defM = String(d.description).split("·")[0].trim().toUpperCase();
+      mods = (c.selectedModels || []).map((x) => [x.value, String(x.label || x.value).toUpperCase()]); defE = String(cp.settings.effortLevel || (cp.settings.savedProviderEffort || {}).claude || "").toUpperCase(); } catch (e) {}
+    const want = hqT ? HQ_MODELS.map((m) => [m, m ? HQ_MODEL_LABEL[m] || m.toUpperCase() : "DEFAULT"]) : [["", "DEFAULT (" + defM + ")"]].concat(mods.length ? mods : [["opus", "OPUS 5.5"], ["haiku", "HAIKU 5.5"]]);
+    const sig = JSON.stringify(want); if (u.modelSig !== sig) { u.modelSig = sig; const v = u.model.value; u.model.empty(); want.forEach(([val, l]) => u.model.createEl("option", { value: val, text: l })); u.model.value = want.some((w) => w[0] === v) ? v : ""; }
+    const eo = [...u.effort.options].find((o) => o.value === ""), et = hqT || !defE ? "DEFAULT EFFORT" : "DEFAULT (" + defE + ")"; if (eo && eo.text !== et) eo.text = et;
+  },
   osParseMsgs(list) { // Claudian messages (saved transcript or live in-memory state) -> HQ chat items
     const msgs = [];
     for (const m of list) {
@@ -1892,13 +1900,13 @@ Object.assign(HQView.prototype, {
   },
   osClaudPickSync(id, meta) { // show the chat's current model + effort in the pickers
     const u = this.osUI, cp = this.claudian(); if (!u || !u.model || document.activeElement === u.model || document.activeElement === u.effort) return;
-    const m = String(meta.selectedModel || ""), mm = [...u.model.options].some((o) => o.value === m) ? m : ""; if (u.model.value !== mm) u.model.value = mm;
+    const m0 = String(meta.selectedModel || ""), m = m0 === "default" ? "" : m0, mm = [...u.model.options].some((o) => o.value === m) ? m : ""; if (u.model.value !== mm) u.model.value = mm;
     let ef = ""; try { const rt = [...cp.chatHost.sessionRuntimes.getAll()].find((r) => r.conversationId === id); ef = (rt && rt.reasoningSelections && rt.reasoningSelections.get("claude:" + (m || "opus"))) || ""; } catch (e) {}
     if ([...u.effort.options].some((o) => o.value === ef) && u.effort.value !== ef) u.effort.value = ef;
   },
   async osClaudPick() {
-    const u = this.osUI, id = u && u.target.value, cp = this.claudian(); if (!cp || !id || id === "hq" || id === "new") return; const h = cp.chatHost, m = u.model.value;
-    try { if (m) await h.updateConversation(id, { selectedModel: m }); const meta = h.getConversationList().find((x) => x.id === id), mod = (meta && meta.selectedModel) || m || "opus";
+    const u = this.osUI, id = u && u.target.value, cp = this.claudian(); if (!cp || !id || id === "hq" || id === "new") return; const h = cp.chatHost, m = u.model.value || "default";
+    try { await h.updateConversation(id, { selectedModel: m }); const meta = h.getConversationList().find((x) => x.id === id), mod0 = (meta && meta.selectedModel) || m, mod = mod0 === "default" ? "opus" : mod0;
       const rt = [...h.sessionRuntimes.getAll()].find((r) => r.conversationId === id); if (rt && rt.reasoningSelections && u.effort.value) rt.reasoningSelections.set("claude:" + mod, u.effort.value);
       new Notice("This chat now uses " + String(mod).toUpperCase() + (u.effort.value ? " · " + u.effort.value + " effort" : "") + " from the next message."); }
     catch (e) { new Notice("Could not change the model: " + (e && e.message || e)); }
@@ -2484,7 +2492,7 @@ Object.assign(HQView.prototype, {
     u.mid.toggleClass("chatting", open); u.chatBox.toggleClass("os-hide", !open);
     this.osGoLabel();
     const hqT = u.target.value === "hq"; u.cmdIn.placeholder = hqT ? "Message Claude Code" + (this.project ? " about " + this.project.name : "") + "…  (type / for commands)" : "Message the selected Claudian session…"; u.hint.setText(hqT ? "ENTER sends · SHIFT+ENTER new line · / commands · UP recalls last" : "ENTER sends to Claudian · SHIFT+ENTER new line");
-    u.model.toggleClass("os-hide", u.target.value === "new"); { const so = [...u.model.options].find((o) => o.value === "sonnet"); if (so) so.hidden = !hqT; } u.effort.toggleClass("os-hide", u.target.value === "new"); if (u.todo && hqT) u.todo.addClass("os-hide");
+    u.model.toggleClass("os-hide", u.target.value === "new"); this.osPickerOpts(hqT); u.effort.toggleClass("os-hide", u.target.value === "new"); if (u.todo && hqT) u.todo.addClass("os-hide");
     if (c && hqT) { u.model.value = c.model || ""; u.effort.value = c.effort || ""; } this.osTargetLabel();
   },
   osChatRender(full) {
