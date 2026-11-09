@@ -1359,9 +1359,12 @@ Object.assign(HQView.prototype, {
     ui.status = M.createDiv({ cls: "os-status", attr: { role: "status", "aria-live": "polite" } });
     ui.mid = M; ui.chatBox = M.createDiv({ cls: "os-chat os-hide" }); this.osChatHeader(ui.chatBox); ui.chatList = ui.chatBox.createDiv({ cls: "os-clist os-hide" }); ui.chatBody = ui.chatBox.createDiv({ cls: "os-cbody", attr: { role: "log", "aria-live": "polite", "aria-label": "Claude Code conversation" } }); ui.queue = ui.chatBox.createDiv({ cls: "os-queue os-hide", attr: { "aria-label": "Queued messages" } });
     { const tip = ui.tip = wrap.createDiv({ cls: "os-tip os-hide", attr: { "aria-hidden": "true" } });
-      const show = (el) => { const t = el.getAttribute("data-tip"); if (!t) return; tip.setText(t); tip.removeClass("os-hide"); const r = el.getBoundingClientRect(), w = wrap.getBoundingClientRect(), tw = tip.offsetWidth, th = tip.offsetHeight;
-        let x = r.left - w.left + r.width / 2 - tw / 2, y = r.bottom - w.top + 6; x = Math.max(4, Math.min(x, w.width - tw - 4)); if (y + th > w.height - 4) y = r.top - w.top - th - 6; tip.style.left = x + "px"; tip.style.top = y + wrap.scrollTop + "px"; };
-      wrap.addEventListener("mouseover", (e) => { const el = e.target.closest && e.target.closest("[title],[data-tip]"); if (!el || !wrap.contains(el)) { tip.addClass("os-hide"); return; } if (el.hasAttribute("title")) { el.setAttribute("data-tip", el.getAttribute("title")); el.removeAttribute("title"); } show(el); });
+      // follows the cursor; screen px are divided by the HQ text-scale zoom so it lands right under the pointer
+      const place = (e) => { const w = wrap.getBoundingClientRect(), z = (w.width / wrap.offsetWidth) || 1, W = wrap.offsetWidth, H = wrap.offsetHeight, tw = tip.offsetWidth, th = tip.offsetHeight;
+        let x = (e.clientX - w.left) / z + 12, y = (e.clientY - w.top) / z + 18; if (x + tw > W - 4) x = Math.max(4, (e.clientX - w.left) / z - tw - 12); if (y + th > H - 4) y = (e.clientY - w.top) / z - th - 10; tip.style.left = x + "px"; tip.style.top = y + "px"; };
+      let cur = null;
+      wrap.addEventListener("mouseover", (e) => { const el = e.target.closest && e.target.closest("[title],[data-tip]"); if (!el || !wrap.contains(el)) { cur = null; tip.addClass("os-hide"); return; } if (el.hasAttribute("title")) { el.setAttribute("data-tip", el.getAttribute("title")); el.removeAttribute("title"); } const t = el.getAttribute("data-tip"); if (!t) return; cur = el; tip.setText(t); tip.removeClass("os-hide"); place(e); });
+      wrap.addEventListener("mousemove", (e) => { if (cur) place(e); });
       wrap.addEventListener("mouseleave", () => tip.addClass("os-hide")); wrap.addEventListener("pointerdown", () => tip.addClass("os-hide"), true); wrap.addEventListener("scroll", () => tip.addClass("os-hide"), true); }
     ui.chatBody.addEventListener("click", (e) => { const a = e.target.closest && e.target.closest("a.os-lk"); if (a) { e.preventDefault(); this.osChatLink(a.getAttribute("data-u")); } });
     this.osBuildInput(M, ui);
