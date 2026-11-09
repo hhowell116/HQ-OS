@@ -1777,12 +1777,11 @@ Object.assign(HQView.prototype, {
     this.osUI.sig.tasks = ""; await this.loadFiles(); this.osTasksRender();
   },
   osReviewRender() {
-    const u = this.osUI, need = this.review.filter((i) => i.status === "needs-review"), shown = this.osRevAll ? need : need.slice(0, 3);
+    const u = this.osUI, need = this.review.filter((i) => i.status === "needs-review"), shown = need;
     this.osReg("rev", this.rsig + "|" + need.length + "|" + this.osRevAll, () => {
       const b = u.rev.body; b.empty(); u.rev.meta.setText(need.length ? need.length + " PENDING" : "CLEAR"); u.rev.meta.toggleClass("warn", need.length > 0);
       if (!need.length) b.createDiv({ cls: "os-muted", text: "Nothing to review." });
       shown.forEach((it) => reviewCard(this, b, it));
-      if (need.length > 3) { const m = b.createEl("button", { cls: "os-more", text: this.osRevAll ? "Show fewer" : "+" + (need.length - 3) + " more" }); m.onclick = () => { this.osRevAll = !this.osRevAll; this.osUI.sig.rev = ""; this.osReviewRender(); }; }
     });
   },
   osInsRender() {
