@@ -812,3 +812,7 @@
 .hqos .os-mi{display:flex;gap:10px;align-items:baseline;padding:5px 10px;cursor:pointer}
 .hqos .os-mi.on,.hqos .os-mi:hover{background:rgba(var(--os-acrgb),.15)}
 .hqos .os-mi .n{font-weight:600;white-space:nowrap}.hqos .os-mi .p{font-size:.85em;opacity:.55;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* model + effort pickers: small chips like YOLO, sized to their text */
+.hqos select.os-sel.os-sm{field-sizing:content;width:auto!important;min-width:0!important;max-width:none;height:17px!important;min-height:0!important;padding:0 8px!important;font-family:var(--os-mono);font-size:9.4px!important;letter-spacing:.12em;line-height:1;border:1px solid var(--os-line)!important;border-radius:0;background:transparent!important;color:var(--os-ac,var(--os-cy));-webkit-appearance:none;appearance:none;background-image:none!important;cursor:pointer;box-shadow:none}
+.hqos select.os-sel.os-sm:hover{border-color:var(--os-ac,var(--os-cy))!important}
+.hqos select.os-sel.os-sm option{background:var(--os-solid,#071217);color:inherit}

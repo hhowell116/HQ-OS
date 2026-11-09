@@ -1477,8 +1477,8 @@ Object.assign(HQView.prototype, {
     ui.tbtn = tb.createEl("button", { cls: "os-sel os-tbtn", attr: { "aria-haspopup": "listbox", "aria-label": "Choose which chat to send to" } }); ui.tbtn.onclick = (e) => { e.stopPropagation(); this.osTargetMenu(); };
     ui.target = tb.createEl("select", { cls: "os-sel os-hide", attr: { "aria-label": "Send to HQ chat or a Claudian session", "aria-hidden": "true", tabindex: "-1" } });
     ui.tpop = cmd.createDiv({ cls: "os-tpop os-hide", attr: { role: "listbox", "aria-label": "Chats" } });
-    ui.model = tb.createEl("select", { cls: "os-sel os-sm", attr: { "aria-label": "Model" } }); HQ_MODELS.forEach((m) => ui.model.createEl("option", { value: m, text: m ? m.toUpperCase() : "MODEL: DEFAULT" }));
-    ui.effort = tb.createEl("select", { cls: "os-sel os-sm", attr: { "aria-label": "Effort" } }); HQ_EFFORTS.forEach((m) => ui.effort.createEl("option", { value: m, text: m ? m.toUpperCase() : "EFFORT: DEFAULT" }));
+    ui.model = tb.createEl("select", { cls: "os-sel os-sm", attr: { "aria-label": "Model" } }); HQ_MODELS.forEach((m) => ui.model.createEl("option", { value: m, text: HQ_MODEL_LABEL[m] || m.toUpperCase() }));
+    ui.effort = tb.createEl("select", { cls: "os-sel os-sm", attr: { "aria-label": "Effort" } }); HQ_EFFORTS.forEach((m) => ui.effort.createEl("option", { value: m, text: m ? m.toUpperCase() + " EFFORT" : "EFFORT" }));
     tb.createSpan({ cls: "os-sp" });
     ui.hint = tb.createSpan({ cls: "os-hint", text: "ENTER sends · SHIFT+ENTER new line" }); ui.cnt = tb.createSpan({ cls: "os-cnt2", attr: { "aria-live": "off" } });
     ui.perm = tb.createEl("button", { cls: "os-chb os-perm" }); ui.perm.onclick = () => this.osPermCycle(); this.osPermLabel();
@@ -2302,6 +2302,7 @@ const HQ_SLASH = [
 ];
 const HANDOFF_PROMPT = "Write a handoff note so a brand-new chat can continue this work with no other context. Reply with ONLY the note in Markdown, under about 700 words, with these headings: ## Goal, ## Done so far (commits, files, results), ## Current state, ## Key decisions and why, ## Files and paths that matter, ## Next steps (in order), ## Waiting on Hayden / open questions. Be specific (exact paths, commands, names). Do not run tools or do any other work.";
 const HANDOFF_TIP = "HANDOFF: Claude writes a detailed handoff summary of this chat, then a NEW chat starts with that summary, so you continue fresh without losing context. Uses one short AI turn. Better than COMPACT for long chats (compacting drops details). Lights up when this chat passes 250k tokens or its cache has gone cold.";
+const HQ_MODEL_LABEL = { "": "MODEL", sonnet: "SONNET", opus: "OPUS 5.5", haiku: "HAIKU 5.5" }; // Claudian lists Opus 5.5 and Haiku 5.5 for chats
 const HQ_MODELS = ["", "sonnet", "opus", "haiku"], HQ_EFFORTS = ["", "low", "medium", "high", "xhigh", "max"];
 const toolTarget = (name, inp) => {
   inp = inp || {}; const v = inp.file_path || inp.path || inp.command || inp.pattern || inp.url || inp.query || inp.description || inp.prompt || inp.skill || "";
@@ -2471,7 +2472,7 @@ Object.assign(HQView.prototype, {
     u.mid.toggleClass("chatting", open); u.chatBox.toggleClass("os-hide", !open);
     this.osGoLabel();
     const hqT = u.target.value === "hq"; u.cmdIn.placeholder = hqT ? "Message Claude Code" + (this.project ? " about " + this.project.name : "") + "…  (type / for commands)" : "Message the selected Claudian session…"; u.hint.setText(hqT ? "ENTER sends · SHIFT+ENTER new line · / commands · UP recalls last" : "ENTER sends to Claudian · SHIFT+ENTER new line");
-    u.model.toggleClass("os-hide", u.target.value === "new"); u.effort.toggleClass("os-hide", u.target.value === "new"); if (u.todo && hqT) u.todo.addClass("os-hide");
+    u.model.toggleClass("os-hide", u.target.value === "new"); { const so = [...u.model.options].find((o) => o.value === "sonnet"); if (so) so.hidden = !hqT; } u.effort.toggleClass("os-hide", u.target.value === "new"); if (u.todo && hqT) u.todo.addClass("os-hide");
     if (c && hqT) { u.model.value = c.model || ""; u.effort.value = c.effort || ""; } this.osTargetLabel();
   },
   osChatRender(full) {
