@@ -2625,7 +2625,7 @@ function hqDuel(host, key = "hq-fill-scene", def = 0) {
     { // line the ground up with the bottom edge of the chat input box: shrink the scale until it fits above that edge
       const hq = host.closest(".hqos"), ch = hq && (hq.querySelector(".os-mid .os-cbox") || hq.querySelector(".os-mid"));
       if (ch && ch.offsetParent) { const cr = ch.getBoundingClientRect(), gy = (cr.bottom - r.top) / z;
-        if (cr.height && gy > 0) { while (sc > 1 && (H - 1) * sc > gy) sc--; mt = Math.round(gy - (H - 1) * sc); if (mt < 0 || mt + (H - 1) * sc > hh + 1) mt = null; } } }
+        if (cr.height && gy > 0) { sc = Math.max(1, Math.floor(Math.min(hw / W, (gy - 4) / (H - 1)))); mt = Math.round(gy - (H - 1) * sc); if (mt < 0 || mt + (H - 1) * sc > hh + 1) mt = null; } } }
     if (cv.width !== W * sc || cv.height !== H * sc) { cv.width = W * sc; cv.height = H * sc; }
     { const v = mt != null ? mt + "px" : ""; if (cv.style.marginTop !== v) { cv.style.marginTop = v; host.style.alignItems = mt != null ? "flex-start" : ""; } }
     const cs = getComputedStyle(host), A = cs.getPropertyValue("--os-acrgb").trim(), B = cs.getPropertyValue("--os-amrgb").trim();
