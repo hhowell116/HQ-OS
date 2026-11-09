@@ -1767,9 +1767,8 @@ Object.assign(HQView.prototype, {
         // Claudian holds queued messages while the chat is "running" even if Claude is only waiting on background agents (no reply streaming).
         // Say so, and offer SEND NOW (interrupt with no text: Claudian then delivers the queued message first; background agents keep running).
         const bg = st === "running", w = b.createDiv({ cls: "os-think os-working" + (bg ? " os-live" : "") });
-        w.createDiv({ cls: "os-live-t", text: bg ? "Queued: Claude is waiting on background agents, so your message is held until they finish." : "Sent. Waiting for Claude…" });
-        if (bg) { const nb = w.createEl("button", { cls: "os-chb os-stop", text: "SEND NOW", attr: { title: "Interrupt the wait and deliver your queued message now (background agents keep running)" } });
-          nb.onclick = () => { nb.disabled = true; nb.setText("SENDING…"); this.osClaudStop(id).then(() => setTimeout(() => { if (this.osUI) this.osUI.claudKey = ""; this.osClaudRender(true); }, 800)); }; }
+        w.createDiv({ cls: "os-live-t", text: bg ? "Sent while Claude waits on background agents. Delivering…" : "Sent. Waiting for Claude…" });
+        // (SEND NOW removed: new messages now steer into the open turn, so they are no longer held behind background agents)
       }
       if (st === "running" && this.claudBusy(id)) { const since = meta.lastActivityAt ? Math.max(0, Math.round((Date.now() - meta.lastActivityAt) / 60000)) : 0;
         const w = b.createDiv({ cls: "os-think os-working os-live" }), lv = this.osLiveMsgs(id), step = this.osStepLabel(lv || msgs); u.liveLine = w.createDiv({ cls: "os-live-t", text: step ? step + "…" : "Claude is working…" });
@@ -1939,6 +1938,8 @@ Object.assign(HQView.prototype, {
     t.addEventListener("blur", () => setTimeout(close, 150));
   },
   osPendAdd(id, text) { this.osPend = this.osPend || {}; (this.osPend[id] = this.osPend[id] || []).push({ text, t: Date.now() }); if (this.osUI) this.osUI.claudKey = ""; },
+  // true when Claudian says the chat is "running" but no reply is streaming (Claude is only waiting on background agents)
+  osBgOnly(id) { const cp = this.claudian(); try { return cp.sessionMessaging.status(id) === "running" && !this.claudBusy(id); } catch (e) { return false; } },
   async osClaudStop(id) { const cp = this.claudian(); try { await cp.api.send(id, { mode: "interrupt" }); } catch (e) { new Notice("Could not stop: " + (e && e.message || e)); } },
   // queued messages for the picked Claudian chat: SEND NOW interrupts Claude and sends it immediately
   osCQRender() {
@@ -1955,7 +1956,7 @@ Object.assign(HQView.prototype, {
   async osCQPump() { // send the next queued message once a chat goes idle
     if (this.osCQBusy || !this.osQ) return; const cp = this.claudian(); if (!cp || !cp.api) return;
     for (const id of Object.keys(this.osQ)) { const q = this.osQ[id], m = q.find((x) => !x.sent); if (!m || q.some((x) => x.sent) || this.claudBusy(id)) continue;
-      this.osCQBusy = true; try { await cp.api.send(id, { text: m.text }); m.sent = Date.now(); } catch (e) {} this.osCQBusy = false; this.osCQRender(); setTimeout(() => this.osClaudRender(true), 800); break; }
+      this.osCQBusy = true; try { await cp.api.send(id, this.osBgOnly(id) ? { text: m.text, mode: "steer" } : { text: m.text }); m.sent = Date.now(); } catch (e) {} this.osCQBusy = false; this.osCQRender(); setTimeout(() => this.osClaudRender(true), 800); break; }
   },
   claudProjId() { const cp = this.claudian(), nm = String(this.project ? this.project.name : "").toLowerCase(); try { const p = cp.chatHost.domains.projects.list().find((x) => !x.isArchived && String(x.name).toLowerCase() === nm); return p ? p.id : ""; } catch (e) { return ""; } },
   async claudEnsureProject() { // the Claudian project for this HQ project, created on first use
@@ -2028,7 +2029,7 @@ Object.assign(HQView.prototype, {
     if (this.claudBusy(target) || q.length) { q.push({ text }); this.osRemember(text); u.cmdIn.value = ""; this.osAutoGrow(); this.osGoLabel(); this.osCQRender(); return; } const say = (m, bad) => { u.cmdMsg.setText(m); u.cmdMsg.toggleClass("bad", !!bad); };
     const cp = this.claudian(); if (!(cp && cp.api && cp.api.send)) { say("Claudian is not available.", true); return; }
     u.cmdIn.disabled = true; say("Sending…");
-    try { const title = ((this.osConvs || []).find((c) => c[0] === target) || [])[1] || "session"; await cp.api.send(target, { text }); this.osPendAdd(target, text); this.osRemember(text); u.cmdIn.value = ""; this.osAutoGrow(); say(""); this.osSessData(true); setTimeout(() => this.osClaudRender(true), 800); }
+    try { const title = ((this.osConvs || []).find((c) => c[0] === target) || [])[1] || "session"; await cp.api.send(target, this.osBgOnly(target) ? { text, mode: "steer" } : { text }); this.osPendAdd(target, text); this.osRemember(text); u.cmdIn.value = ""; this.osAutoGrow(); say(""); this.osSessData(true); setTimeout(() => this.osClaudRender(true), 800); }
     catch (e) { console.error("Project HQ command", e); say("Could not send: " + redact(e && e.message || e), true); }
     finally { u.cmdIn.disabled = false; u.cmdIn.focus(); }
   },
