@@ -226,7 +226,7 @@ async function scanAgents() {
     }
   }
   const res = (await Promise.all(files.map((f) => scanOne(f, now).catch(() => null)))).filter(Boolean);
-  res.forEach((a) => { const fresh = now - a.mtime < 3 * 3600000; if (a.waiting && fresh) { a.status = "running"; a.text = "Waiting on " + a.waiting + " background run(s) (tests/build)"; } else a.status = a.finished ? "done" : now - a.mtime < 15 * 60000 ? "running" : "stalled"; }); // agents waiting on test runs are caught by a.waiting above; any other agent silent for 15 min has almost always died with its chat
+  res.forEach((a) => { const fresh = now - a.mtime < 45 * 60000; if (a.waiting && fresh) { a.status = "running"; a.text = "Waiting on " + a.waiting + " background run(s) (tests/build)"; } else a.status = a.finished ? "done" : now - a.mtime < 15 * 60000 ? "running" : "stalled"; }); // agents waiting on test runs are caught by a.waiting above; any other agent silent for 15 min has almost always died with its chat
   return res.sort((a, b) => b.mtime - a.mtime);
 }
 const dur = (ms) => { const s = Math.max(0, Math.round(ms / 1000)), m = Math.floor(s / 60); return m >= 60 ? Math.floor(m / 60) + "h " + (m % 60) + "m" : m ? m + "m " + (s % 60) + "s" : s + "s"; };
