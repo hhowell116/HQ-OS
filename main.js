@@ -1461,7 +1461,9 @@ Object.assign(HQView.prototype, {
     const lsGet = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k) || "null"); return v === null ? d : v; } catch (e) { return d; } }, lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
     ui.userH = lsGet("hqos-in-h", 0); ui.imgs = []; ui.hi = -1; ui.histVal = ""; this.osHist = lsGet("hqos-hist", []);
     const cmd = ui.cmd = M.createDiv({ cls: "os-cmd" }), tb = cmd.createDiv({ cls: "os-ctool" });
-    ui.target = tb.createEl("select", { cls: "os-sel", attr: { "aria-label": "Send to HQ chat or a Claudian session" } });
+    ui.tbtn = tb.createEl("button", { cls: "os-sel os-tbtn", attr: { "aria-haspopup": "listbox", "aria-label": "Choose which chat to send to" } }); ui.tbtn.onclick = (e) => { e.stopPropagation(); this.osTargetMenu(); };
+    ui.target = tb.createEl("select", { cls: "os-sel os-hide", attr: { "aria-label": "Send to HQ chat or a Claudian session", "aria-hidden": "true", tabindex: "-1" } });
+    ui.tpop = cmd.createDiv({ cls: "os-tpop os-hide", attr: { role: "listbox", "aria-label": "Chats" } });
     ui.model = tb.createEl("select", { cls: "os-sel os-sm", attr: { "aria-label": "Model" } }); HQ_MODELS.forEach((m) => ui.model.createEl("option", { value: m, text: m ? m.toUpperCase() : "MODEL: DEFAULT" }));
     ui.effort = tb.createEl("select", { cls: "os-sel os-sm", attr: { "aria-label": "Effort" } }); HQ_EFFORTS.forEach((m) => ui.effort.createEl("option", { value: m, text: m ? m.toUpperCase() : "EFFORT: DEFAULT" }));
     tb.createSpan({ cls: "os-sp" });
@@ -1637,7 +1639,7 @@ Object.assign(HQView.prototype, {
     try {
       const cp = this.claudian(), rows = [], reads = []; this.osSnip = this.osSnip || {};
       if (cp && cp.chatHost && cp.sessionMessaging) {
-        const list = cp.chatHost.getConversationList().filter((c) => !c.isArchived && !OS_PERSONAL.test((c.linkedContentPath || "") + " " + (c.title || ""))).sort((a, b) => (b.lastActivityAt || 0) - (a.lastActivityAt || 0)).slice(0, 7);
+        const list = cp.chatHost.getConversationList().filter((c) => !c.isArchived && !OS_PERSONAL.test((c.linkedContentPath || "") + " " + (c.title || ""))).sort((a, b) => (b.lastActivityAt || 0) - (a.lastActivityAt || 0)).slice(0, 15);
         for (const c of list) {
           const st = cp.sessionMessaging.status(c.id), key = [c.lastActivityAt, c.messageCount, st].join("|"), sn = this.osSnip[c.id];
           if (rows.length < 4 && cp.api && (!sn || (sn.key !== key && Date.now() - sn.at > 8000))) reads.push([c.id, key, sn]);
@@ -1723,6 +1725,29 @@ Object.assign(HQView.prototype, {
     const hot = ctx > 250000 || (cold && ctx > 60000); u.handoff.toggleClass("hot", hot);
     const tip = HANDOFF_TIP + (ctx ? "\n\nThis chat: about " + kfmt(ctx) + " tokens re-read per message" + (cold ? ", cache is cold" : "") + "." : ""); if (u.handoff.getAttribute("data-tip") !== tip) u.handoff.setAttribute("data-tip", tip);
   },
+  osTargetLabel() { const u = this.osUI; if (!u || !u.tbtn) return; const o = u.target.options[u.target.selectedIndex]; u.tbtn.setText((o ? o.text : "HQ CHAT") + "  \u25BE"); },
+  osTargetPick(v) { const u = this.osUI; u.target.value = v; this.osChatLayout(); this.osTargetLabel(); this.osTargetClose(); u.cmdIn.focus(); },
+  osTargetClose() { const u = this.osUI; if (!u || !u.tpop) return; u.tpop.addClass("os-hide"); if (u.tpopOff) { document.removeEventListener("pointerdown", u.tpopOff, true); document.removeEventListener("keydown", u.tpopKey, true); u.tpopOff = null; } },
+  // chat picker: pick where messages go; rename or delete any Claudian chat right here (delete asks once more)
+  osTargetMenu(keep) {
+    const u = this.osUI, P = u.tpop, cp = this.claudian(); if (!keep && !P.hasClass("os-hide")) { this.osTargetClose(); return; }
+    P.empty(); P.removeClass("os-hide"); const cur = u.target.value, convs = this.osConvs || [];
+    const row = (val, label, sub) => { const r = P.createDiv({ cls: "os-tro" + (val === cur ? " cur" : ""), attr: { role: "option", "aria-selected": String(val === cur) } }); const n = r.createDiv({ cls: "os-trn" }); n.createSpan({ cls: "os-trt", text: label }); if (sub) n.createSpan({ cls: "os-trs", text: sub }); n.onclick = () => this.osTargetPick(val); return r; };
+    const hr = row("hq", "HQ CHAT", "built-in"); const lb = hr.createEl("button", { cls: "os-chb", text: "CHATS", attr: { title: "HQ chat list: open, pin, rename, delete" } }); lb.onclick = (e) => { e.stopPropagation(); this.osTargetClose(); this.osChatList(); };
+    if (convs.length) P.createDiv({ cls: "os-trh", text: "CLAUDIAN" });
+    convs.forEach(([id, title, act]) => {
+      const r = row(id, title, act ? "open now" : "");
+      const ren = r.createEl("button", { cls: "os-chb", text: "RENAME", attr: { "aria-label": "Rename " + title } });
+      ren.onclick = (e) => { e.stopPropagation(); const n = r.querySelector(".os-trn"), inp = createEl("input", { cls: "os-ren", attr: { type: "text", "aria-label": "New name" } }); inp.value = title; n.replaceWith(inp); inp.focus(); inp.select(); let done = false;
+        const fin = async (ok) => { if (done) return; done = true; const v = inp.value.replace(/\s+/g, " ").trim().slice(0, 80); if (ok && v && v !== title) { try { await cp.chatHost.renameConversation(id, v); } catch (x) { new Notice("Could not rename: " + (x && x.message || x)); } } await this.osSessData(true); this.osTargetMenu(true); };
+        inp.onclick = (ev) => ev.stopPropagation(); inp.addEventListener("keydown", (ev) => { ev.stopPropagation(); if (ev.key === "Enter") { ev.preventDefault(); fin(true); } else if (ev.key === "Escape") { ev.preventDefault(); fin(false); } }); inp.addEventListener("blur", () => fin(true)); };
+      const busy = cp && cp.sessionMessaging && cp.sessionMessaging.status(id) === "running";
+      const del = r.createEl("button", { cls: "os-chb", text: "DELETE", attr: { "aria-label": "Delete " + title, title: busy ? "Working right now; stop it first" : "Delete this chat" } }); if (busy) del.disabled = true;
+      del.onclick = async (e) => { e.stopPropagation(); if (!del.hasClass("sure")) { del.addClass("sure"); del.setText("SURE?"); setTimeout(() => { if (del.isConnected) { del.removeClass("sure"); del.setText("DELETE"); } }, 3000); return; }
+        try { await cp.chatHost.deleteConversation(id); new Notice("Chat deleted"); } catch (x) { new Notice("Could not delete: " + (x && x.message || x)); } if (u.target.value === id) u.target.value = "hq"; await this.osSessData(true); this.osTargetMenu(true); };
+    });
+    if (!u.tpopOff) { u.tpopOff = (e) => { if (!P.contains(e.target) && e.target !== u.tbtn) this.osTargetClose(); }; u.tpopKey = (e) => { if (e.key === "Escape") { e.stopPropagation(); this.osTargetClose(); } }; setTimeout(() => { document.addEventListener("pointerdown", u.tpopOff, true); document.addEventListener("keydown", u.tpopKey, true); }, 0); }
+  },
   osOpenSession(id) {
     const cp = this.claudian(), ws = this.app.workspace, type = (this.plugin.settings.chatView || "claudian-view").trim();
     try { const p = cp && cp.chatHost && cp.chatHost.switchConversation ? cp.chatHost.switchConversation(id) : null; if (p && p.catch) p.catch((e) => console.error("Project HQ switch session", e)); } catch (e) { console.error("Project HQ switch session", e); }
@@ -1731,7 +1756,7 @@ Object.assign(HQView.prototype, {
   osFillTarget() {
     const u = this.osUI; if (!u || !u.target) return; const prev = u.target.value || "hq", convs = this.osConvs || [], sig = JSON.stringify(convs); if (u.tsig === sig) return; u.tsig = sig; u.target.empty();
     u.target.createEl("option", { value: "hq", text: "HQ CHAT" }); convs.forEach(([id, t, act]) => u.target.createEl("option", { value: id, text: "CLAUDIAN: " + (act ? "* " : "") + t.slice(0, 28) }));
-    u.target.value = convs.some((c) => c[0] === prev) || prev === "hq" ? prev : "hq"; this.osChatLayout();
+    u.target.value = convs.some((c) => c[0] === prev) || prev === "hq" ? prev : "hq"; this.osChatLayout(); this.osTargetLabel(); if (!u.tpop.hasClass("os-hide")) this.osTargetMenu(true);
   },
   // ---- Claudian path (only when a Claudian session is picked in the target list; HQ chat is the default) ----
   async osSend(text, target) {
@@ -2212,7 +2237,7 @@ Object.assign(HQView.prototype, {
     this.osGoLabel();
     const hqT = u.target.value === "hq"; u.cmdIn.placeholder = hqT ? "Message Claude Code" + (this.project ? " about " + this.project.name : "") + "…  (type / for commands)" : "Message the selected Claudian session…"; u.hint.setText(hqT ? "ENTER sends · SHIFT+ENTER new line · / commands · UP recalls last" : "ENTER sends to Claudian · SHIFT+ENTER new line");
     u.model.toggleClass("os-hide", !hqT); u.effort.toggleClass("os-hide", !hqT);
-    if (c && hqT) { u.model.value = c.model || ""; u.effort.value = c.effort || ""; }
+    if (c && hqT) { u.model.value = c.model || ""; u.effort.value = c.effort || ""; } this.osTargetLabel();
   },
   osChatRender(full) {
     const u = this.osUI, hq = this.hq(), c = hq && hq.get(hq.activeId); if (!u || !c || !u.chatOpen) { if (u && u.chatBody && full) u.chatBody.empty(); return; }
