@@ -793,8 +793,6 @@
 .hqos.os-min .os-p::before{inset:-3px}
 .hqos.os-min .os-chb,.hqos.os-min .os-sel,.hqos.os-min .os-go,.hqos.os-min .os-in,.hqos.os-min .os-mt{border-width:2px!important}
 .hqos.os-min .os-top,.hqos.os-min .lhq-top{border-bottom-width:2px!important}
-/* Font: Georgia serif in the chat only (Hayden 2026-11-09, same face Claudian falls back to); code stays monospace */
-.hqos .os-cbody,.hqos .os-cbody *:not(code):not(pre):not(kbd):not(code *):not(pre *){font-family:Copernicus,"Tiempos Headline",Tiempos,Georgia,"Times New Roman",serif!important}
 .hqos .os-cbody code,.hqos .os-cbody pre,.hqos .os-cbody code *,.hqos .os-cbody pre *{font-family:ui-monospace,"Cascadia Mono",Consolas,monospace!important}
 /* live step line + STOP */
 .hqos .os-live{display:flex;align-items:center;gap:10px}
@@ -821,53 +819,18 @@
 .os-upmenu .os-upi{all:unset;cursor:pointer;padding:4px 10px;font-family:ui-monospace,"Cascadia Mono",Consolas,monospace;font-size:10px;letter-spacing:.12em;color:var(--os-ac,var(--os-cy,#19e3d0));white-space:nowrap}
 .os-upmenu .os-upi:hover,.os-upmenu .os-upi.on{background:rgba(var(--os-acrgb,25,227,208),.18)}
 
-/* Chat readability (Hayden 2026-11-09: "words are kind of hard to read"):
-   1. the CRT scanline overlay (.hqos::after, dark line every 3px) and the 82%-see-through panel let lines and the grid run through the letters;
-      the chat body now sits above the overlay on a solid background.
-   2. long lines across the full width: cap the reading width.
-   3. Hayden's own messages were long runs of saturated amber text; now normal text colour with the amber bar + tint kept as the marker.
-   4. grey status text (#8fb3b6) was too dim; brighter. */
-.hqos .os-cbody{position:relative;z-index:2;background:var(--os-solid);-webkit-font-smoothing:antialiased}
-.hqos .os-msg{max-width:78ch;color:#e9f0f1}
+/* HQ chat look (settled with Hayden 2026-11-09):
+   - Segoe UI (Windows screen font) at 1.09em, full chat width, airy line height; code stays monospace (rule below).
+   - almost-black solid background that sits above the CRT scanline overlay, so no lines run through the letters.
+   - Hayden's own messages in warm off-white with the amber bar + tint as the marker; brighter status text.
+   - MINIMAL view: every box solid black.
+   - pasted-image strip floats above the input so pasting never changes the layout height. */
+.hqos .os-cbody,.hqos .os-cbody *:not(code):not(pre):not(kbd):not(code *):not(pre *){font-family:"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif!important}
+.hqos .os-cbody{position:relative;z-index:2;background:#03070a;-webkit-font-smoothing:antialiased}
+.hqos .os-msg{font-size:1.09em;line-height:1.6;max-width:none;color:#e9f0f1}
+.hqos .os-msg.asst .os-mt{font-weight:400;letter-spacing:.005em}
 .hqos .os-msg.user .os-mt{color:#f4ece0}
 .hqos .os-cbody .os-think,.hqos .os-cbody .os-chint,.hqos .os-msg.sys{color:#b9d0d2}
-
-/* Pasted-image strip floats just above the input over the bottom of the chat, so pasting no longer changes the
-   layout height and pushes the side panels up (Hayden 2026-11-09). */
+.hqos.os-min .os-p,.hqos.os-min .os-chat,.hqos.os-min .os-cmd,.hqos.os-min .os-cbody,.hqos.os-min .os-p .os-pb,.hqos.os-min textarea.os-in{background:#000!important}
 .hqos .os-cmd .os-atts{position:absolute;left:0;right:0;bottom:100%;z-index:6;padding:6px 8px;background:var(--os-solid);border:1px solid rgba(var(--os-acrgb),.5);border-bottom:0}
 .hqos .os-cmd .os-atts.os-hide{display:none}
-
-/* Chat text a bit smaller (Hayden 2026-11-09): 1.12em -> 1em, line height kept airy */
-.hqos .os-msg{font-size:1em;line-height:1.6}
-/* Hayden 2026-11-09: 5% bigger, and text uses the full chat width (drops the 78ch cap) */
-.hqos .os-msg{font-size:1.05em;max-width:none}
-/* Hayden 2026-11-09: trying a screen font instead of Georgia (thin serif strokes look grainy light-on-dark); 3% bigger */
-.hqos .os-msg{font-size:1.08em}
-.hqos .os-cbody,.hqos .os-cbody *:not(code):not(pre):not(kbd):not(code *):not(pre *){font-family:"Segoe UI Variable Text","Segoe UI",Inter,system-ui,sans-serif!important}
-.hqos .os-msg.asst .os-mt{font-weight:400;letter-spacing:.005em}
-/* Hayden 2026-11-09: Inter (bundled with Obsidian) */
-.hqos .os-cbody,.hqos .os-cbody *:not(code):not(pre):not(kbd):not(code *):not(pre *){font-family:Inter,"Segoe UI",system-ui,sans-serif!important}
-/* Hayden 2026-11-09: darker chat background (was #071014) */
-.hqos .os-cbody{background:#020507}
-/* Hayden 2026-11-09: chat background slightly brighter than #020507 */
-.hqos .os-cbody{background:#060b0e}
-/* Hayden 2026-11-09: sturdy screen serif. Charter/Iowan are not on this PC; Sitka Text (Windows, by Charter's designer
-   Matthew Carter, made for screen reading) is the closest. Theme-tinted background, near rgb(2,30,30) but a touch deeper. */
-.hqos .os-cbody,.hqos .os-cbody *:not(code):not(pre):not(kbd):not(code *):not(pre *){font-family:Charter,"Iowan Old Style","Sitka Text",Cambria,Georgia,serif!important}
-.hqos .os-cbody{background:#04181a}
-/* Hayden 2026-11-09: teal background too bright; back to the almost-black he liked */
-.hqos .os-cbody{background:#060b0e}
-/* Hayden 2026-11-09: back to Inter */
-.hqos .os-cbody,.hqos .os-cbody *:not(code):not(pre):not(kbd):not(code *):not(pre *){font-family:Inter,"Segoe UI",system-ui,sans-serif!important}
-/* Hayden 2026-11-09: chat a bit darker; MINIMAL view: every box solid black */
-.hqos .os-cbody{background:#03070a}
-.hqos.os-min .os-p,.hqos.os-min .os-chat,.hqos.os-min .os-cmd,.hqos.os-min .os-cbody,.hqos.os-min .os-p .os-pb,.hqos.os-min textarea.os-in{background:#000!important}
-/* Hayden 2026-11-09: Segoe UI again */
-.hqos .os-cbody,.hqos .os-cbody *:not(code):not(pre):not(kbd):not(code *):not(pre *){font-family:"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif!important}
-/* Hayden 2026-11-09: +3% (1.08em -> 1.11em) */
-.hqos .os-msg{font-size:1.11em}
-/* Hayden 2026-11-09: Inter again */
-.hqos .os-cbody,.hqos .os-cbody *:not(code):not(pre):not(kbd):not(code *):not(pre *){font-family:Inter,"Segoe UI",system-ui,sans-serif!important}
-/* Hayden 2026-11-09: Segoe UI, -2% (1.11em -> 1.09em) */
-.hqos .os-msg{font-size:1.09em}
-.hqos .os-cbody,.hqos .os-cbody *:not(code):not(pre):not(kbd):not(code *):not(pre *){font-family:"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif!important}
