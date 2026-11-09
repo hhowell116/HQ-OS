@@ -1647,7 +1647,7 @@ Object.assign(HQView.prototype, {
           const st = cp.sessionMessaging.status(c.id), key = [c.lastActivityAt, c.messageCount, st].join("|"), sn = this.osSnip[c.id];
           if (rows.length < 4 && cp.api && (!sn || (sn.key !== key && Date.now() - sn.at > 8000))) reads.push([c.id, key, sn]);
           const us = (() => { try { const f = cp.chatHost.getConversationSync ? cp.chatHost.getConversationSync(c.id) : cp.chatHost.getCachedConversation && cp.chatHost.getCachedConversation(c.id); return f && f.usage; } catch (e) { return null; } })();
-          rows.push({ kind: "chat", id: c.id, tok: us && us.contextTokens ? { ctx: us.contextTokens, win: us.contextWindow || 0, pct: us.percentage } : null, title: clean(c.title || "Untitled"), st: st === "running" ? "thinking" : st === "awaiting-user" ? "needs you" : "idle", ts: c.lastActivityAt || 0, snip: (this.osSnip[c.id] || {}).text || "" });
+          rows.push({ kind: "chat", id: c.id, tok: us && us.contextTokens ? { ctx: us.contextTokens, win: us.contextWindow || 0, pct: us.percentage } : null, title: clean(c.title || "Untitled"), st: st === "running" && this.claudBusy(c.id) ? "thinking" : st === "awaiting-user" ? "needs you" : "idle", ts: c.lastActivityAt || 0, snip: (this.osSnip[c.id] || {}).text || "" });
         }
         this.osConvs = list.map((c) => [c.id, clean(c.title || "Untitled"), !!(cp.api && cp.api.getActiveSessionId && cp.api.getActiveSessionId() === c.id)]);
       } else this.osConvs = [];
