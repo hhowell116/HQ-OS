@@ -695,3 +695,4 @@
 .hqos .os-modsw{padding:0 10px!important;text-align:center;-webkit-appearance:none;appearance:none;background-image:none}.hqos .os-q-i .os-qnow{border-color:var(--os-am);color:var(--os-am)}
 .hqos .os-trnew .os-trt{color:var(--os-ac);font-weight:700}.hqos .os-minew{color:var(--os-ac)!important;font-weight:700}.hqos .os-menu input.os-ren{margin:6px;width:calc(100% - 12px)}
 .hqos .os-working .os-wsub{color:var(--os-dim);font-size:.85em;margin-top:3px;animation:none}
+.hqos .os-ctool .os-hidechat.hot{border-color:var(--os-am);color:var(--os-am)}
