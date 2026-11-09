@@ -22,7 +22,7 @@ function setConfig(pr, g) {
   PROJ = (g.claudeDir || "").trim() || path.join(os.homedir(), ".claude", "projects");
 }
 // ---- project discovery: top-level folders of the workspace, each with Notes/ by convention ----
-const WS = "Claude'sWorkspace", NOT_PROJECTS = new Set(["agent team", "token tools", "node_modules"]);
+const WS = "Claude'sWorkspace", NOT_PROJECTS = new Set(["agent team", "token tools", "node_modules", "lumenads"]);
 const slug = (x) => String(x).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "project";
 const isDir = (p) => { try { return fs.statSync(p).isDirectory(); } catch (e) { return false; } };
 const isFile = (p) => { try { return fs.statSync(p).isFile(); } catch (e) { return false; } };
@@ -41,6 +41,12 @@ function resolveProject(pr, base) {
   pick("queue", has(notes + "/Post Queue.md") ? notes + "/Post Queue.md" : "");
   pick("playbook", has(notes + "/Marketing Playbook.md") ? notes + "/Marketing Playbook.md" : "");
   pick("repo", hasDir(f + "/.git") ? f : "");
+  // extra folders (comma separated, e.g. LumenAds under Lumen): fill what the main folder lacks from their Notes/tools
+  r.extras = String(pr.extra || "").split(",").map((x) => x.trim().replace(/[/]+$/, "")).filter(Boolean).map((x) => (x.includes("/") ? x : WS + "/" + x));
+  for (const x of r.extras) {
+    pick("queue", has(x + "/Notes/Post Queue.md") ? x + "/Notes/Post Queue.md" : ""); pick("playbook", has(x + "/Notes/Marketing Playbook.md") ? x + "/Notes/Marketing Playbook.md" : "");
+    pick("creditsScript", has(x + "/tools/eleven.mjs") ? x + "/tools/eleven.mjs" : "");
+  }
   return r;
 }
 const SECTION_ON = { todo: () => !!TODO, needs: () => !!TODO, view: () => !!REVIEW, numbers: () => !!DAILY };
@@ -1606,18 +1612,18 @@ class HQChats {
   emit(c, what) { this.subs.forEach((f) => { try { f(c, what); } catch (e) { console.error("Project HQ chat ui", e); } }); }
   log(m) { try { fs.mkdirSync(this.dir, { recursive: true }); try { if (fs.statSync(this.logFile).size > 400000) fs.renameSync(this.logFile, this.logFile + ".1"); } catch (e) {} fs.appendFileSync(this.logFile, new Date().toISOString() + " " + redact(String(m)).slice(0, 2000) + "\n"); } catch (e) {} }
   load() {
-    try { fs.mkdirSync(this.chats, { recursive: true }); for (const f of fs.readdirSync(this.chats)) if (f.endsWith(".json")) { try { const c = JSON.parse(fs.readFileSync(path.join(this.chats, f), "utf8")); if (c && c.id) { c.proc = null; c.busy = false; c.lastUse = 0; this.convs.set(c.id, c); } } catch (e) {} } } catch (e) { this.log("load " + e.message); }
+    try { fs.mkdirSync(this.chats, { recursive: true }); for (const f of fs.readdirSync(this.chats)) if (f.endsWith(".json")) { try { const c = JSON.parse(fs.readFileSync(path.join(this.chats, f), "utf8")); if (c && c.id) { if (c.proj === "lumenads") { c.proj = "lumen"; c.projName = "Lumen"; c.projFolder = "Claude'sWorkspace/Lumen"; c.projExtra = "LumenAds"; } c.proc = null; c.busy = false; c.lastUse = 0; this.convs.set(c.id, c); } } catch (e) {} } } catch (e) { this.log("load " + e.message); }
     this.loaded = true;
   }
   save(c) {
-    clearTimeout(c._st); c._st = setTimeout(() => { try { const o = {}; for (const k of ["id", "sessionId", "title", "model", "effort", "created", "updated", "turns", "proj", "projName", "projFolder", "primed"]) o[k] = c[k]; o.msgs = c.msgs.slice(-200); fs.mkdirSync(this.chats, { recursive: true }); fs.writeFileSync(path.join(this.chats, c.id + ".json"), redact(JSON.stringify(o))); } catch (e) { this.log("save " + e.message); } }, 400);
+    clearTimeout(c._st); c._st = setTimeout(() => { try { const o = {}; for (const k of ["id", "sessionId", "title", "model", "effort", "created", "updated", "turns", "proj", "projName", "projFolder", "projExtra", "primed"]) o[k] = c[k]; o.msgs = c.msgs.slice(-200); fs.mkdirSync(this.chats, { recursive: true }); fs.writeFileSync(path.join(this.chats, c.id + ".json"), redact(JSON.stringify(o))); } catch (e) { this.log("save " + e.message); } }, 400);
   }
   projOf(c) { return c.proj || "lumen"; }
   list(proj) { return [...this.convs.values()].filter((c) => !proj || this.projOf(c) === proj).sort((a, b) => (b.updated || 0) - (a.updated || 0)); }
   get(id) { return this.convs.get(id); }
   create(model, effort, pr) {
     const id = "hq-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-    const c = { id, sessionId: "", title: "New conversation", model: model || "", effort: effort || "", created: Date.now(), updated: Date.now(), turns: [], msgs: [], proj: pr ? pr.id : "", projName: pr ? pr.name : "", projFolder: pr ? pr.folder || "" : "", primed: false, proc: null, busy: false, lastUse: Date.now(), cur: null };
+    const c = { id, sessionId: "", title: "New conversation", model: model || "", effort: effort || "", created: Date.now(), updated: Date.now(), turns: [], msgs: [], proj: pr ? pr.id : "", projName: pr ? pr.name : "", projFolder: pr ? pr.folder || "" : "", projExtra: pr ? pr.extra || "" : "", primed: false, proc: null, busy: false, lastUse: Date.now(), cur: null };
     this.convs.set(id, c); this.activeId = id; this.save(c); this.emit(c, "list"); return c;
   }
   remove(c) {
@@ -1654,7 +1660,9 @@ class HQChats {
     let p = c.proc; if (!p) { try { p = this.spawnProc(c); } catch (e) { this.addMsgs(c, text, e.message); return; } }
     if (c.title === "New conversation") c.title = text.replace(/\s+/g, " ").slice(0, 48);
     let wire = text, ctx = "";
-    if (!c.primed && c.proj) { ctx = "Project: " + c.projName + (c.projFolder ? ", folder " + c.projFolder + ". Notes in " + c.projFolder + "/Notes." : "."); wire = "[Project context] " + ctx + "\n\n" + text; }
+    if (!c.primed && c.proj) { ctx = "Project: " + c.projName + (c.projFolder ? ", folder " + c.projFolder + ". Notes in " + c.projFolder + "/Notes." : ".");
+    const ex = String(c.projExtra || "").split(",").map((x) => x.trim()).filter(Boolean);
+    if (ex.length) { const nm = (f) => String(f).split("/").pop() + "\\"; ctx = "Project: " + c.projName + " (one project, folders under Claude'sWorkspace). " + nm(c.projFolder) + " is the app/code; " + ex.map((x) => nm(x) + " is " + (/ads/i.test(x) ? "marketing/ads" : "part of the project")).join("; ") + ". Notes live in each folder's Notes/."; } wire = "[Project context] " + ctx + "\n\n" + text; }
     c.primed = true;
     c.msgs.push({ r: "user", text: redact(text), ctx, imgs: imgs.length }); c.cur = { r: "asst", blocks: [], at: Date.now() }; c.msgs.push(c.cur); c.idx = {}; c.busy = true; c.stopping = false; c.lastUse = Date.now(); c.updated = Date.now();
     try { const content = imgs.length ? imgs.map((i) => ({ type: "image", source: { type: "base64", media_type: i.media, data: i.data } })).concat([{ type: "text", text: wire }]) : wire; p.stdin.write(JSON.stringify({ type: "user", message: { role: "user", content } }) + "\n"); } catch (e) { this.finish(c, "Could not write to Claude Code: " + e.message); return; }
@@ -1821,6 +1829,7 @@ const PFIELDS = [
   ["queue", "Post queue note (optional)", "Vault path to a note whose unchecked lines are the next posts (HQ_OS shows the next 5 and counts today's posted lines).", "Notes/Post Queue.md"],
   ["slots", "Posting slots (optional)", "Daily times, 24 h, comma separated. HQ_OS counts down to the next one.", "8:43,13:13,19:13"],
   ["creditsScript", "Credits script (optional)", "Vault-relative or absolute path to a Node script; HQ_OS runs `node <script> subscription` at most once an hour and shows the credits left (JSON with a numeric `left`).", "LumenAds/tools/eleven.mjs"],
+  ["extra", "Extra folders (optional)", "Comma separated sub-folders that belong to this project (e.g. LumenAds). Their Post Queue, Marketing Playbook and tools/eleven.mjs are picked up, and chats mention them.", "LumenAds"],
   ["playbook", "Playbook / rules inbox note (optional)", "Where SAVE AS RULE (playbook option) appends. Auto-detects Notes/Marketing Playbook.md.", "Notes/Marketing Playbook.md"],
   ["repo", "Git repo path (optional)", "Absolute path (or vault-relative); commits of the last 7 days show as dots in the week strip.", ""],
 ];
@@ -1900,6 +1909,13 @@ module.exports = class ProjectHQ extends Plugin {
   // Add a settings entry for every workspace folder that has none yet (blank fields are auto-detected at use time).
   syncProjects() {
     const st = this.settings, base = this.app.vault.adapter.basePath || "", known = new Set(); let ch = false;
+    // LumenAds is part of Lumen: fold its settings into Lumen and drop it as a separate project
+    const ads = st.projects.find((p) => p.id === "lumenads" || /[/]LumenAds$/i.test(p.folder || ""));
+    if (ads) {
+      const lu = st.projects.find((p) => p.id === "lumen");
+      if (lu) { for (const k of ["queue", "slots", "creditsScript", "playbook"]) if (ads[k] && !lu[k]) lu[k] = ads[k]; if (!lu.extra) lu.extra = "LumenAds"; }
+      st.projects = st.projects.filter((p) => p !== ads); if (st.last === ads.id) st.last = lu ? lu.id : ""; ch = true;
+    }
     st.projects.forEach((p) => { if (!p.folder) { const f = folderOf(p); if (f) { p.folder = f; ch = true; } } if (p.folder) known.add(p.folder); });
     discoverFolders(base).forEach((n) => { const f = WS + "/" + n; if (known.has(f)) return; let id = slug(n); while (st.projects.some((p) => p.id === id)) id += "-"; st.projects.push({ id, name: n, folder: f, accent: "#f5b83d", nextHead: "Next", waitHead: "Waiting on", auto: true }); ch = true; });
     return ch;
