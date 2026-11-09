@@ -711,7 +711,8 @@
 .hqos .os-upic{max-width:260px;max-height:180px;border:1px solid var(--os-am);cursor:zoom-in;object-fit:contain;background:rgba(0,0,0,.3)}
 
 /* side columns: panels hug their content; leftover space gets an ambient filler */
-@media (min-width:1101px){.hqos .os-left>.os-p,.hqos .os-right>.os-p{flex:0 1 auto!important}}
+@media (min-width:1101px){.hqos .os-left>.os-p{flex:0 1 auto!important}}
+.hqos .os-right>.os-fill{display:none}
 .hqos .os-fill{flex:1 1 0;min-height:0;position:relative;overflow:hidden;order:99;margin-top:-4px;
   background:radial-gradient(ellipse at 50% 55%,rgba(var(--os-acrgb),.08),transparent 70%),
   repeating-linear-gradient(0deg,rgba(var(--os-acrgb),.06) 0 1px,transparent 1px 18px),
