@@ -705,3 +705,4 @@
 .hqos .os-hidechat::before,.hqos .os-showchat::before{content:"";width:7px;height:7px;border-right:2px solid currentColor;border-bottom:2px solid currentColor}
 .hqos .os-hidechat::before{transform:translateY(-2px) rotate(45deg)}
 .hqos .os-showchat::before{transform:translateY(2px) rotate(-135deg)}
+.hqos .os-showchat{top:10px;right:auto;left:50%;transform:translateX(-50%);width:auto;height:24px;padding:0 12px;gap:8px;letter-spacing:.18em;font-size:11px;white-space:nowrap}
