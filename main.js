@@ -821,7 +821,6 @@ const MOD_LIST = [
   ["files", "FILES IN PLAY", "Files the running agents are reading and editing."],
   ["cache", "CACHE WARNING", "Warns before the prompt cache goes cold and nudges /compact on a big chat."],
   ["rules", "SAVE AS RULE", "Spots corrections in your messages and saves them as rules."],
-  ["actions", "ACTION ITEMS", "Pulls decisions, costs, security notes and failures out of agent reports."],
   ["orb", "PARTICLE ORB", "The animated sphere in the middle."],
   ["chat", "HQ CHAT", "The built-in Claude Code chat."],
   ["guard", "DELETE GUARD", "Blocks recursive deletes outside throwaway folders (hook for Claude Code)."],
@@ -1054,7 +1053,7 @@ class HQView extends ItemView {
     } catch (e) { console.error("Project HQ save rule", e); new Notice("Could not save: " + (e && e.message || e)); }
   }
   async insActionsUpdate(force) {
-    if (!MODS.actions.on) { this.insActs = []; return; }
+    { this.insActs = []; return; } // action items panel removed (Hayden 2026-11-09)
     if (!force && Date.now() - this.insActAt < 30000) return; this.insActAt = Date.now();
     const done = new Set(this.insHandled()), seen = new Set(), out = [];
     const add = (text, src) => actionItems(text, src).forEach((a) => { if (!seen.has(a.id) && !done.has(a.id)) { seen.add(a.id); out.push(a); } });
@@ -1391,7 +1390,7 @@ class Orb {
     const base = [0.22, 0.4, 0.7, 1], sz = [1.1, 1.5, 2, 2.5].map((s) => s * dpr), mix = this.tint;
     const col = (a) => "rgba(" + Math.round(THEME_RGB.a[0] + (THEME_RGB.w[0] - THEME_RGB.a[0]) * mix) + "," + Math.round(THEME_RGB.a[1] + (THEME_RGB.w[1] - THEME_RGB.a[1]) * mix) + "," + Math.round(THEME_RGB.a[2] + (THEME_RGB.w[2] - THEME_RGB.a[2]) * mix) + "," + a.toFixed(3) + ")";
     for (let b = 0; b < 4; b++) { ctx.fillStyle = col(base[b] * (0.55 + 0.45 * I)); const a = this.bx[b], n = this.bn[b], s = sz[b]; for (let j = 0; j < n; j += 2) ctx.fillRect(a[j], a[j + 1], s, s); }
-    if (ak && (HQAudio.on || AL > 0.002)) { const dim = ctx.canvas.closest(".os-mid.chatting") ? 0.55 : 1; ctx.save(); ctx.globalAlpha *= dim; this.eq(ctx, cx, cy, R, AF, ak, dpr); ctx.restore(); }
+    if (ak && (HQAudio.on || AL > 0.002)) { const dim = ctx.canvas.closest(".os-mid.chatting") ? 0.9 : 1; ctx.save(); ctx.globalAlpha *= dim; this.eq(ctx, cx, cy, R, AF, ak, dpr); ctx.restore(); }
     // lightning arcs: only while agents are working, at most 2 at once, each lives ~0.5 s and they spawn >= 0.55 s apart (never > 3 Hz)
     if (MODS.orb.arcs && !this.still && I > 0.6 && t > this.nextArc && this.arcs.length < 2) {
       this.nextArc = t + 550 + Math.random() * 900; const a = (Math.random() * this.N) | 0; let b = (Math.random() * this.N) | 0, g = 0;
@@ -1426,7 +1425,7 @@ Object.assign(HQView.prototype, {
     wrap.createDiv({ cls: "os-sweep" }); ui.top = wrap.createDiv({ cls: "os-top" }); ui.run = wrap.createDiv({ cls: "os-run os-hide", attr: { role: "status", "aria-live": "polite", "aria-label": "Running agents" } });
     const grid = ui.grid = wrap.createDiv({ cls: "os-grid" }), modsEl = ui.modsEl = wrap.createDiv({ cls: "os-mods os-hide" }), L = grid.createDiv({ cls: "os-col os-left" }), M = grid.createDiv({ cls: "os-col os-mid" }), Rt = grid.createDiv({ cls: "os-col os-right" });
     ui.vit = osPanel(L, "SYSTEM VITALS", "os-vit"); ui.sess = osPanel(L, "AGENTS & CHATS", "os-sess"); ui.next = osPanel(L, "NEXT UP", "os-next"); ui.files = osPanel(L, "FILES IN PLAY", "os-files");
-    ui.tasks = osPanel(Rt, "TOP TASKS", "os-tasks"); ui.rev = osPanel(Rt, "REVIEW QUEUE", "os-rev"); ui.acts = osPanel(Rt, "ACTION ITEMS", "os-acts");
+    ui.tasks = osPanel(Rt, "TOP TASKS", "os-tasks"); ui.rev = osPanel(Rt, "REVIEW QUEUE", "os-rev");
     { const f = L.createDiv({ cls: "os-fill" }); hqDuel(f); }
     this.osColl = this.osColl || new Set(MODS.files.collapsed ? ["files"] : []);
     [["files", ui.files]].forEach(([k, p]) => { p.p.addClass("os-coll"); p.p.toggleClass("collapsed", this.osColl.has(k)); p.h.setAttr("role", "button"); p.h.setAttr("tabindex", "0"); p.h.setAttr("aria-expanded", String(!this.osColl.has(k)));
