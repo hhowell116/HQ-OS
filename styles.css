@@ -785,3 +785,11 @@
 .hqos.os-min .os-p,.hqos.os-min .os-chat,.hqos.os-min .os-cmd,.hqos.os-min .os-chb,.hqos.os-min .os-sel,.hqos.os-min .os-go,.hqos.os-min .os-in{border-width:2px!important}
 .hqos.os-min .os-p{border-color:rgba(var(--os-acrgb),.6)!important}
 .hqos.os-min .os-p::before{inset:-2px}
+/* MINIMAL round 2: kill background glows, sweeps and header gradients; 3px lines */
+.hqos.os-min{background-image:none!important}
+.hqos.os-min::before,.hqos.os-min::after,.hqos.os-min .os-sweep,.hqos.os-min .os-bar::after{display:none!important}
+.hqos.os-min .os-ph{background-image:none!important;border-bottom-width:2px!important}
+.hqos.os-min .os-p,.hqos.os-min .os-chat,.hqos.os-min .os-cmd{border-width:3px!important}
+.hqos.os-min .os-p::before{inset:-3px}
+.hqos.os-min .os-chb,.hqos.os-min .os-sel,.hqos.os-min .os-go,.hqos.os-min .os-in,.hqos.os-min .os-mt{border-width:2px!important}
+.hqos.os-min .os-top,.hqos.os-min .lhq-top{border-bottom-width:2px!important}
