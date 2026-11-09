@@ -697,7 +697,11 @@
 .hqos .os-working .os-wsub{color:var(--os-dim);font-size:.85em;margin-top:3px;animation:none}
 
 
-.hqos .os-hidechat{transform:rotate(180deg);font-weight:700}
+
 .hqos .os-showchat{position:absolute;top:8px;right:10px;z-index:5;background:rgba(var(--os-panelrgb),.8);border:1px solid var(--os-line);color:var(--os-cy);font-family:var(--os-mono);font-weight:700;padding:2px 9px;cursor:pointer;box-shadow:none}
 .hqos .os-showchat:hover{border-color:var(--os-am);color:var(--os-am)}
 .hqos .os-chat .os-chh .os-hidechat{order:9;border:0;background:none;color:var(--os-cy);font-size:15px;padding:0 6px;margin-left:8px}.hqos .os-chat .os-chh .os-hidechat:hover{color:var(--os-am)}
+.hqos .os-chat .os-chh .os-hidechat,.hqos .os-showchat{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;padding:0;align-self:center}
+.hqos .os-hidechat::before,.hqos .os-showchat::before{content:"";width:7px;height:7px;border-right:2px solid currentColor;border-bottom:2px solid currentColor}
+.hqos .os-hidechat::before{transform:translateY(-2px) rotate(45deg)}
+.hqos .os-showchat::before{transform:translateY(2px) rotate(-135deg)}
