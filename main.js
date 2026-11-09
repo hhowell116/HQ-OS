@@ -2738,7 +2738,9 @@ function hqDuel(host, key = "hq-fill-scene", def = 0, side = "l") {
     { // box height = space below the chat panel, so the panels above end exactly level with the chat's bottom edge
       const z = host.offsetHeight ? r.height / host.offsetHeight : 1, col = host.parentElement, hq = host.closest(".hqos"), ch = hq && hq.querySelector(".os-mid .os-chat");
       let v = ""; if (ch && ch.offsetParent && col) { const gap = parseFloat(getComputedStyle(col).rowGap) || 0, want = Math.round((col.getBoundingClientRect().bottom - ch.getBoundingClientRect().bottom) / z - gap); if (want > 40) v = want + "px"; }
-      if (host.style.height !== v) host.style.height = v; }
+      if (host.style.height !== v) host.style.height = v;
+      // keep the swap arrows inside the visible part of the box (the canvas top can be clipped when the box is short)
+      const over = Math.max(0, Math.round((host.getBoundingClientRect().top - wr.getBoundingClientRect().top) / z)), tp = (3 + over) + "px"; if (swb.style.top !== tp) swb.style.top = tp; }
     if (cv.width !== CW * sc || cv.height !== H * sc) { cv.width = CW * sc; cv.height = H * sc; wr.style.marginBottom = -sc + "px"; }
     const cs = getComputedStyle(host), A = cs.getPropertyValue("--os-acrgb").trim(), B = cs.getPropertyValue("--os-amrgb").trim();
     ctx.setTransform(sc, 0, 0, sc, 0, 0); ctx.imageSmoothingEnabled = false; ctx.clearRect(0, 0, CW, H);
