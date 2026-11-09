@@ -862,3 +862,5 @@
 /* Hayden 2026-11-09: chat a bit darker; MINIMAL view: every box solid black */
 .hqos .os-cbody{background:#03070a}
 .hqos.os-min .os-p,.hqos.os-min .os-chat,.hqos.os-min .os-cmd,.hqos.os-min .os-cbody,.hqos.os-min .os-p .os-pb,.hqos.os-min textarea.os-in{background:#000!important}
+/* Hayden 2026-11-09: Segoe UI again */
+.hqos .os-cbody,.hqos .os-cbody *:not(code):not(pre):not(kbd):not(code *):not(pre *){font-family:"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif!important}
