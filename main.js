@@ -2537,19 +2537,22 @@ const HQ_SCENES = [
     ctx.fillStyle = rgb(B, t % 6 < 3 ? 0.95 : 0.7); ctx.fillRect(st.apple[0] * cell, st.apple[1] * cell, cell, cell);
     st.body.forEach((b, i) => { ctx.fillStyle = rgb(A, i === 0 ? 1 : Math.max(0.35, 0.9 - i * 0.015)); ctx.fillRect(b[0] * cell, b[1] * cell, cell, cell); });
   } },
-  { name: "TV", draw(ctx, t, A, B, st, rgb) {
-    // bouncing TV, changes colour on every wall, sparkles when it nails a corner
-    const W = 64, H = 30, w = 11, h = 9;
-    if (!st.init) { st.init = 1; st.x = 5 + Math.random() * 40; st.y = 2 + Math.random() * 15; st.vx = 0.8; st.vy = 0.5; st.c = 0; st.fx = 0; }
+  { name: "DVD", smooth: true, draw(ctx, t, A, B, st, rgb) {
+    // bouncing DVD logo (drawn as vector text so it glides smoothly), new colour on every wall, sparkles on a corner hit
+    const W = 64, H = 30, w = 18, h = 11, Hb = H - 3;
+    if (!st.init) { st.init = 1; st.x = 3 + Math.random() * 38; st.y = 1 + Math.random() * 12; st.vx = 0.22; st.vy = 0.14; st.c = 0; st.fx = 0; }
     st.x += st.vx; st.y += st.vy; let hx = false, hy = false;
     if (st.x <= 0 || st.x >= W - w) { st.vx = -st.vx; st.x = Math.max(0, Math.min(W - w, st.x)); hx = true; }
-    if (st.y <= 0 || st.y >= H - 3 - h) { st.vy = -st.vy; st.y = Math.max(0, Math.min(H - 3 - h, st.y)); hy = true; }
-    if (hx || hy) st.c++; if (hx && hy) st.fx = 12;
-    const cols = [rgb(A, 0.95), rgb(B, 0.95), "rgba(255,255,255,.9)", "rgba(150,120,255,.95)", "rgba(90,230,140,.95)"], k = cols[st.c % cols.length];
-    const x = Math.round(st.x), y = Math.round(st.y);
-    hqSprite(ctx, x, y, ["..#...#....", "...#.#.....", "###########", "#.......#.#", "#.......###", "#.......#.#", "#.......###", "###########", ".#.......#."], k);
-    ctx.fillStyle = "rgba(255,255,255,.18)"; ctx.fillRect(x + 1, y + 3, 7, 4);
-    if (st.fx > 0) { st.fx--; ctx.fillStyle = "rgba(255,240,180," + (st.fx / 12) + ")"; for (let i = 0; i < 10; i++) ctx.fillRect(Math.floor(hqHash(i * 31 + st.c) * W), Math.floor(hqHash(i * 17 + st.c * 3) * (H - 3)), 1, 1); }
+    if (st.y <= 0 || st.y >= Hb - h) { st.vy = -st.vy; st.y = Math.max(0, Math.min(Hb - h, st.y)); hy = true; }
+    if (hx || hy) st.c++; if (hx && hy) st.fx = 40;
+    const cols = [rgb(A, 0.95), rgb(B, 0.95), "rgba(190,110,255,.95)", "rgba(255,255,255,.9)", "rgba(90,230,140,.95)"], k = cols[st.c % cols.length];
+    const x = st.x, y = st.y;
+    ctx.save(); ctx.fillStyle = k;
+    ctx.font = "italic 900 8px Arial Black, Arial, sans-serif"; ctx.textBaseline = "alphabetic";
+    const tw = ctx.measureText("DVD").width; ctx.translate(x, y); ctx.scale(w / tw, 1); ctx.fillText("DVD", 0, 7); ctx.restore();
+    ctx.save(); ctx.fillStyle = k; ctx.beginPath(); ctx.ellipse(x + w / 2, y + 9, w / 2, 2, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.globalCompositeOperation = "destination-out"; ctx.font = "bold 2.6px Arial, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("VIDEO", x + w / 2, y + 9.15); ctx.restore();
+    if (st.fx > 0) { st.fx--; ctx.fillStyle = "rgba(255,240,180," + (st.fx / 40) + ")"; for (let i = 0; i < 12; i++) ctx.fillRect(Math.floor(hqHash(i * 31 + st.c) * W), Math.floor(hqHash(i * 17 + st.c * 3) * Hb), 1, 1); }
   } },
   { name: "CITY", draw(ctx, t, A, B, st, rgb) {
     const W = 64, H = 30;
@@ -2630,7 +2633,7 @@ function hqDuel(host) {
     if (s.sp) spark(s.sp[0], s.sp[1], s.sp[2]);
     tick++; if (tick % 64 === 0) round++;
   };
-  const iv = setInterval(draw, 110);
+  let fr = 0; const iv = setInterval(() => { if (!host.isConnected) { clearInterval(iv); return; } if (HQ_SCENES[scene].smooth || fr++ % 3 === 0) draw(); }, 36);
   return cv;
 }
 function hqChatIsActive(view, c) { const hq = view.hq(); return !!hq && hq.activeId === c.id; }
