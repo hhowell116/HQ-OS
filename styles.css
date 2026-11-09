@@ -816,3 +816,7 @@
 .hqos select.os-sel.os-sm{field-sizing:content;width:auto!important;min-width:0!important;max-width:none;height:17px!important;min-height:0!important;padding:0 8px!important;font-family:var(--os-mono);font-size:9.4px!important;letter-spacing:.12em;line-height:1;border:1px solid var(--os-line)!important;border-radius:0;background:transparent!important;color:var(--os-ac,var(--os-cy));-webkit-appearance:none;appearance:none;background-image:none!important;cursor:pointer;box-shadow:none}
 .hqos select.os-sel.os-sm:hover{border-color:var(--os-ac,var(--os-cy))!important}
 .hqos select.os-sel.os-sm option{background:var(--os-solid,#071217);color:inherit}
+/* upward menu for the model/effort chips (lives on <body>, copies the HQ theme vars) */
+.os-upmenu{position:fixed;z-index:9999;display:flex;flex-direction:column;padding:3px;gap:2px;background:var(--os-solid,#071217);border:1px solid var(--os-ac,var(--os-cy,#19e3d0));box-shadow:0 -6px 18px rgba(0,0,0,.5)}
+.os-upmenu .os-upi{all:unset;cursor:pointer;padding:4px 10px;font-family:ui-monospace,"Cascadia Mono",Consolas,monospace;font-size:10px;letter-spacing:.12em;color:var(--os-ac,var(--os-cy,#19e3d0));white-space:nowrap}
+.os-upmenu .os-upi:hover,.os-upmenu .os-upi.on{background:rgba(var(--os-acrgb,25,227,208),.18)}

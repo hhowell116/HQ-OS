@@ -1535,7 +1535,7 @@ Object.assign(HQView.prototype, {
     ui.grip.addEventListener("dblclick", () => { ui.userH = 0; lsSet("hqos-in-h", 0); this.osAutoGrow(true); });
     ui.exp.onclick = () => this.osSetFull(!ui.full);
     ui.fx = cmd.createEl("button", { cls: "os-fx", text: "✕", attr: { "aria-label": "Close the big message box", title: "Close (Esc)" } }); ui.fx.onclick = () => this.osSetFull(false);
-    ui.model.onchange = ui.effort.onchange = () => { if (ui.target.value !== "hq") { this.osClaudPick(); return; } const c = this.hq().get(this.hq().activeId); if (c && !c.busy) { c.model = ui.model.value; c.effort = ui.effort.value; this.hq().save(c); } };
+    this.osUpMenu(ui.model); this.osUpMenu(ui.effort); ui.model.onchange = ui.effort.onchange = () => { if (ui.target.value !== "hq") { this.osClaudPick(); return; } const c = this.hq().get(this.hq().activeId); if (c && !c.busy) { c.model = ui.model.value; c.effort = ui.effort.value; this.hq().save(c); } };
     ui.model.value = MODS.chat.model || ""; ui.effort.value = MODS.chat.effort || ""; this.osAutoGrow();
   },
   osSetFull(on) { const u = this.osUI; if (!u) return; u.full = !!on; u.grid.toggleClass("cmd-full", u.full);
@@ -1830,6 +1830,18 @@ Object.assign(HQView.prototype, {
       if (qs.length > 1 || qs.some((q) => q.multiSelect) || qs.some((q) => q.isOther !== false)) { sendBtn = row.createEl("button", { cls: "os-chb os-ask-send", text: "SEND ANSWER" }); sendBtn.onclick = () => ready() && submit(); upd(); }
       const sk = row.createEl("button", { cls: "os-chb", text: "SKIP", attr: { title: "Dismiss without answering" } }); sk.onclick = () => { card.addClass("sent"); try { d.abort(); } catch (e) {} if (this.osUI) this.osUI.claudKey = ""; setTimeout(() => this.osClaudRender(true), 300); };
     }
+  },
+  osUpMenu(sel) { // replace a native <select> dropdown with a small menu that opens upward (the native one ran off the bottom of the screen)
+    const open = (e) => { e.preventDefault(); e.stopPropagation(); sel.focus();
+      document.querySelectorAll(".os-upmenu").forEach((x) => x.remove());
+      const r = sel.getBoundingClientRect(), m = document.body.createDiv({ cls: "os-upmenu" }), host = sel.closest(".hqos"); if (host) m.style.cssText = host.style.cssText;
+      const z = parseFloat(getComputedStyle(m).zoom) || 1; // HQ's zoom is copied too, so convert screen px into the menu's own units
+      m.style.left = Math.round(r.left / z) + "px"; m.style.bottom = Math.round((window.innerHeight - r.top + 4) / z) + "px"; m.style.minWidth = Math.round(r.width / z) + "px";
+      [...sel.options].filter((o) => !o.hidden).forEach((o) => { const it = m.createEl("button", { cls: "os-upi" + (o.value === sel.value ? " on" : ""), text: o.text }); it.onclick = () => { sel.value = o.value; sel.dispatchEvent(new Event("change")); close(); }; });
+      const close = () => { m.remove(); document.removeEventListener("mousedown", out, true); document.removeEventListener("keydown", esc, true); };
+      const out = (ev) => { if (!m.contains(ev.target) && ev.target !== sel) close(); }, esc = (ev) => { if (ev.key === "Escape") { ev.stopPropagation(); close(); } };
+      setTimeout(() => { document.addEventListener("mousedown", out, true); document.addEventListener("keydown", esc, true); }, 0); };
+    sel.addEventListener("mousedown", open); sel.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " " || e.key === "ArrowUp" || e.key === "ArrowDown") open(e); });
   },
   osParseMsgs(list) { // Claudian messages (saved transcript or live in-memory state) -> HQ chat items
     const msgs = [];
