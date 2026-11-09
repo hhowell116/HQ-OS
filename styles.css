@@ -831,3 +831,8 @@
 .hqos .os-msg{max-width:78ch;color:#e9f0f1}
 .hqos .os-msg.user .os-mt{color:#f4ece0}
 .hqos .os-cbody .os-think,.hqos .os-cbody .os-chint,.hqos .os-msg.sys{color:#b9d0d2}
+
+/* Pasted-image strip floats just above the input over the bottom of the chat, so pasting no longer changes the
+   layout height and pushes the side panels up (Hayden 2026-11-09). */
+.hqos .os-cmd .os-atts{position:absolute;left:0;right:0;bottom:100%;z-index:6;padding:6px 8px;background:var(--os-solid);border:1px solid rgba(var(--os-acrgb),.5);border-bottom:0}
+.hqos .os-cmd .os-atts.os-hide{display:none}
