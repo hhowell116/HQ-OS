@@ -1699,12 +1699,13 @@ function guardLogTail(n) {
 Object.assign(HQView.prototype, {
   applyTheme() {
     const t = this.plugin.curTheme(), r = this.contentEl; Object.entries(themeVars(t)).forEach(([k, v]) => r.style.setProperty(k, v));
-    THEME_RGB.a = hex2rgb(t.accent); THEME_RGB.w = hex2rgb(t.warn); THEME_RGB.glow = t.glow; THEME_RGB.key = t.accent + t.warn + t.glow;
+    const orb = t.orb || t.accent; // the sphere follows the accent changer when one is set
+    THEME_RGB.a = hex2rgb(orb); THEME_RGB.w = hex2rgb(t.warn); THEME_RGB.glow = t.glow; THEME_RGB.key = orb + t.warn + t.glow;
   },
   // Accent changer: a dot button in the top bar opens a small swatch tray (AUTO = the theme's own accent, plus a custom picker).
   osAccentPicker(r) {
     const P = this.plugin, cur = P.settings.theme.accent || "", wrap = r.createDiv({ attr: { style: "position:relative;display:inline-flex" } });
-    const btn = wrap.createEl("button", { cls: "os-chb", attr: { "aria-label": "Accent colour", title: "Accent colour", "aria-expanded": "false" } });
+    const btn = wrap.createEl("button", { cls: "os-chb", attr: { "aria-label": "Accent colour", title: "Accent: sphere and highlight colour", "aria-expanded": "false" } });
     btn.style.display = "inline-flex"; btn.style.alignItems = "center"; btn.style.gap = "6px";
     const dot = btn.createSpan({ attr: { "aria-hidden": "true", style: "width:11px;height:11px;border-radius:50%;display:inline-block;box-shadow:0 0 6px currentColor" } }); dot.style.background = P.curTheme().accent; dot.style.color = P.curTheme().accent;
     btn.appendText("ACCENT");
@@ -1713,7 +1714,7 @@ Object.assign(HQView.prototype, {
     const outside = (e) => { if (!wrap.contains(e.target)) close(); };
     btn.onclick = () => { const open = tray.style.display === "none"; tray.style.display = open ? "flex" : "none"; btn.setAttr("aria-expanded", String(open)); if (open) document.addEventListener("mousedown", outside, true); else close(); };
     const pick = (hex) => { close(); P.setAccent(hex); };
-    const auto = tray.createEl("button", { cls: "os-chb", text: "AUTO", attr: { role: "option", "aria-selected": String(!cur), title: "Use the theme's own accent" } }); auto.onclick = () => pick("");
+    const auto = tray.createEl("button", { cls: "os-chb", text: "AUTO", attr: { role: "option", "aria-selected": String(!cur), title: "Use the theme's own sphere and highlight colour" } }); auto.onclick = () => pick("");
     HQ_ACCENTS.forEach(([name, hex]) => {
       const s = tray.createEl("button", { attr: { role: "option", "aria-label": name, title: name, "aria-selected": String(cur === hex) } });
       s.style.cssText = `width:22px;height:22px;border-radius:50%;padding:0;cursor:pointer;background:${hex};border:2px solid ${cur === hex ? "#fff" : "transparent"};box-shadow:0 0 6px ${hex}`;
@@ -2214,7 +2215,8 @@ module.exports = class ProjectHQ extends Plugin {
   // ---- themes ----
   curTheme() {
     const t = this.baseTheme(), ov = this.settings.theme.accent;
-    if (hexOk(ov)) { t.accent = ov.toLowerCase(); t.accent2 = shadeHex(ov, 0.78); }
+    // Accent changer keeps the theme's MAIN colour (borders, titles, text) and recolours the sphere + secondary highlights.
+    if (hexOk(ov)) { t.accent2 = ov.toLowerCase(); t.orb = ov.toLowerCase(); }
     return t;
   }
   baseTheme() {
