@@ -2055,7 +2055,7 @@ Object.assign(HQView.prototype, {
     const outside = (e) => { if (!wrap.contains(e.target)) close(); };
     btn.onclick = () => { const open = tray.style.display === "none"; tray.style.display = open ? "flex" : "none"; btn.setAttr("aria-expanded", String(open)); if (open) document.addEventListener("mousedown", outside, true); else close(); };
     const pick = (hex) => { close(); hl ? P.setHighlight(hex) : P.setAccent(hex); };
-    const auto = tray.createEl("button", { cls: "os-chb", text: "AUTO", attr: { role: "option", "aria-selected": String(!cur), title: hl ? "Use the theme's own highlight colour" : "Use the theme's own sphere and highlight colour" } }); auto.onclick = () => pick("");
+    const auto = tray.createEl("button", { cls: "os-chb", text: "AUTO", attr: { role: "option", "aria-selected": String(!cur), title: hl ? "Same as the accent colour" : "Use the theme's own sphere and highlight colour" } }); auto.onclick = () => pick("");
     HQ_ACCENTS.forEach(([name, hex]) => {
       const s = tray.createEl("button", { attr: { role: "option", "aria-label": name, title: name, "aria-selected": String(cur === hex) } });
       s.style.cssText = `width:22px;height:22px;border-radius:50%;padding:0;cursor:pointer;background:${hex};border:2px solid ${cur === hex ? "#fff" : "transparent"};box-shadow:0 0 6px ${hex}`;
@@ -2848,7 +2848,7 @@ module.exports = class ProjectHQ extends Plugin {
     const t = this.baseTheme(), ov = this.settings.theme.accent;
     // Accent changer keeps the theme's MAIN colour (borders, titles, text) and recolours the sphere + secondary highlights.
     if (hexOk(ov)) { t.accent2 = ov.toLowerCase(); t.orb = ov.toLowerCase(); }
-    if (hexOk(this.settings.theme.highlight)) t.warn = this.settings.theme.highlight.toLowerCase(); // highlight picker: your messages, HANDOFF, YOLO, warnings
+    t.warn = hexOk(this.settings.theme.highlight) ? this.settings.theme.highlight.toLowerCase() : (t.orb || t.accent); // highlight picker (your messages, HANDOFF, YOLO, warnings); AUTO = the accent colour (Hayden 2026-11-09)
     return t;
   }
   baseTheme() {
