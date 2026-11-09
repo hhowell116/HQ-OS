@@ -1939,6 +1939,14 @@ Object.assign(HQView.prototype, {
   },
   osPendAdd(id, text) { this.osPend = this.osPend || {}; (this.osPend[id] = this.osPend[id] || []).push({ text, t: Date.now() }); if (this.osUI) this.osUI.claudKey = ""; },
   // true when Claudian says the chat is "running" but no reply is streaming (Claude is only waiting on background agents)
+  // Send like Claudian's own chat box: start a turn directly whenever no reply is streaming. Claudian's session mailbox
+  // (api.send) refuses to dispatch while the chat has background agents, which held Hayden's messages for many minutes.
+  async osDirectSend(id, text) { const cp = this.claudian(); try {
+    const rt = [...cp.chatHost.sessionRuntimes.getAll()].find((r) => r.conversationId === id), m = rt && (rt.peekModel || rt.currentModel), ic = m && m.inputController;
+    if (!ic || typeof ic.sendSessionMessage !== "function" || !ic.canStartSessionMessage) return false;
+    let unsent = false; ic.sendSessionMessage({ text }, { onUnsent: () => { unsent = true; }, onDelivery: () => {}, onStarted: () => {} }).catch((e) => console.error("HQ direct send", e));
+    await new Promise((r) => setTimeout(r, 150)); return !unsent;
+  } catch (e) { console.error("HQ direct send", e); return false; } },
   osBgOnly(id) { const cp = this.claudian(); try { return cp.sessionMessaging.status(id) === "running" && !this.claudBusy(id); } catch (e) { return false; } },
   async osClaudStop(id) { const cp = this.claudian(); try { await cp.api.send(id, { mode: "interrupt" }); } catch (e) { new Notice("Could not stop: " + (e && e.message || e)); } },
   // queued messages for the picked Claudian chat: SEND NOW interrupts Claude and sends it immediately
@@ -1956,7 +1964,7 @@ Object.assign(HQView.prototype, {
   async osCQPump() { // send the next queued message once a chat goes idle
     if (this.osCQBusy || !this.osQ) return; const cp = this.claudian(); if (!cp || !cp.api) return;
     for (const id of Object.keys(this.osQ)) { const q = this.osQ[id], m = q.find((x) => !x.sent); if (!m || q.some((x) => x.sent) || this.claudBusy(id)) continue;
-      this.osCQBusy = true; try { await cp.api.send(id, this.osBgOnly(id) ? { text: m.text, mode: "steer" } : { text: m.text }); m.sent = Date.now(); } catch (e) {} this.osCQBusy = false; this.osCQRender(); setTimeout(() => this.osClaudRender(true), 800); break; }
+      this.osCQBusy = true; try { if (!(await this.osDirectSend(id, m.text))) await cp.api.send(id, { text: m.text }); m.sent = Date.now(); } catch (e) {} this.osCQBusy = false; this.osCQRender(); setTimeout(() => this.osClaudRender(true), 800); break; }
   },
   claudProjId() { const cp = this.claudian(), nm = String(this.project ? this.project.name : "").toLowerCase(); try { const p = cp.chatHost.domains.projects.list().find((x) => !x.isArchived && String(x.name).toLowerCase() === nm); return p ? p.id : ""; } catch (e) { return ""; } },
   async claudEnsureProject() { // the Claudian project for this HQ project, created on first use
@@ -2029,7 +2037,7 @@ Object.assign(HQView.prototype, {
     if (this.claudBusy(target) || q.length) { q.push({ text }); this.osRemember(text); u.cmdIn.value = ""; this.osAutoGrow(); this.osGoLabel(); this.osCQRender(); return; } const say = (m, bad) => { u.cmdMsg.setText(m); u.cmdMsg.toggleClass("bad", !!bad); };
     const cp = this.claudian(); if (!(cp && cp.api && cp.api.send)) { say("Claudian is not available.", true); return; }
     u.cmdIn.disabled = true; say("Sending…");
-    try { const title = ((this.osConvs || []).find((c) => c[0] === target) || [])[1] || "session"; await cp.api.send(target, this.osBgOnly(target) ? { text, mode: "steer" } : { text }); this.osPendAdd(target, text); this.osRemember(text); u.cmdIn.value = ""; this.osAutoGrow(); say(""); this.osSessData(true); setTimeout(() => this.osClaudRender(true), 800); }
+    try { const title = ((this.osConvs || []).find((c) => c[0] === target) || [])[1] || "session"; if (!(await this.osDirectSend(target, text))) await cp.api.send(target, { text }); this.osPendAdd(target, text); this.osRemember(text); u.cmdIn.value = ""; this.osAutoGrow(); say(""); this.osSessData(true); setTimeout(() => this.osClaudRender(true), 800); }
     catch (e) { console.error("Project HQ command", e); say("Could not send: " + redact(e && e.message || e), true); }
     finally { u.cmdIn.disabled = false; u.cmdIn.focus(); }
   },
