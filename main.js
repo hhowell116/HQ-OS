@@ -1341,6 +1341,8 @@ class Orb {
     const cols = 69, half = (cols - 1) / 2, span = R * 2.1, cw = span / cols, cell = Math.max(2, cw * 0.72), maxN = 15, A = THEME_RGB.a, B = THEME_RGB.e || THEME_RGB.w;
     this.eqH = this.eqH && this.eqH.length === cols ? this.eqH : new Float32Array(cols);
     let pk = 0; for (let i = 0; i < 24; i++) pk = Math.max(pk, AF[i]); this.eqPk = Math.max(pk, (this.eqPk || 0.3) * 0.996); const gain = 0.82 / Math.max(0.22, this.eqPk);
+    // silence: fade the whole equalizer out instead of leaving a flat line; fade back in when sound returns
+    this.eqA = (this.eqA || 0) + ((pk * ak > 0.012 ? 1 : 0) - (this.eqA || 0)) * (pk * ak > 0.012 ? 0.25 : 0.05); if (this.eqA < 0.02) return; ctx.globalAlpha *= this.eqA;
     // each band also keeps its own slow peak, so quiet highs still move (half global level, half per-band level)
     const bp = this.eqBP = this.eqBP || new Float32Array(24).fill(0.2), N = this.eqN = this.eqN || new Float32Array(24);
     for (let i = 0; i < 24; i++) { bp[i] = Math.max(AF[i], bp[i] * 0.997, 0.06); N[i] = 0.5 * Math.min(1, AF[i] * gain) + 0.5 * Math.min(1, 0.85 * AF[i] / bp[i]) * Math.min(1, pk * 4); }
