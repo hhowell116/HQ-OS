@@ -841,3 +841,7 @@
 .hqos .os-msg{font-size:1em;line-height:1.6}
 /* Hayden 2026-11-09: 5% bigger, and text uses the full chat width (drops the 78ch cap) */
 .hqos .os-msg{font-size:1.05em;max-width:none}
+/* Hayden 2026-11-09: trying a screen font instead of Georgia (thin serif strokes look grainy light-on-dark); 3% bigger */
+.hqos .os-msg{font-size:1.08em}
+.hqos .os-cbody,.hqos .os-cbody *:not(code):not(pre):not(kbd):not(code *):not(pre *){font-family:"Segoe UI Variable Text","Segoe UI",Inter,system-ui,sans-serif!important}
+.hqos .os-msg.asst .os-mt{font-weight:400;letter-spacing:.005em}
