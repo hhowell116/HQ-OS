@@ -1008,7 +1008,7 @@ class HQView extends ItemView {
     this.resetData(); Object.assign(this, { insClosed: new Set(), insActs: [], insSig: "", insActAt: 0, insText: {}, rfilter: "needs", boardOpen: false, liveAt: 0, usage: null, err: "", at: null, slide: 0, showIdle: false });
     this.applyProject();
     const root = this.contentEl; root.empty(); root.addClass("lhq"); root.style.zoom = String((this.plugin.settings.textScale || 125) / 100); // text size setting (Hayden: text was too small)
-    const touch = () => { this.touchedAt = Date.now(); };
+    const touch = (e) => { this.touchedAt = Date.now(); this.touchedIn = e && e.target; };
     this.registerDomEvent(root, "pointerdown", touch, true); this.registerDomEvent(root, "keydown", touch, true); this.registerDomEvent(root, "focusin", touch, true);
     landscape(root.createDiv({ cls: "lhq-bg" }));
     const bar = root.createDiv({ cls: "lhq-bar" });
@@ -1160,6 +1160,7 @@ class HQView extends ItemView {
     });
   }
   async loadReview() {
+    const seq = (this.revSeq = (this.revSeq || 0) + 1); // newest load wins (many file events fire at once while agents copy files)
     const vt = this.app.vault, root = REVIEW ? vt.getAbstractFileByPath(REVIEW) : null, items = [];
     const read = async (f) => { if (!f) return { fm: {}, body: "" }; const t = (await vt.read(f)).replace(/\r\n/g, "\n"), m = /^---\n([\s\S]*?)\n---\n?([\s\S]*)$/.exec(t); let fm = {}; if (m) { try { fm = parseYaml(m[1]) || {}; } catch (e) {} } return { fm, body: m ? m[2] : t }; };
     const push = async (key, title, files, sidecar, sidecarPath, standalone) => {
@@ -1176,6 +1177,7 @@ class HQView extends ItemView {
       }
     }
     items.sort((a, b) => String(b.created).localeCompare(String(a.created)));
+    if (seq !== this.revSeq) return;
     const sig = JSON.stringify(items.map((i) => [i.key, i.title, i.status, i.fm.feedback, i.body]));
     this.review = items;
     if (this.dockBtns && this.dockBtns.view) { const n = items.filter((i) => i.status === "needs-review").length; this.badge.setText(String(n)); this.badge.toggleClass("zero", !n); }
@@ -1558,9 +1560,10 @@ Object.assign(HQView.prototype, {
   // ---- render everything (cheap; each region redraws only when its signature changed) ----
   osRender(force) {
     if (!this.osUI) this.osBuild();
-    const ae = document.activeElement, held = !force && (Date.now() - (this.touchedAt || 0) < 20000 || (ae && /TEXTAREA|INPUT/.test(ae.tagName) && this.contentEl.contains(ae)));
+    // hold a panel only while Hayden is typing in it or clicked in it in the last 8 s (chatting elsewhere no longer freezes Review/Tasks)
+    const ae = document.activeElement, ui = this.osUI, busy = (p) => { if (force || !p || !p.p) return false; if (ae && /TEXTAREA|INPUT/.test(ae.tagName) && p.p.contains(ae)) return true; return Date.now() - (this.touchedAt || 0) < 8000 && !!this.touchedIn && p.p.contains(this.touchedIn); };
     this.osTopRender(); this.osRunRender(); this.osVitalsRender(); this.osSessRender(); this.osNextRender(); this.osMidRender();
-    if (!held) { this.osTasksRender(); this.osReviewRender(); this.osInsRender(); }
+    if (!busy(ui.tasks)) this.osTasksRender(); if (!busy(ui.rev)) this.osReviewRender(); if (!busy(ui.acts) && !busy(ui.files)) this.osInsRender();
   },
   // ---- running agents strip (top of page, hidden when none): name, type/model, current step, elapsed time ----
   osRunRender() {
