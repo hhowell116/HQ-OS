@@ -1582,13 +1582,14 @@ Object.assign(HQView.prototype, {
         for (const c of list) {
           const st = cp.sessionMessaging.status(c.id), key = [c.lastActivityAt, c.messageCount, st].join("|"), sn = this.osSnip[c.id];
           if (rows.length < 4 && cp.api && (!sn || (sn.key !== key && Date.now() - sn.at > 8000))) reads.push([c.id, key, sn]);
-          rows.push({ kind: "chat", id: c.id, title: clean(c.title || "Untitled"), st: st === "running" ? "thinking" : st === "awaiting-user" ? "needs you" : "idle", ts: c.lastActivityAt || 0, snip: (this.osSnip[c.id] || {}).text || "" });
+          const us = (() => { try { const f = cp.chatHost.getConversationSync ? cp.chatHost.getConversationSync(c.id) : cp.chatHost.getCachedConversation && cp.chatHost.getCachedConversation(c.id); return f && f.usage; } catch (e) { return null; } })();
+          rows.push({ kind: "chat", id: c.id, tok: us && us.contextTokens ? { ctx: us.contextTokens, win: us.contextWindow || 0, pct: us.percentage } : null, title: clean(c.title || "Untitled"), st: st === "running" ? "thinking" : st === "awaiting-user" ? "needs you" : "idle", ts: c.lastActivityAt || 0, snip: (this.osSnip[c.id] || {}).text || "" });
         }
         this.osConvs = list.map((c) => [c.id, clean(c.title || "Untitled"), !!(cp.api && cp.api.getActiveSessionId && cp.api.getActiveSessionId() === c.id)]);
       } else this.osConvs = [];
       const now = Date.now();
-      this.live.filter((a) => a.status === "running").slice(0, 8).forEach((a) => rows.push({ kind: "agent", id: a.id, title: clean(a.title), st: "running in background", ts: a.mtime, snip: redact(a.tool ? stepText(a.tool) : a.text || "").replace(/\s+/g, " ").slice(0, 180), type: a.type }));
-      if (this.hq()) this.hq().list(this.project && this.project.id).slice(0, 3).reverse().forEach((c) => rows.unshift({ kind: "hq", id: c.id, title: (c.pinned ? "★ " : "") + clean(c.title), st: c.busy ? "thinking" : "idle", ts: c.updated, snip: (() => { const m = c.msgs.filter((x) => x.r === "asst").pop(); const t = m && m.blocks.filter((b) => b.k === "text").map((b) => b.text).join(" "); return clean(redact(t || "")).replace(/\s+/g, " ").slice(0, 180); })() }));
+      this.live.filter((a) => a.status === "running").slice(0, 8).forEach((a) => rows.push({ kind: "agent", id: a.id, title: clean(a.title), st: "running in background", tok: a.st ? { i: (a.st.tin || 0) + (a.st.tcr || 0) + (a.st.tcc || 0), o: a.st.tout || 0, cost: a.st.cost || 0 } : null, ts: a.mtime, snip: redact(a.tool ? stepText(a.tool) : a.text || "").replace(/\s+/g, " ").slice(0, 180), type: a.type }));
+      if (this.hq()) this.hq().list(this.project && this.project.id).slice(0, 3).reverse().forEach((c) => rows.unshift({ kind: "hq", id: c.id, tok: (() => { const ts = c.turns || []; return ts.length ? { i: ts.reduce((n, t) => n + (t.in || 0) + (t.cache || 0), 0), o: ts.reduce((n, t) => n + (t.out || 0), 0), cost: ts.reduce((n, t) => n + (t.cost || 0), 0) } : null; })(), title: (c.pinned ? "★ " : "") + clean(c.title), st: c.busy ? "thinking" : "idle", ts: c.updated, snip: (() => { const m = c.msgs.filter((x) => x.r === "asst").pop(); const t = m && m.blocks.filter((b) => b.k === "text").map((b) => b.text).join(" "); return clean(redact(t || "")).replace(/\s+/g, " ").slice(0, 180); })() }));
       { let n = 0; const keep = []; rows.forEach((r) => { if (r.kind !== "chat" || r.st !== "idle" || n++ < 3) keep.push(r); }); rows.length = 0; keep.forEach((r) => rows.push(r)); }
       this.osRows = rows; this.osFillTarget(); this.osSessRender();
       for (const [id, key, sn] of reads) { let t = ""; try { t = String(await cp.api.read(id) || ""); } catch (e) {} this.osSnip[id] = { key, at: Date.now(), text: /^.no reply.$/.test(t) ? (sn && sn.text || "") : clean(redact(t)).replace(/\s+/g, " ").trim().slice(0, 180) }; const r = rows.find((x) => x.id === id); if (r) r.snip = this.osSnip[id].text; }
@@ -1596,13 +1597,15 @@ Object.assign(HQView.prototype, {
     } catch (e) { console.error("Project HQ OS sessions", e); } finally { this.osSessBusy = false; }
   },
   osSessRender() {
-    const u = this.osUI; if (!u) return; const rows = this.osRows || [];
-    this.osReg("sess", JSON.stringify(rows.map((r) => [r.id, r.st, r.snip, r.title])), () => {
+    const u = this.osUI; if (!u) return; const rows = (this.osRows || []).filter((r) => r.st !== "idle" && r.st !== "done");
+    this.osReg("sess", JSON.stringify(rows.map((r) => [r.id, r.st, r.snip, r.title, r.tok && [r.tok.i, r.tok.o, r.tok.ctx]])), () => {
       const b = u.sess.body; b.empty(); u.sess.meta.setText(rows.filter((r) => r.st === "thinking" || r.st === "running in background").length + " RUNNING");
-      if (!rows.length) b.createDiv({ cls: "os-muted", text: "No sessions yet." });
+      if (!rows.length) b.createDiv({ cls: "os-muted", text: "Nothing running right now." });
       rows.forEach((r) => {
         const c = b.createDiv({ cls: "os-srow " + r.kind + " s-" + r.st.replace(/\s+/g, "-"), attr: r.kind !== "agent" ? { role: "button", tabindex: "0", "aria-label": "Open session " + r.title } : {} });
-        const h = c.createDiv({ cls: "os-sh" }); h.createSpan({ cls: "os-sd" }); h.createSpan({ cls: "os-sn", text: r.title }).title = r.title; h.createSpan({ cls: "os-ss", text: r.st === "running in background" ? "RUNNING" : r.st.toUpperCase() });
+        const h = c.createDiv({ cls: "os-sh" }); h.createSpan({ cls: "os-sd" }); h.createSpan({ cls: "os-sn", text: r.title }).title = r.title; if (r.tok && r.tok.ctx) { const tk = h.createSpan({ cls: "os-stok", text: kfmt(r.tok.ctx) + " ctx" }); tk.title = "Context in use: " + kfmt(r.tok.ctx) + (r.tok.win ? " of " + kfmt(r.tok.win) : "") + (r.tok.pct != null ? " (" + r.tok.pct + "%)" : "") + ". Each message re-reads about this much."; }
+        else if (r.tok) { const tk = h.createSpan({ cls: "os-stok", text: kfmt(r.tok.i + r.tok.o) }); tk.title = kfmt(r.tok.i) + " in (incl. cache) · " + kfmt(r.tok.o) + " out" + (r.tok.cost ? " · ~" + usd(r.tok.cost) + " est." : ""); }
+        h.createSpan({ cls: "os-ss", text: r.st === "running in background" ? "RUNNING" : r.st.toUpperCase() });
         c.title = r.title + " — " + (r.kind === "agent" ? r.type + " · " : "") + (r.snip || "(no messages yet)"); c.addClass("one");
         h.insertBefore(createSpan({ cls: "os-sk", text: r.kind === "agent" ? "AGENT" : r.kind === "hq" ? "HQ" : "CLAUDIAN" }), h.children[1]);
         if (r.kind !== "agent") { const open = () => r.kind === "hq" ? this.osChatOpenConv(r.id) : this.osOpenSession(r.id); c.onclick = open; c.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } }); }
