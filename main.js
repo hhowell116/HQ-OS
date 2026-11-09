@@ -874,6 +874,9 @@ const HQ_PRESETS = [
   { id: "mono", name: "Mono", accent: "#e5e7eb", accent2: "#9ca3af", warn: "#fbbf24", danger: "#f87171", bg: "#08090a", panel: "#131416" },
   { id: "ice", name: "Ice", accent: "#7dd3fc", accent2: "#38bdf8", warn: "#fcd34d", danger: "#fb7185", bg: "#040a10", panel: "#091621" },
 ].map((t) => Object.assign({ glow: 1, grid: 1, scan: 1, scanOn: true }, t));
+// Accent changer (Hayden 2026-11-08): one accent colour laid over any theme. "" = use the theme's own accent.
+const HQ_ACCENTS = [["Cyan", "#19e3d0"], ["Teal", "#2bb8a3"], ["Ice", "#7dd3fc"], ["Blue", "#60a5fa"], ["Violet", "#a78bfa"], ["Pink", "#f472b6"], ["Red", "#ff3b5c"], ["Orange", "#fb923c"], ["Amber", "#ffb02e"], ["Green", "#3dff6e"], ["White", "#e5e7eb"]];
+const shadeHex = (h, f) => { const n = parseInt(h.slice(1), 16); return "#" + [n >> 16, (n >> 8) & 255, n & 255].map((v) => Math.max(0, Math.min(255, Math.round(v * f))).toString(16).padStart(2, "0")).join(""); };
 const THEME_KEYS = ["accent", "accent2", "warn", "danger", "bg", "panel"];
 const hexOk = (x) => /^#[0-9a-f]{6}$/i.test(String(x || ""));
 function cleanTheme(o, base) { // import/saved themes are validated field by field
@@ -1468,6 +1471,7 @@ Object.assign(HQView.prototype, {
       { const ts = r.createEl("select", { cls: "os-sel os-modsw", attr: { "aria-label": "Colour theme" } }), th = this.plugin.settings.theme;
         HQ_PRESETS.forEach((p) => ts.createEl("option", { value: p.id, text: p.name.toUpperCase() })); Object.keys(th.saved).forEach((n) => ts.createEl("option", { value: "saved:" + n, text: n.toUpperCase() })); if (th.id === "custom") ts.createEl("option", { value: "custom", text: "CUSTOM" });
         ts.value = th.id; ts.onchange = () => this.plugin.setThemeId(ts.value);
+        this.osAccentPicker(r);
         const mb = r.createEl("button", { cls: "os-chb", text: this.osPage === "mods" ? "BACK" : "MODS", attr: { "aria-label": this.osPage === "mods" ? "Back to HQ" : "Open the MODS page (switches, settings, theme)" } }); mb.onclick = () => this.osModsToggle(); }
       const ib = (icon, label, fn) => { const b = r.createEl("button", { cls: "os-ib", attr: { "aria-label": label, title: label } }); setIcon(b, icon); b.onclick = fn; };
       ib("refresh-cw", "Refresh", () => this.refreshAll()); ib("settings", "Settings", () => { try { this.app.setting.open(); this.app.setting.openTabById("project-hq"); } catch (e) { new Notice("Open Settings, then Project HQ"); } });
@@ -1696,6 +1700,27 @@ Object.assign(HQView.prototype, {
   applyTheme() {
     const t = this.plugin.curTheme(), r = this.contentEl; Object.entries(themeVars(t)).forEach(([k, v]) => r.style.setProperty(k, v));
     THEME_RGB.a = hex2rgb(t.accent); THEME_RGB.w = hex2rgb(t.warn); THEME_RGB.glow = t.glow; THEME_RGB.key = t.accent + t.warn + t.glow;
+  },
+  // Accent changer: a dot button in the top bar opens a small swatch tray (AUTO = the theme's own accent, plus a custom picker).
+  osAccentPicker(r) {
+    const P = this.plugin, cur = P.settings.theme.accent || "", wrap = r.createDiv({ attr: { style: "position:relative;display:inline-flex" } });
+    const btn = wrap.createEl("button", { cls: "os-chb", attr: { "aria-label": "Accent colour", title: "Accent colour", "aria-expanded": "false" } });
+    btn.style.display = "inline-flex"; btn.style.alignItems = "center"; btn.style.gap = "6px";
+    const dot = btn.createSpan({ attr: { "aria-hidden": "true", style: "width:11px;height:11px;border-radius:50%;display:inline-block;box-shadow:0 0 6px currentColor" } }); dot.style.background = P.curTheme().accent; dot.style.color = P.curTheme().accent;
+    btn.appendText("ACCENT");
+    const tray = wrap.createDiv({ attr: { role: "listbox", "aria-label": "Accent colours", style: "position:absolute;top:calc(100% + 6px);right:0;z-index:50;display:none;flex-wrap:wrap;gap:6px;width:236px;padding:8px;background:var(--os-solid,#071217);border:1px solid var(--os-cy,#19e3d0);box-shadow:0 0 14px rgba(0,0,0,.6)" } });
+    const close = () => { tray.style.display = "none"; btn.setAttr("aria-expanded", "false"); document.removeEventListener("mousedown", outside, true); };
+    const outside = (e) => { if (!wrap.contains(e.target)) close(); };
+    btn.onclick = () => { const open = tray.style.display === "none"; tray.style.display = open ? "flex" : "none"; btn.setAttr("aria-expanded", String(open)); if (open) document.addEventListener("mousedown", outside, true); else close(); };
+    const pick = (hex) => { close(); P.setAccent(hex); };
+    const auto = tray.createEl("button", { cls: "os-chb", text: "AUTO", attr: { role: "option", "aria-selected": String(!cur), title: "Use the theme's own accent" } }); auto.onclick = () => pick("");
+    HQ_ACCENTS.forEach(([name, hex]) => {
+      const s = tray.createEl("button", { attr: { role: "option", "aria-label": name, title: name, "aria-selected": String(cur === hex) } });
+      s.style.cssText = `width:22px;height:22px;border-radius:50%;padding:0;cursor:pointer;background:${hex};border:2px solid ${cur === hex ? "#fff" : "transparent"};box-shadow:0 0 6px ${hex}`;
+      s.onclick = () => pick(hex);
+    });
+    const cust = tray.createEl("input", { attr: { type: "color", "aria-label": "Custom accent colour", title: "Custom colour" } }); cust.value = hexOk(cur) ? cur : P.curTheme().accent;
+    cust.style.cssText = "width:30px;height:24px;padding:0;border:none;background:none;cursor:pointer"; cust.onchange = () => pick(cust.value);
   },
   osModsToggle() { this.osPage = this.osPage === "mods" ? "" : "mods"; this.osPageApply(); },
   osPageApply() {
@@ -2188,11 +2213,17 @@ module.exports = class ProjectHQ extends Plugin {
   }
   // ---- themes ----
   curTheme() {
+    const t = this.baseTheme(), ov = this.settings.theme.accent;
+    if (hexOk(ov)) { t.accent = ov.toLowerCase(); t.accent2 = shadeHex(ov, 0.78); }
+    return t;
+  }
+  baseTheme() {
     const th = this.settings.theme, id = th.id || "cyan";
     if (id.startsWith("saved:") && th.saved[id.slice(6)]) return Object.assign(cleanTheme(th.saved[id.slice(6)]), { id, name: id.slice(6) });
     if (id === "custom") return Object.assign(cleanTheme(th.custom), { id, name: "Custom" });
     return Object.assign({}, HQ_PRESETS.find((x) => x.id === id) || HQ_PRESETS[0]);
   }
+  setAccent(hex) { this.settings.theme.accent = hexOk(hex) ? hex.toLowerCase() : ""; this.themeApplyAll(); }
   themeApplyAll() { this.views().forEach((v) => { if (!v.applyTheme) return; v.applyTheme(); if (v.osUI) { v.osUI.sig.top = ""; v.osTopRender(); } }); this.saveSoon(); }
   setThemeId(id) { this.settings.theme.id = id; this.themeApplyAll(); }
   editTheme(patch) { this.settings.theme.custom = cleanTheme(Object.assign({}, this.curTheme(), patch)); this.settings.theme.id = "custom"; this.themeApplyAll(); }
