@@ -759,3 +759,6 @@
 .hqos .os-right>.os-next{flex:0 0 auto!important}}
 .hqos .os-cmdmsg:not(.bad){display:none}
 .hqos .os-fill{background:none!important;align-items:flex-end!important}
+.hqos .os-acccol{display:inline-flex;flex-direction:column;gap:2px;justify-content:center}
+.hqos .os-acccol .os-accb{height:16px!important;min-height:0!important;padding:0 6px!important;line-height:1}
+.hqos .os-acccol .os-accb span{width:8px!important;height:8px!important}

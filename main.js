@@ -1622,7 +1622,7 @@ Object.assign(HQView.prototype, {
       { const ts = r.createEl("select", { cls: "os-sel os-modsw", attr: { "aria-label": "Colour theme" } }), th = this.plugin.settings.theme;
         HQ_PRESETS.forEach((p) => ts.createEl("option", { value: p.id, text: p.name.toUpperCase() })); Object.keys(th.saved).forEach((n) => ts.createEl("option", { value: "saved:" + n, text: n.toUpperCase() })); if (th.id === "custom") ts.createEl("option", { value: "custom", text: "CUSTOM" });
         ts.value = th.id; const fit = () => { const o = ts.options[ts.selectedIndex], m = ts.ownerDocument.body.createSpan({ text: o ? o.text : "" }), cs = getComputedStyle(ts); m.style.cssText = "position:absolute;visibility:hidden;white-space:pre;font:" + cs.font + ";letter-spacing:" + cs.letterSpacing; const w = m.getBoundingClientRect().width; m.remove(); ts.style.width = Math.ceil(w + 22) + "px"; }; fit(); ts.onchange = () => { fit(); this.plugin.setThemeId(ts.value); };
-        this.osAccentPicker(r);
+        { const cc = r.createDiv({ cls: "os-acccol" }); this.osAccentPicker(cc); this.osAccentPicker(cc, true); }
         const mb = r.createEl("button", { cls: "os-chb", text: this.osPage === "mods" ? "BACK" : "MODS", attr: { "aria-label": this.osPage === "mods" ? "Back to HQ" : "Open the MODS page (switches, settings, theme)" } }); mb.onclick = () => this.osModsToggle(); }
       const ib = (icon, label, fn) => { const b = r.createEl("button", { cls: "os-ib", attr: { "aria-label": label, title: label } }); setIcon(b, icon); b.onclick = fn; };
       ib("refresh-cw", "Refresh", () => this.refreshAll()); ib("settings", "Settings", () => { try { this.app.setting.open(); this.app.setting.openTabById("project-hq"); } catch (e) { new Notice("Open Settings, then Project HQ"); } });
@@ -2044,24 +2044,24 @@ Object.assign(HQView.prototype, {
     THEME_RGB.a = hex2rgb(orb); THEME_RGB.w = hex2rgb(t.warn); THEME_RGB.e = hueShift(hex2rgb(orb), 110); THEME_RGB.glow = t.glow; THEME_RGB.key = orb + t.warn + t.glow;
   },
   // Accent changer: a dot button in the top bar opens a small swatch tray (AUTO = the theme's own accent, plus a custom picker).
-  osAccentPicker(r) {
-    const P = this.plugin, cur = P.settings.theme.accent || "", wrap = r.createDiv({ attr: { style: "position:relative;display:inline-flex" } });
-    const btn = wrap.createEl("button", { cls: "os-chb", attr: { "aria-label": "Accent colour", title: "Accent: sphere and highlight colour", "aria-expanded": "false" } });
+  osAccentPicker(r, hl) {
+    const P = this.plugin, cur = (hl ? P.settings.theme.highlight : P.settings.theme.accent) || "", wrap = r.createDiv({ cls: "os-accw" + (hl ? " hl" : ""), attr: { style: "position:relative;display:inline-flex" } });
+    const btn = wrap.createEl("button", { cls: "os-chb os-accb", attr: { "aria-label": hl ? "Highlight colour (your messages, HANDOFF, YOLO, warnings)" : "Accent colour (sphere and secondary highlights)", title: hl ? "Highlight colour: your messages, HANDOFF, YOLO and warnings" : "Accent: sphere and secondary highlights", "aria-expanded": "false" } });
     btn.style.display = "inline-flex"; btn.style.alignItems = "center"; btn.style.gap = "6px";
-    const dot = btn.createSpan({ attr: { "aria-hidden": "true", style: "width:11px;height:11px;border-radius:50%;display:inline-block;box-shadow:0 0 6px currentColor" } }); dot.style.background = P.curTheme().accent; dot.style.color = P.curTheme().accent;
+    const dot = btn.createSpan({ attr: { "aria-hidden": "true", style: "width:11px;height:11px;border-radius:50%;display:inline-block;box-shadow:0 0 6px currentColor" } }); { const dc = hl ? P.curTheme().warn : P.curTheme().accent; dot.style.background = dc; dot.style.color = dc; }
 
     const tray = wrap.createDiv({ attr: { role: "listbox", "aria-label": "Accent colours", style: "position:absolute;top:calc(100% + 6px);right:0;z-index:50;display:none;flex-wrap:wrap;gap:6px;width:236px;padding:8px;background:var(--os-solid,#071217);border:1px solid var(--os-cy,#19e3d0);box-shadow:0 0 14px rgba(0,0,0,.6)" } });
     const close = () => { tray.style.display = "none"; btn.setAttr("aria-expanded", "false"); document.removeEventListener("mousedown", outside, true); };
     const outside = (e) => { if (!wrap.contains(e.target)) close(); };
     btn.onclick = () => { const open = tray.style.display === "none"; tray.style.display = open ? "flex" : "none"; btn.setAttr("aria-expanded", String(open)); if (open) document.addEventListener("mousedown", outside, true); else close(); };
-    const pick = (hex) => { close(); P.setAccent(hex); };
-    const auto = tray.createEl("button", { cls: "os-chb", text: "AUTO", attr: { role: "option", "aria-selected": String(!cur), title: "Use the theme's own sphere and highlight colour" } }); auto.onclick = () => pick("");
+    const pick = (hex) => { close(); hl ? P.setHighlight(hex) : P.setAccent(hex); };
+    const auto = tray.createEl("button", { cls: "os-chb", text: "AUTO", attr: { role: "option", "aria-selected": String(!cur), title: hl ? "Use the theme's own highlight colour" : "Use the theme's own sphere and highlight colour" } }); auto.onclick = () => pick("");
     HQ_ACCENTS.forEach(([name, hex]) => {
       const s = tray.createEl("button", { attr: { role: "option", "aria-label": name, title: name, "aria-selected": String(cur === hex) } });
       s.style.cssText = `width:22px;height:22px;border-radius:50%;padding:0;cursor:pointer;background:${hex};border:2px solid ${cur === hex ? "#fff" : "transparent"};box-shadow:0 0 6px ${hex}`;
       s.onclick = () => pick(hex);
     });
-    const cust = tray.createEl("input", { attr: { type: "color", "aria-label": "Custom accent colour", title: "Custom colour" } }); cust.value = hexOk(cur) ? cur : P.curTheme().accent;
+    const cust = tray.createEl("input", { attr: { type: "color", "aria-label": "Custom accent colour", title: "Custom colour" } }); cust.value = hexOk(cur) ? cur : hl ? P.curTheme().warn : P.curTheme().accent;
     cust.style.cssText = "width:30px;height:24px;padding:0;border:none;background:none;cursor:pointer"; cust.onchange = () => pick(cust.value);
   },
   osModsToggle() { this.osPage = this.osPage === "mods" ? "" : "mods"; this.osPageApply(); },
@@ -2848,6 +2848,7 @@ module.exports = class ProjectHQ extends Plugin {
     const t = this.baseTheme(), ov = this.settings.theme.accent;
     // Accent changer keeps the theme's MAIN colour (borders, titles, text) and recolours the sphere + secondary highlights.
     if (hexOk(ov)) { t.accent2 = ov.toLowerCase(); t.orb = ov.toLowerCase(); }
+    if (hexOk(this.settings.theme.highlight)) t.warn = this.settings.theme.highlight.toLowerCase(); // highlight picker: your messages, HANDOFF, YOLO, warnings
     return t;
   }
   baseTheme() {
@@ -2856,6 +2857,7 @@ module.exports = class ProjectHQ extends Plugin {
     if (id === "custom") return Object.assign(cleanTheme(th.custom), { id, name: "Custom" });
     return Object.assign({}, HQ_PRESETS.find((x) => x.id === id) || HQ_PRESETS[0]);
   }
+  setHighlight(hex) { this.settings.theme.highlight = hexOk(hex) ? hex.toLowerCase() : ""; this.themeApplyAll(); }
   setAccent(hex) { this.settings.theme.accent = hexOk(hex) ? hex.toLowerCase() : ""; this.themeApplyAll(); }
   themeApplyAll() { this.views().forEach((v) => { if (!v.applyTheme) return; v.applyTheme(); if (v.osUI) { v.osUI.sig.top = ""; v.osTopRender(); } }); this.saveSoon(); }
   setThemeId(id) { this.settings.theme.id = id; this.themeApplyAll(); }
