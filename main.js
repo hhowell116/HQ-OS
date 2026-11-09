@@ -1467,6 +1467,8 @@ Object.assign(HQView.prototype, {
     tb.createSpan({ cls: "os-sp" });
     ui.hint = tb.createSpan({ cls: "os-hint", text: "ENTER sends · SHIFT+ENTER new line" }); ui.cnt = tb.createSpan({ cls: "os-cnt2", attr: { "aria-live": "off" } });
     ui.compact = tb.createEl("button", { cls: "os-chb os-compact", text: "COMPACT", attr: { "aria-label": "Compact this chat (shrinks its history so each message costs less)", title: "Shrink this chat's history so each message costs less" } });
+    ui.handoff = tb.createEl("button", { cls: "os-chb os-handoff", text: "HANDOFF", attr: { "aria-label": HANDOFF_TIP, title: HANDOFF_TIP } });
+    ui.handoff.onclick = () => this.osHandoff();
     ui.compact.onclick = () => { if (ui.target.value === "hq") { const hq = this.hq(), c = hq && hq.get(hq.activeId); if (!c || !c.sessionId) { ui.cmdMsg.setText("Open a chat with some history first."); return; } if (c.busy) { ui.cmdMsg.setText("Wait for Claude to finish, then compact."); return; } this.osChatSend("/compact"); } else this.osSend("/compact", ui.target.value); };
     ui.exp = tb.createEl("button", { cls: "os-pmax os-expb", text: "⤢", attr: { "aria-label": "Expand the message box to compose a long message", "aria-pressed": "false" } });
     ui.grip = cmd.createDiv({ cls: "os-grip", attr: { role: "separator", "aria-orientation": "horizontal", "aria-label": "Resize message box (drag, or Up and Down arrows). Double-click resets.", tabindex: "0", title: "Drag to resize the message box" } });
@@ -1682,6 +1684,45 @@ Object.assign(HQView.prototype, {
       ok.addItem((j) => j.setTitle("Cancel").setIcon("x")); ok.showAtPosition({ x: e.clientX, y: e.clientY }); }); });
     m.showAtPosition({ x: e.clientX, y: e.clientY });
   },
+  // ---- handoff: ask the chat for a handoff note, then start a new chat (same kind, same project) seeded with it ----
+  async osHandoff() {
+    const u = this.osUI; if (!u) return; if (this.osHandoffBusy) { new Notice("A handoff is already running."); return; }
+    const say = (m, bad) => { u.cmdMsg.setText(m); u.cmdMsg.toggleClass("bad", !!bad); }, tgt = u.target.value;
+    const seed = (title, note) => "Handoff from the previous chat \u201C" + title + "\u201D. Read this, then continue from \u2018Next steps\u2019. Don't redo finished work.\n\n" + note;
+    this.osHandoffBusy = true; u.handoff.addClass("busy"); u.handoff.setText("HANDING OFF\u2026");
+    try {
+      if (tgt === "hq") {
+        const hq = this.hq(), c = hq.get(hq.activeId); if (!c || !c.sessionId) throw new Error("Open a chat with some history first.");
+        if (c.busy) throw new Error("Wait for Claude to finish, then hand off.");
+        say("Writing the handoff note\u2026");
+        const note = await new Promise((res, rej) => { const off = hq.on((cc, what) => { if (cc !== c || what !== "done") return; off(); const m = c.msgs.filter((x) => x.r === "asst").pop(); const t = m && m.blocks.filter((b) => b.k === "text").map((b) => b.text).join("\n").trim(); t ? res(t) : rej(new Error("No handoff note came back.")); }); hq.send(c, HANDOFF_PROMPT); });
+        const n = hq.create(c.model, c.effort, this.project); n.title = "Handoff: " + String(c.title).slice(0, 40); hq.save(n);
+        u.chatOpen = true; this.osChatWas = true; hq.send(n, seed(c.title, note)); this.osChatLayout(); this.osChatRender(true);
+        say("Handoff done: new chat \u201C" + n.title + "\u201D started with the summary.");
+      } else {
+        const cp = this.claudian(); if (!(cp && cp.api && cp.chatHost && cp.sessionMessaging)) throw new Error("Claudian is not available.");
+        const src = cp.chatHost.getConversationList().find((x) => x.id === tgt); if (!src) throw new Error("That Claudian chat was not found.");
+        const before = String(await cp.api.read(tgt) || ""); say("Writing the handoff note in \u201C" + src.title + "\u201D (it queues if that chat is busy)\u2026");
+        await cp.api.send(tgt, { text: HANDOFF_PROMPT });
+        const t0 = Date.now(); let note = "";
+        while (Date.now() - t0 < 15 * 60000) { await new Promise((r) => setTimeout(r, 3000)); if (cp.sessionMessaging.status(tgt) !== "idle") continue; const t = String(await cp.api.read(tgt) || "").trim(); if (t && t !== before.trim() && /##/.test(t)) { note = t; break; } }
+        if (!note) throw new Error("Timed out waiting for the handoff note.");
+        const nc = await cp.chatHost.createConversation(Object.assign({ providerId: src.providerId, selectedModel: src.selectedModel }, src.projectId ? { projectId: src.projectId } : {}));
+        try { if (cp.chatHost.renameConversation) await cp.chatHost.renameConversation(nc.id, "Handoff: " + String(src.title).slice(0, 40)); } catch (x) {}
+        await cp.api.send(nc.id, { text: seed(src.title, note) }); this.osOpenSession(nc.id); this.osSessData(true);
+        say("Handoff done: new Claudian chat started with the summary. The old chat is untouched.");
+      }
+    } catch (e) { say("Handoff: " + (e && e.message || e), true); }
+    finally { this.osHandoffBusy = false; if (u.handoff) { u.handoff.removeClass("busy"); u.handoff.setText("HANDOFF"); } }
+  },
+  // HANDOFF lights up when the target chat is past 250k tokens of context or its cache went cold
+  osHandoffHint() {
+    const u = this.osUI; if (!u || !u.handoff) return; let ctx = 0, cold = false; const tgt = u.target.value;
+    if (tgt === "hq") { const hq = this.hq(), c = hq && hq.get(hq.activeId), t = c && (c.turns || []).slice(-1)[0]; if (t) { ctx = (t.in || 0) + (t.cache || 0); cold = Date.now() - t.at > 3600000; } }
+    else { const cp = this.claudian(); try { const f = cp && cp.chatHost && (cp.chatHost.getConversationSync ? cp.chatHost.getConversationSync(tgt) : null); ctx = (f && f.usage && f.usage.contextTokens) || 0; } catch (x) {} const ci = cacheInfo(); cold = !!(ci && ci.state === "cold"); }
+    const hot = ctx > 250000 || (cold && ctx > 60000); u.handoff.toggleClass("hot", hot);
+    const tip = HANDOFF_TIP + (ctx ? "\n\nThis chat: about " + kfmt(ctx) + " tokens re-read per message" + (cold ? ", cache is cold" : "") + "." : ""); if (u.handoff.getAttribute("data-tip") !== tip) u.handoff.setAttribute("data-tip", tip);
+  },
   osOpenSession(id) {
     const cp = this.claudian(), ws = this.app.workspace, type = (this.plugin.settings.chatView || "claudian-view").trim();
     try { const p = cp && cp.chatHost && cp.chatHost.switchConversation ? cp.chatHost.switchConversation(id) : null; if (p && p.catch) p.catch((e) => console.error("Project HQ switch session", e)); } catch (e) { console.error("Project HQ switch session", e); }
@@ -1812,7 +1853,7 @@ Object.assign(HQView.prototype, {
     });
   },
   osTick() {
-    if (!this.os) return; this.osClockTick(); this.osCountTick(); this.osGate();
+    if (!this.os) return; this.osClockTick(); this.osCountTick(); this.osGate(); this.osHandoffHint();
     if (document.hidden || (this.contentEl.isShown && !this.contentEl.isShown())) return;
     const now = Date.now();
     if (now - (this.osVitAt || 0) >= 4000) { this.osVitAt = now; if (this.osPage === "mods") { guardVerify(); this.osModsStatus(); if (this.osUI.guardLog) this.osUI.guardLog.setText(guardLogTail(50)); } sampleVitals(); if (this.osUI) { this.osVitalsRender(); this.osTopRender(); this.osMidRender(); } }
@@ -2000,6 +2041,8 @@ const HQ_SLASH = [
   ["tools", "Show or hide the command lines Claude runs", ""],
   ["help", "List all commands", ""],
 ];
+const HANDOFF_PROMPT = "Write a handoff note so a brand-new chat can continue this work with no other context. Reply with ONLY the note in Markdown, under about 700 words, with these headings: ## Goal, ## Done so far (commits, files, results), ## Current state, ## Key decisions and why, ## Files and paths that matter, ## Next steps (in order), ## Waiting on Hayden / open questions. Be specific (exact paths, commands, names). Do not run tools or do any other work.";
+const HANDOFF_TIP = "HANDOFF: Claude writes a detailed handoff summary of this chat, then a NEW chat starts with that summary, so you continue fresh without losing context. Uses one short AI turn. Better than COMPACT for long chats (compacting drops details). Lights up when this chat passes 250k tokens or its cache has gone cold.";
 const HQ_MODELS = ["", "sonnet", "opus", "haiku"], HQ_EFFORTS = ["", "low", "medium", "high", "xhigh", "max"];
 const toolTarget = (name, inp) => {
   inp = inp || {}; const v = inp.file_path || inp.path || inp.command || inp.pattern || inp.url || inp.query || inp.description || inp.prompt || inp.skill || "";

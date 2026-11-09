@@ -661,3 +661,6 @@
 .hqos .os-ctool .os-compact{margin-left:auto}
 .hqos .os-ctool .os-cnt2:not(:empty)+.os-compact{margin-left:8px}
 .hqos .os-chh .os-chb.sure{background:var(--os-red);color:var(--os-bg0);border-color:var(--os-red)}
+.hqos .os-ctool .os-handoff{margin-left:6px}
+.hqos .os-ctool .os-handoff.hot{border-color:var(--os-am);color:var(--os-am);box-shadow:0 0 8px rgba(var(--os-amrgb),.45)}
+.hqos .os-ctool .os-handoff.busy{opacity:.7;pointer-events:none}
