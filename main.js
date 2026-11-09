@@ -1368,12 +1368,14 @@ class Orb {
     this.eqA = (this.eqA || 0) + ((pk * ak > 0.012 ? 1 : 0) - (this.eqA || 0)) * (pk * ak > 0.012 ? 0.25 : 0.05); if (this.eqA < 0.02) return; ctx.globalAlpha *= this.eqA;
     // each band also keeps its own slow peak, so quiet highs still move (half global level, half per-band level)
     const bp = this.eqBP = this.eqBP || new Float32Array(24).fill(0.2), N = this.eqN = this.eqN || new Float32Array(24);
-    for (let i = 0; i < 24; i++) { bp[i] = Math.max(AF[i], bp[i] * 0.997, 0.06); N[i] = 0.5 * Math.min(1, AF[i] * gain) + 0.5 * Math.min(1, 0.85 * AF[i] / bp[i]) * Math.min(1, pk * 4); }
+    let mu = 0; for (let i = 0; i < 24; i++) { bp[i] = Math.max(AF[i], bp[i] * 0.997, 0.06); N[i] = 0.5 * Math.min(1, AF[i] * gain) + 0.5 * Math.min(1, 0.85 * AF[i] / bp[i]) * Math.min(1, pk * 4); mu += N[i] / 24; }
+    // keep variety when loud (Hayden 2026-11-09): pull every band toward the average, then stretch the differences, so loud music never fills every column
+    for (let i = 0; i < 24; i++) N[i] = Math.max(0, mu * 0.6 + (N[i] - mu) * 1.7);
     const sm = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
     for (let c = 0; c < cols; c++) {
       const d = Math.abs(c - half) / half, f = Math.max(0, 1 - d / 0.85) * 23, i0 = Math.floor(f), i1 = Math.min(23, i0 + 1), v = N[i0] + (N[i1] - N[i0]) * (f - i0);
       const env = (0.45 + 0.55 * sm(0, 0.22, d)) * (1 - sm(0.6, 1, d)); // dip in the centre, taper to nothing at the ends
-      const tgt = Math.min(1, Math.pow(v * ak, 1.25) * env); this.eqH[c] += (tgt - this.eqH[c]) * (tgt > this.eqH[c] ? 0.55 : 0.16);
+      const raw = Math.pow(v * ak, 1.25) * env, tgt = Math.min(0.85, 0.85 * (1 - Math.exp(-1.6 * raw)) / (1 - Math.exp(-1.6))); // soft ceiling: columns top out at 85% height this.eqH[c] += (tgt - this.eqH[c]) * (tgt > this.eqH[c] ? 0.55 : 0.16);
       const h = this.eqH[c] * maxN, n = Math.max(1, Math.ceil(h)), x = cx - span / 2 + c * cw + (cw - cell) / 2, m = Math.pow(d, 0.8);
       const r = Math.round(A[0] + (B[0] - A[0]) * m), g = Math.round(A[1] + (B[1] - A[1]) * m), b = Math.round(A[2] + (B[2] - A[2]) * m);
       for (let k = 0; k < n; k++) { // crisp pixels: no random dropout or flicker
