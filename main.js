@@ -21,6 +21,28 @@ function setConfig(pr, g) {
   LIVE_RE = mkRe(pr.liveRe); EXCL = mkRe(g.excludeRe);
   PROJ = (g.claudeDir || "").trim() || path.join(os.homedir(), ".claude", "projects");
 }
+// ---- project discovery: top-level folders of the workspace, each with Notes/ by convention ----
+const WS = "Claude'sWorkspace", NOT_PROJECTS = new Set(["agent team", "token tools", "node_modules"]);
+const slug = (x) => String(x).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "project";
+const isDir = (p) => { try { return fs.statSync(p).isDirectory(); } catch (e) { return false; } };
+const isFile = (p) => { try { return fs.statSync(p).isFile(); } catch (e) { return false; } };
+function discoverFolders(base) { try { return fs.readdirSync(path.join(base, WS), { withFileTypes: true }).filter((d) => d.isDirectory() && !d.name.startsWith(".") && !NOT_PROJECTS.has(d.name.toLowerCase())).map((d) => d.name); } catch (e) { return []; } }
+const folderOf = (pr) => pr.folder || ((String(pr.todo || pr.agents || pr.review || "").match(/^([^/]+[/][^/]+)[/]/) || [])[1]) || "";
+// Fill every blank path field from <folder>/Notes (a *To-Do* or *Board* note, Review, Agent Activity.md, Daily, Post Queue, Marketing Playbook).
+function resolveProject(pr, base) {
+  const r = Object.assign({}, pr), f = folderOf(pr); r.folder = f; r.auto = {}; if (!f) return r;
+  const notes = f + "/Notes", abs = (p) => path.join(base, p), has = (p) => isFile(abs(p)), hasDir = (p) => isDir(abs(p));
+  let md = []; try { md = fs.readdirSync(abs(notes)).filter((n) => /[.]md$/i.test(n)); } catch (e) {}
+  const pick = (k, v) => { if (!(pr[k] || "").trim() && v) { r[k] = v; r.auto[k] = true; } };
+  pick("todo", (md.find((n) => /to-?do/i.test(n)) && notes + "/" + md.find((n) => /to-?do/i.test(n))) || (md.find((n) => /board/i.test(n)) && notes + "/" + md.find((n) => /board/i.test(n))) || "");
+  pick("agents", has(notes + "/Agent Activity.md") ? notes + "/Agent Activity.md" : "");
+  pick("review", hasDir(notes + "/Review") ? notes + "/Review" : "");
+  pick("daily", hasDir(notes + "/Daily") ? notes + "/Daily" : "");
+  pick("queue", has(notes + "/Post Queue.md") ? notes + "/Post Queue.md" : "");
+  pick("playbook", has(notes + "/Marketing Playbook.md") ? notes + "/Marketing Playbook.md" : "");
+  pick("repo", hasDir(f + "/.git") ? f : "");
+  return r;
+}
 const SECTION_ON = { todo: () => !!TODO, needs: () => !!TODO, view: () => !!REVIEW, numbers: () => !!DAILY };
 const sectionOn = (id) => !SECTION_ON[id] || SECTION_ON[id]();
 const chicago = (d) => (d || new Date()).toLocaleDateString("en-CA");
@@ -787,7 +809,7 @@ class HQView extends ItemView {
   getDisplayText() { return "Project HQ"; }
   applyProject() {
     const st = this.plugin.settings; BASE = this.app.vault.adapter.basePath || "";
-    const pr = st.projects.find((p) => p.id === st.last) || st.projects[0] || null;
+    const vis = this.plugin.visibleProjects(), pr0 = vis.find((p) => p.id === st.last) || vis[0] || null, pr = pr0 ? resolveProject(pr0, BASE) : null;
     this.project = pr; setConfig(pr, st); this.osMode();
     if (this.os) { this.osVars(); return; }
     this.setTheme(this.themeId()); this.setAccent(pr && pr.accent);
@@ -843,8 +865,8 @@ class HQView extends ItemView {
   resetData() { Object.assign(this, { planOpen: new Set(), days: [], dsig: "", metricsRunning: false, review: [], rsig: "", live: [], liveSig: "", agents: [], todo: { live: "", next: [], wait: [] }, commits: {}, cAt: 0, sig: "", openSet: new Set(), page: "home" }); liveCache.clear(); }
   buildSwitcher() {
     const st = this.plugin.settings; this.sw.empty();
-    st.projects.forEach((p) => this.sw.createEl("option", { value: p.id, text: p.name || "Untitled" }));
-    this.sw.value = this.project ? this.project.id : ""; this.sw.toggle(st.projects.length > 0);
+    const vis = this.plugin.visibleProjects(); vis.forEach((p) => this.sw.createEl("option", { value: p.id, text: p.name || "Untitled" }));
+    this.sw.value = this.project ? this.project.id : ""; this.sw.toggle(vis.length > 0);
   }
   buildDock() {
     this.dock.empty(); this.dockBtns = {}; this.badge = null; this.insBadge = null;
@@ -852,7 +874,9 @@ class HQView extends ItemView {
   }
   async reload(id) {
     if (id) { this.plugin.settings.last = id; await this.plugin.saveSettings(); }
-    this.applyProject(); this.resetData(); this.buildSwitcher(); this.buildDock(); this.show("home"); await this.loadAll();
+    this.applyProject(); this.resetData(); this.buildSwitcher(); this.buildDock();
+    if (this.os && this.osUI) { this.osUI.sig = {}; this.osTaskAdd = null; this.osTaskAll = false; this.osRevAll = false; this.osEleven = undefined; this.osProjSwitch(); this.osElevenCheck(true); }
+    this.show("home"); await this.loadAll();
   }
   async loadAll() { await this.loadFiles(); await this.loadReview(); this.loadDays(); this.runMetrics(false); this.loadLive(); this.loadCommits(true); await this.loadUsage(); }
   getIcon() { return "layout-dashboard"; }
@@ -921,7 +945,7 @@ class HQView extends ItemView {
   async insSave(c, text, where) {
     text = String(text || "").trim(); if (!text) return;
     try {
-      if (where === "rules") await appendTo(this.app, RULES_PATH, ruleSection(text), text, true); else await appendTo(this.app, PLAYBOOK_PATH, "Inbox (to sort)", text, false);
+      if (where === "rules") await appendTo(this.app, RULES_PATH, ruleSection(text), text, true); else await appendTo(this.app, (this.project && this.project.playbook) || PLAYBOOK_PATH, "Inbox (to sort)", text, false);
       new Notice("Saved to " + (where === "rules" ? "Rules.md" : "Marketing Playbook")); delete this.insText[c.id]; await this.insHandle(c.id, "saved");
     } catch (e) { console.error("Project HQ save rule", e); new Notice("Could not save: " + (e && e.message || e)); }
   }
@@ -1224,15 +1248,7 @@ Object.assign(HQView.prototype, {
     ui.status = M.createDiv({ cls: "os-status", attr: { role: "status", "aria-live": "polite" } });
     ui.mid = M; ui.chatBox = M.createDiv({ cls: "os-chat os-hide" }); this.osChatHeader(ui.chatBox); ui.chatList = ui.chatBox.createDiv({ cls: "os-clist os-hide" }); ui.chatBody = ui.chatBox.createDiv({ cls: "os-cbody", attr: { role: "log", "aria-live": "polite", "aria-label": "Claude Code conversation" } });
     ui.chatBody.addEventListener("click", (e) => { const a = e.target.closest && e.target.closest("a.os-lk"); if (a) { e.preventDefault(); this.osChatLink(a.getAttribute("data-u")); } });
-    const cmd = M.createDiv({ cls: "os-cmd" }); ui.target = cmd.createEl("select", { cls: "os-sel", attr: { "aria-label": "Send to HQ chat or a Claudian session" } });
-    ui.model = cmd.createEl("select", { cls: "os-sel os-sm", attr: { "aria-label": "Model" } }); HQ_MODELS.forEach((m) => ui.model.createEl("option", { value: m, text: m ? m.toUpperCase() : "MODEL: DEFAULT" }));
-    ui.effort = cmd.createEl("select", { cls: "os-sel os-sm", attr: { "aria-label": "Effort" } }); HQ_EFFORTS.forEach((m) => ui.effort.createEl("option", { value: m, text: m ? m.toUpperCase() : "EFFORT: DEFAULT" }));
-    ui.cmdIn = cmd.createEl("textarea", { cls: "os-in", attr: { rows: "1", placeholder: "Message Claude Code…", "aria-label": "Message for Claude Code", autocomplete: "off", spellcheck: "false" } });
-    ui.go = cmd.createEl("button", { cls: "os-go", text: "SEND", attr: { "aria-label": "Send message" } }); ui.cmdMsg = M.createDiv({ cls: "os-cmdmsg" });
-    const go = () => { const c = this.hq().get(this.hq().activeId); if (ui.target.value === "hq" && c && c.busy) return this.hq().stop(c); if (ui.target.value === "hq") return this.osChatSend(ui.cmdIn.value); this.osSend(ui.cmdIn.value, ui.target.value); };
-    ui.go.onclick = go; ui.target.onchange = () => this.osChatLayout(); ui.cmdIn.addEventListener("input", () => this.osAutoGrow());
-    ui.cmdIn.addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); const c = this.hq().get(this.hq().activeId); if (!(c && c.busy && ui.target.value === "hq")) go(); } });
-    ui.model.onchange = ui.effort.onchange = () => { const c = this.hq().get(this.hq().activeId); if (c && !c.busy) { c.model = ui.model.value; c.effort = ui.effort.value; this.hq().save(c); } };
+    this.osBuildInput(M, ui);
     ui.tick = M.createDiv({ cls: "os-ticker" });
     this.orb = new Orb(ui.cv); this.osRO = new ResizeObserver(() => { if (this.orb) this.orb.resize(); }); this.osRO.observe(orbw);
     this.osIO = new IntersectionObserver((es) => { ui.inView = es[es.length - 1].isIntersecting; this.osGate(); }); this.osIO.observe(orbw);
@@ -1240,6 +1256,71 @@ Object.assign(HQView.prototype, {
     sampleVitals(); setTimeout(() => { if (this.osUI === ui) { sampleVitals(); this.osVitalsRender(); } }, 1500);
     this.osSessData(true); this.osElevenCheck(true); this.osChatInit(); setTimeout(() => this.osGate(), 300);
   },
+  // ---- the Claude input: toolbar (target, model, effort, hint, counter, expand), drag grip, auto-growing textarea, attachments ----
+  osBuildInput(M, ui) {
+    const lsGet = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k) || "null"); return v === null ? d : v; } catch (e) { return d; } }, lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
+    ui.userH = lsGet("hqos-in-h", 0); ui.imgs = []; ui.hi = -1; ui.histVal = ""; this.osHist = lsGet("hqos-hist", []);
+    const cmd = ui.cmd = M.createDiv({ cls: "os-cmd" }), tb = cmd.createDiv({ cls: "os-ctool" });
+    ui.target = tb.createEl("select", { cls: "os-sel", attr: { "aria-label": "Send to HQ chat or a Claudian session" } });
+    ui.model = tb.createEl("select", { cls: "os-sel os-sm", attr: { "aria-label": "Model" } }); HQ_MODELS.forEach((m) => ui.model.createEl("option", { value: m, text: m ? m.toUpperCase() : "MODEL: DEFAULT" }));
+    ui.effort = tb.createEl("select", { cls: "os-sel os-sm", attr: { "aria-label": "Effort" } }); HQ_EFFORTS.forEach((m) => ui.effort.createEl("option", { value: m, text: m ? m.toUpperCase() : "EFFORT: DEFAULT" }));
+    tb.createSpan({ cls: "os-sp" });
+    ui.hint = tb.createSpan({ cls: "os-hint", text: "ENTER sends · SHIFT+ENTER new line" }); ui.cnt = tb.createSpan({ cls: "os-cnt2", attr: { "aria-live": "off" } });
+    ui.exp = tb.createEl("button", { cls: "os-chb", text: "EXPAND", attr: { "aria-label": "Expand the message box to compose a long message", "aria-pressed": "false" } });
+    ui.grip = cmd.createDiv({ cls: "os-grip", attr: { role: "separator", "aria-orientation": "horizontal", "aria-label": "Resize message box (drag, or Up and Down arrows). Double-click resets.", tabindex: "0", title: "Drag to resize the message box" } });
+    const box = cmd.createDiv({ cls: "os-cbox" }), left = box.createDiv({ cls: "os-cleft" });
+    ui.chips = left.createDiv({ cls: "os-atts os-hide" });
+    ui.cmdIn = left.createEl("textarea", { cls: "os-in", attr: { rows: "3", placeholder: "Message Claude Code…", "aria-label": "Message for Claude Code", autocomplete: "off", spellcheck: "false" } });
+    ui.go = box.createEl("button", { cls: "os-go", text: "SEND", attr: { "aria-label": "Send message" } }); ui.cmdMsg = M.createDiv({ cls: "os-cmdmsg" });
+    const t = ui.cmdIn, zoom = () => (this.plugin.settings.textScale || 125) / 100;
+    const go = () => { const c = this.hq().get(this.hq().activeId); if (ui.target.value === "hq" && c && c.busy) return this.hq().stop(c); if (ui.target.value === "hq") return this.osChatSend(t.value); this.osSend(t.value, ui.target.value); };
+    ui.go.onclick = go; ui.target.onchange = () => this.osChatLayout();
+    t.addEventListener("input", () => { if (t.value !== ui.histVal) ui.hi = -1; this.osAutoGrow(); });
+    const setVal = (v) => { t.value = v; ui.histVal = v; this.osAutoGrow(); t.setSelectionRange(v.length, v.length); };
+    t.addEventListener("keydown", (e) => {
+      e.stopPropagation();
+      if (e.key === "Escape" && ui.full) { e.preventDefault(); this.osSetFull(false); return; }
+      if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); const c = this.hq().get(this.hq().activeId); if (!(c && c.busy && ui.target.value === "hq")) go(); return; }
+      const H = this.osHist || [], mine = ui.hi >= 0 && t.value === ui.histVal;
+      if (e.key === "ArrowUp" && !e.shiftKey && !e.altKey && H.length && (!t.value || mine)) { e.preventDefault(); ui.hi = Math.min(ui.hi + 1, H.length - 1); setVal(H[H.length - 1 - ui.hi]); }
+      else if (e.key === "ArrowDown" && !e.shiftKey && !e.altKey && mine) { e.preventDefault(); ui.hi--; setVal(ui.hi < 0 ? "" : H[H.length - 1 - ui.hi]); }
+    });
+    // paste: multi-line text pastes as typed; images become attachments; files paste as paths
+    const fpath = (f) => { try { const w = require("electron").webUtils; if (w && w.getPathForFile) return w.getPathForFile(f); } catch (e) {} return f.path || ""; };
+    const insert = (txt) => { const a = t.selectionStart, z = t.selectionEnd; t.setRangeText(txt, a, z, "end"); t.focus(); this.osAutoGrow(); };
+    const paths = (files) => files.map(fpath).filter(Boolean).map((p) => (/\s/.test(p) ? '"' + p + '"' : p)).join(" ");
+    t.addEventListener("paste", (e) => {
+      const cd = e.clipboardData; if (!cd) return; const files = [...(cd.files || [])]; if (!files.length) return;
+      const imgs = files.filter((f) => /^image[/](png|jpeg|gif|webp)$/.test(f.type)), others = files.filter((f) => !imgs.includes(f));
+      const pp = paths(others); e.preventDefault(); imgs.forEach((f) => this.osAddImage(f)); if (pp) insert(pp + " ");
+    });
+    t.addEventListener("dragover", (e) => { if (e.dataTransfer && [...e.dataTransfer.types].includes("Files")) { e.preventDefault(); cmd.addClass("drop"); } });
+    t.addEventListener("dragleave", () => cmd.removeClass("drop"));
+    t.addEventListener("drop", (e) => { cmd.removeClass("drop"); const fs2 = e.dataTransfer && [...e.dataTransfer.files]; if (!fs2 || !fs2.length) return; e.preventDefault(); const pp = paths(fs2); if (pp) insert(pp + " "); });
+    // resize grip (remembered), expand button
+    ui.grip.addEventListener("pointerdown", (e) => {
+      e.preventDefault(); ui.grip.setPointerCapture(e.pointerId); const y0 = e.clientY, h0 = t.offsetHeight;
+      const mv = (ev) => { ui.userH = Math.max(0, Math.round(h0 + (y0 - ev.clientY) / zoom())); this.osAutoGrow(true); }, up = () => { ui.grip.removeEventListener("pointermove", mv); ui.grip.removeEventListener("pointerup", up); lsSet("hqos-in-h", ui.userH); };
+      ui.grip.addEventListener("pointermove", mv); ui.grip.addEventListener("pointerup", up);
+    });
+    ui.grip.addEventListener("keydown", (e) => { if (e.key === "ArrowUp" || e.key === "ArrowDown") { e.preventDefault(); ui.userH = Math.max(0, t.offsetHeight + (e.key === "ArrowUp" ? 24 : -24)); this.osAutoGrow(true); lsSet("hqos-in-h", ui.userH); } });
+    ui.grip.addEventListener("dblclick", () => { ui.userH = 0; lsSet("hqos-in-h", 0); this.osAutoGrow(true); });
+    ui.exp.onclick = () => this.osSetFull(!ui.full);
+    ui.model.onchange = ui.effort.onchange = () => { const c = this.hq().get(this.hq().activeId); if (c && !c.busy) { c.model = ui.model.value; c.effort = ui.effort.value; this.hq().save(c); } };
+    this.osAutoGrow();
+  },
+  osSetFull(on) { const u = this.osUI; if (!u) return; u.full = !!on; u.cmd.toggleClass("full", u.full); u.exp.setText(u.full ? "COLLAPSE" : "EXPAND"); u.exp.setAttr("aria-pressed", String(u.full)); this.osAutoGrow(true); u.cmdIn.focus(); },
+  osAddImage(f) {
+    const u = this.osUI; if (!u) return; const say = (m) => { u.cmdMsg.setText(m); u.cmdMsg.addClass("bad"); setTimeout(() => { u.cmdMsg.removeClass("bad"); this.osCtxHint(); }, 4000); };
+    if (u.imgs.length >= 5) return say("At most 5 images per message."); if (f.size > 5 * 1024 * 1024) return say("Image is over 5 MB.");
+    const rd = new FileReader(); rd.onload = () => { const url = String(rd.result), m = /^data:([^;]+);base64,(.*)$/.exec(url); if (!m || !this.osUI) return; u.imgs.push({ name: f.name || "pasted image", media: m[1], data: m[2], url }); this.osRenderAtts(); }; rd.readAsDataURL(f);
+  },
+  osRenderAtts() {
+    const u = this.osUI; if (!u) return; u.chips.empty(); u.chips.toggleClass("os-hide", !u.imgs.length);
+    u.imgs.forEach((im, i) => { const c = u.chips.createDiv({ cls: "os-att" }); c.createEl("img", { attr: { src: im.url, alt: "Attached image " + (i + 1) } }); const x = c.createEl("button", { cls: "os-attx", text: "×", attr: { "aria-label": "Remove attached image " + (i + 1) } }); x.onclick = () => { u.imgs.splice(i, 1); this.osRenderAtts(); u.cmdIn.focus(); }; });
+    this.osAutoGrow();
+  },
+  osRemember(text) { const H = (this.osHist || []).filter((x) => x !== text); H.push(text); this.osHist = H.slice(-30); try { localStorage.setItem("hqos-hist", JSON.stringify(this.osHist)); } catch (e) {} if (this.osUI) this.osUI.hi = -1; },
   osGate() { const ui = this.osUI; if (!ui || !this.orb) return; this.orb.run(!document.hidden && ui.inView && (!this.contentEl.isShown || this.contentEl.isShown())); },
   // ---- render everything (cheap; each region redraws only when its signature changed) ----
   osRender(force) {
@@ -1253,10 +1334,21 @@ Object.assign(HQView.prototype, {
   osTopRender() {
     const u = this.osUI, ci = cacheInfo(), us = this.usage, wk = us && us.seven_day, se = us && us.five_hour, model = shortModel(mainState.model);
     const pc = (x) => x && x.utilization !== undefined && x.utilization !== null ? Math.round(x.utilization) : null, wv = pc(wk), sv = pc(se), cl = (p) => p === null ? "" : p >= 90 ? "bad" : p >= 75 ? "warn" : "";
-    const sig = JSON.stringify([this.project && this.project.name, model, this.osPlanName(), wv, sv, ci && ci.state, ci && Math.floor(ci.age / 3), this.err, vit.cpu > 85, wk && wk.resets_at, se && se.resets_at]);
+    const vis = this.plugin.visibleProjects(), sig = JSON.stringify([this.project && this.project.id, vis.map((p) => [p.id, p.name, !!p.pinned]), this.osMenuOpen, model, this.osPlanName(), wv, sv, ci && ci.state, ci && Math.floor(ci.age / 3), this.err, vit.cpu > 85, wk && wk.resets_at, se && se.resets_at]);
     this.osReg("top", sig, () => {
       const t = u.top; t.empty(); const brand = t.createDiv({ cls: "os-brand" }); brand.createSpan({ cls: "os-logo", text: "HQ_OS" });
-      brand.createSpan({ cls: "os-proj", text: "// " + String(this.project ? this.project.name : "HQ").toUpperCase() });
+      const pw = brand.createDiv({ cls: "os-pw" }), pb = pw.createEl("button", { cls: "os-proj os-pbtn", attr: { "aria-haspopup": "menu", "aria-expanded": String(!!this.osMenuOpen), "aria-label": "Switch project (current: " + (this.project ? this.project.name : "none") + ")" } });
+      pb.createSpan({ text: "// " + String(this.project ? this.project.name : "HQ").toUpperCase() }); pb.createSpan({ cls: "os-caret", text: " \u25BE", attr: { "aria-hidden": "true" } });
+      const closeM = () => { this.osMenuOpen = false; u.sig.top = ""; this.osTopRender(); };
+      pb.onclick = () => { this.osMenuOpen = !this.osMenuOpen; u.sig.top = ""; this.osTopRender(); };
+      if (this.osMenuOpen) {
+        const menu = pw.createDiv({ cls: "os-menu", attr: { role: "menu", "aria-label": "Projects" } });
+        vis.forEach((p) => { const it = menu.createEl("button", { cls: "os-mi" + (this.project && p.id === this.project.id ? " cur" : ""), attr: { role: "menuitemradio", "aria-checked": String(!!(this.project && p.id === this.project.id)) } }); it.createSpan({ text: (p.pinned ? "\u2605 " : "") + (p.name || "Untitled") }); it.onclick = () => { this.osMenuOpen = false; if (!this.project || p.id !== this.project.id) this.reload(p.id); else closeM(); }; });
+        if (!vis.length) menu.createDiv({ cls: "os-muted", text: "No projects. Add one in Settings." });
+        menu.addEventListener("keydown", (e) => { const its = [...menu.querySelectorAll(".os-mi")], i = its.indexOf(document.activeElement); if (e.key === "Escape") { e.stopPropagation(); closeM(); } else if (e.key === "ArrowDown") { e.preventDefault(); (its[i + 1] || its[0]).focus(); } else if (e.key === "ArrowUp") { e.preventDefault(); (its[i - 1] || its[its.length - 1]).focus(); } });
+        setTimeout(() => { const c = menu.querySelector(".cur") || menu.querySelector(".os-mi"); if (c) c.focus(); }, 0);
+        const off = (e) => { if (!pw.contains(e.target)) { document.removeEventListener("pointerdown", off, true); if (this.osMenuOpen) closeM(); } }; setTimeout(() => document.addEventListener("pointerdown", off, true), 0);
+      }
       const on = brand.createSpan({ cls: "os-online" }); on.createSpan({ cls: "os-dot" }); on.createSpan({ text: "ONLINE" });
       const chips = t.createDiv({ cls: "os-chips" }), chip = (k, v, c, tip) => { const e = chips.createSpan({ cls: "os-chip " + (c || "") }); e.createSpan({ cls: "k", text: k }); e.createSpan({ cls: "v", text: v }); if (tip) e.title = tip; return e; };
       if (model) chip("MODEL", model.toUpperCase()); if (this.osPlanName()) chip("PLAN", this.osPlanName().toUpperCase());
@@ -1270,6 +1362,13 @@ Object.assign(HQView.prototype, {
       this.osClockTick();
     });
   },
+  // Called after a project switch: close a chat that belongs to another project, refresh the title bits.
+  osProjSwitch() {
+    const u = this.osUI, hq = this.hq(); if (!u) return;
+    const c = hq && hq.get(hq.activeId); if (c && hq.projOf(c) !== (this.project && this.project.id)) { hq.activeId = ""; u.chatOpen = false; this.osChatWas = false; }
+    if (u.chatList) u.chatList.addClass("os-hide"); this.osChatLayout(); this.osChatRender(true); this.osTopRender(); this.osCtxHint();
+  },
+  osCtxHint() { const u = this.osUI; if (u && u.cmdMsg && !u.cmdMsg.hasClass("bad")) u.cmdMsg.setText(this.project ? "Project: " + this.project.name + (this.project.folder ? "  ·  " + this.project.folder : "") : ""); },
   osFocusInsights() { const u = this.osUI; if (u && u.acts) u.acts.p.scrollIntoView({ behavior: "smooth", block: "nearest" }); },
   osClockTick() { if (!this.osClock) return; const n = new Date(); this.osClock.setText(osMono(n.getHours()) + ":" + osMono(n.getMinutes()) + ":" + osMono(n.getSeconds()) + "  ·  " + n.toLocaleDateString([], { weekday: "short", day: "2-digit", month: "short", year: "numeric" }).toUpperCase().replace(/,/g, "")); },
   osVitalsRender() {
@@ -1333,7 +1432,7 @@ Object.assign(HQView.prototype, {
     const u = this.osUI; text = String(text || "").trim(); if (!text || !target || target === "hq") return; const say = (m, bad) => { u.cmdMsg.setText(m); u.cmdMsg.toggleClass("bad", !!bad); };
     const cp = this.claudian(); if (!(cp && cp.api && cp.api.send)) { say("Claudian is not available.", true); return; }
     u.cmdIn.disabled = true; say("Sending…");
-    try { const title = ((this.osConvs || []).find((c) => c[0] === target) || [])[1] || "session"; await cp.api.send(target, { text }); u.cmdIn.value = ""; this.osAutoGrow(); say("Sent to Claudian: " + title + " (open it from ACTIVE AI SESSIONS to read the reply)."); this.osSessData(true); }
+    try { const title = ((this.osConvs || []).find((c) => c[0] === target) || [])[1] || "session"; await cp.api.send(target, { text }); this.osRemember(text); u.cmdIn.value = ""; this.osAutoGrow(); say("Sent to Claudian: " + title + " (open it from ACTIVE AI SESSIONS to read the reply)."); this.osSessData(true); }
     catch (e) { console.error("Project HQ command", e); say("Could not send: " + redact(e && e.message || e), true); }
     finally { u.cmdIn.disabled = false; u.cmdIn.focus(); }
   },
@@ -1379,13 +1478,13 @@ Object.assign(HQView.prototype, {
   },
   // ---- ElevenLabs credits: via the existing eleven.mjs, at most once per hour, cached in localStorage ----
   osElevenCheck() {
-    const pr = this.project || {}, script = absP(pr.creditsScript || ""); if (!script) return;
-    if (this.osEleven === undefined) { try { this.osEleven = JSON.parse(localStorage.getItem("hqos-eleven") || "null"); } catch (e) { this.osEleven = null; } }
+    const pr = this.project || {}, script = absP(pr.creditsScript || ""); if (!script) { this.osEleven = null; return; }
+    if (this.osEleven === undefined) { try { this.osEleven = JSON.parse(localStorage.getItem("hqos-eleven:" + script) || "null"); } catch (e) { this.osEleven = null; } }
     if (this.osElevenBusy || (this.osEleven && Date.now() - this.osEleven.t < 3600000)) return; this.osElevenBusy = true;
     execFile("node", [script, "subscription"], { cwd: path.dirname(script), timeout: 25000, windowsHide: true }, (err, out) => {
       this.osElevenBusy = false; let r = { t: Date.now(), ok: false, err: "" };
       try { const line = String(out || "").split("\n").reverse().find((l) => l.trim().startsWith("{")), j = JSON.parse(line); if (typeof j.left === "number") r = { t: Date.now(), ok: true, left: j.left, limit: j.limit, tier: j.tier }; else r.err = "no data"; } catch (e) { r.err = redact(err ? String(err.message).split("\n")[0] : "no data").slice(0, 100); }
-      this.osEleven = r; try { localStorage.setItem("hqos-eleven", JSON.stringify(r)); } catch (e) {} if (this.osUI) { this.osUI.sig.mid = ""; this.osMidRender(); }
+      this.osEleven = r; try { localStorage.setItem("hqos-eleven:" + script, JSON.stringify(r)); } catch (e) {} if (this.osUI) { this.osUI.sig.mid = ""; this.osMidRender(); }
     });
   },
   // ---- tasks (right) ----
@@ -1511,13 +1610,14 @@ class HQChats {
     this.loaded = true;
   }
   save(c) {
-    clearTimeout(c._st); c._st = setTimeout(() => { try { const o = {}; for (const k of ["id", "sessionId", "title", "model", "effort", "created", "updated", "turns"]) o[k] = c[k]; o.msgs = c.msgs.slice(-200); fs.mkdirSync(this.chats, { recursive: true }); fs.writeFileSync(path.join(this.chats, c.id + ".json"), redact(JSON.stringify(o))); } catch (e) { this.log("save " + e.message); } }, 400);
+    clearTimeout(c._st); c._st = setTimeout(() => { try { const o = {}; for (const k of ["id", "sessionId", "title", "model", "effort", "created", "updated", "turns", "proj", "projName", "projFolder", "primed"]) o[k] = c[k]; o.msgs = c.msgs.slice(-200); fs.mkdirSync(this.chats, { recursive: true }); fs.writeFileSync(path.join(this.chats, c.id + ".json"), redact(JSON.stringify(o))); } catch (e) { this.log("save " + e.message); } }, 400);
   }
-  list() { return [...this.convs.values()].sort((a, b) => (b.updated || 0) - (a.updated || 0)); }
+  projOf(c) { return c.proj || "lumen"; }
+  list(proj) { return [...this.convs.values()].filter((c) => !proj || this.projOf(c) === proj).sort((a, b) => (b.updated || 0) - (a.updated || 0)); }
   get(id) { return this.convs.get(id); }
-  create(model, effort) {
+  create(model, effort, pr) {
     const id = "hq-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-    const c = { id, sessionId: "", title: "New conversation", model: model || "", effort: effort || "", created: Date.now(), updated: Date.now(), turns: [], msgs: [], proc: null, busy: false, lastUse: Date.now(), cur: null };
+    const c = { id, sessionId: "", title: "New conversation", model: model || "", effort: effort || "", created: Date.now(), updated: Date.now(), turns: [], msgs: [], proj: pr ? pr.id : "", projName: pr ? pr.name : "", projFolder: pr ? pr.folder || "" : "", primed: false, proc: null, busy: false, lastUse: Date.now(), cur: null };
     this.convs.set(id, c); this.activeId = id; this.save(c); this.emit(c, "list"); return c;
   }
   remove(c) {
@@ -1548,13 +1648,16 @@ class HQChats {
   }
   killAll() { for (const c of this.convs.values()) if (c.proc) this.kill(c, "shutdown"); }
   destroy() { this.dead = true; clearInterval(this.idle); window.removeEventListener("beforeunload", this._quit); this.killAll(); for (const c of this.convs.values()) { clearTimeout(c._st); if (c.busy) { c.busy = false; } } }
-  send(c, text) {
-    if (c.busy) return; text = String(text || "").trim(); if (!text) return;
+  send(c, text, imgs) {
+    if (c.busy) return; text = String(text || "").trim(); imgs = imgs || []; if (!text && !imgs.length) return; if (!text) text = "(see the attached image" + (imgs.length > 1 ? "s" : "") + ")";
     if (c.proc && (c.procModel !== c.model || c.procEffort !== c.effort)) this.kill(c, "settings changed");
     let p = c.proc; if (!p) { try { p = this.spawnProc(c); } catch (e) { this.addMsgs(c, text, e.message); return; } }
     if (c.title === "New conversation") c.title = text.replace(/\s+/g, " ").slice(0, 48);
-    c.msgs.push({ r: "user", text: redact(text) }); c.cur = { r: "asst", blocks: [], at: Date.now() }; c.msgs.push(c.cur); c.idx = {}; c.busy = true; c.stopping = false; c.lastUse = Date.now(); c.updated = Date.now();
-    try { p.stdin.write(JSON.stringify({ type: "user", message: { role: "user", content: text } }) + "\n"); } catch (e) { this.finish(c, "Could not write to Claude Code: " + e.message); return; }
+    let wire = text, ctx = "";
+    if (!c.primed && c.proj) { ctx = "Project: " + c.projName + (c.projFolder ? ", folder " + c.projFolder + ". Notes in " + c.projFolder + "/Notes." : "."); wire = "[Project context] " + ctx + "\n\n" + text; }
+    c.primed = true;
+    c.msgs.push({ r: "user", text: redact(text), ctx, imgs: imgs.length }); c.cur = { r: "asst", blocks: [], at: Date.now() }; c.msgs.push(c.cur); c.idx = {}; c.busy = true; c.stopping = false; c.lastUse = Date.now(); c.updated = Date.now();
+    try { const content = imgs.length ? imgs.map((i) => ({ type: "image", source: { type: "base64", media_type: i.media, data: i.data } })).concat([{ type: "text", text: wire }]) : wire; p.stdin.write(JSON.stringify({ type: "user", message: { role: "user", content } }) + "\n"); } catch (e) { this.finish(c, "Could not write to Claude Code: " + e.message); return; }
     this.save(c); this.emit(c, "turn");
   }
   addMsgs(c, text, err) { c.msgs.push({ r: "user", text: redact(text) }, { r: "asst", blocks: [{ k: "error", text: err }] }); this.save(c); this.emit(c, "turn"); }
@@ -1622,7 +1725,7 @@ Object.assign(HQView.prototype, {
     const u = this.osUI, hq = this.hq(), c = hq && hq.get(hq.activeId), open = !!(u.chatOpen && c);
     u.mid.toggleClass("chatting", open); u.chatBox.toggleClass("os-hide", !open);
     const busy = !!(c && c.busy); u.go.setText(busy ? "STOP" : "SEND"); u.go.toggleClass("stop", busy); u.go.setAttr("aria-label", busy ? "Stop Claude" : "Send message");
-    const hqT = u.target.value === "hq"; u.cmdIn.placeholder = hqT ? "Message Claude Code…  (Enter sends, Shift+Enter new line)" : "Message the selected Claudian session…";
+    const hqT = u.target.value === "hq"; u.cmdIn.placeholder = hqT ? "Message Claude Code" + (this.project ? " about " + this.project.name : "") + "…" : "Message the selected Claudian session…"; u.hint.setText(hqT ? "ENTER sends · SHIFT+ENTER new line · UP recalls last" : "ENTER sends to Claudian · SHIFT+ENTER new line");
     u.model.toggleClass("os-hide", !hqT); u.effort.toggleClass("os-hide", !hqT);
     if (c && hqT) { u.model.value = c.model || ""; u.effort.value = c.effort || ""; }
   },
@@ -1644,7 +1747,7 @@ Object.assign(HQView.prototype, {
     const nw = createDiv(); this.osChatMsg(nw, c.cur, true); last.replaceWith(nw.firstChild); if (near) b.scrollTop = b.scrollHeight;
   },
   osChatMsg(parent, m, live) {
-    if (m.r === "user") { const d = parent.createDiv({ cls: "os-msg user" }); d.createDiv({ cls: "os-mt", text: redact(m.text) }); return; }
+    if (m.r === "user") { const d = parent.createDiv({ cls: "os-msg user" }); if (m.ctx) d.createDiv({ cls: "os-ctx", text: "PROJECT CONTEXT SENT", attr: { title: redact(m.ctx) } }); if (m.imgs) d.createDiv({ cls: "os-ctx", text: "[" + m.imgs + " image" + (m.imgs > 1 ? "s" : "") + " attached]" }); d.createDiv({ cls: "os-mt", text: redact(m.text) }); return; }
     const d = parent.createDiv({ cls: "os-msg asst" + (live ? " live" : "") });
     (m.blocks || []).forEach((bl, i) => {
       if (bl.k === "text") { if (!bl.text.trim()) return; const t = d.createDiv({ cls: "os-mt os-md" }); t.insertAdjacentHTML("beforeend", mdSafe(redact(bl.text))); }
@@ -1665,14 +1768,15 @@ Object.assign(HQView.prototype, {
     const bt = (t, label, fn) => { const b = h.createEl("button", { cls: "os-chb", text: t, attr: { "aria-label": label, title: label } }); b.onclick = fn; return b; };
     bt("NEW", "New conversation", () => this.osChatNew()); bt("CHATS", "Conversation list", () => this.osChatList()); bt("×", "Close chat (keeps running)", () => { u.chatOpen = false; this.osChatWas = false; this.osChatLayout(); u.sig.mid = ""; this.osMidRender(); });
   },
-  osChatNew() { const u = this.osUI, hq = this.hq(); hq.activeId = ""; const c = hq.create(u.model.value, u.effort.value); u.chatOpen = true; this.osChatWas = true; this.osChatLayout(); this.osChatRender(true); u.cmdIn.focus(); },
-  osChatOpenConv(id) { const u = this.osUI, hq = this.hq(); if (!hq.get(id)) return; hq.activeId = id; u.chatOpen = true; this.osChatWas = true; u.target.value = "hq"; u.chatList.addClass("os-hide"); this.osChatLayout(); this.osChatRender(true); const b = u.chatBody; b.scrollTop = b.scrollHeight; },
+  osChatNew() { const u = this.osUI, hq = this.hq(); hq.activeId = ""; const c = hq.create(u.model.value, u.effort.value, this.project); u.chatOpen = true; this.osChatWas = true; this.osChatLayout(); this.osChatRender(true); u.cmdIn.focus(); },
+  osChatOpenConv(id) { const u = this.osUI, hq = this.hq(); if (!hq.get(id)) return; const cp = hq.projOf(hq.get(id)); if (this.project && cp !== this.project.id && this.plugin.visibleProjects().some((p) => p.id === cp)) { this.osPendingConv = id; hq.activeId = id; this.reload(cp).then(() => { const i = this.osPendingConv; this.osPendingConv = ""; if (i) { hq.activeId = i; this.osChatOpenConv(i); } }); return; } hq.activeId = id; u.chatOpen = true; this.osChatWas = true; u.target.value = "hq"; u.chatList.addClass("os-hide"); this.osChatLayout(); this.osChatRender(true); const b = u.chatBody; b.scrollTop = b.scrollHeight; },
   osChatList() {
     const u = this.osUI, hq = this.hq(), L = u.chatList; if (!L.hasClass("os-hide")) { L.addClass("os-hide"); return; } L.empty(); L.removeClass("os-hide");
-    const list = hq.list(); if (!list.length) L.createDiv({ cls: "os-muted", text: "No HQ conversations yet." });
+    const all = !!this.osChatAll, list = hq.list(all ? "" : this.project && this.project.id), tg = L.createEl("button", { cls: "os-chb os-lall", text: all ? "SHOW " + (this.project ? this.project.name.toUpperCase() : "PROJECT") + " ONLY" : "SHOW ALL PROJECTS", attr: { "aria-pressed": String(all) } }); tg.onclick = () => { this.osChatAll = !all; u.chatList.addClass("os-hide"); this.osChatList(); };
+    if (!list.length) L.createDiv({ cls: "os-muted", text: "No conversations for " + (this.project ? this.project.name : "this project") + " yet. Press NEW or just type below." });
     list.slice(0, 30).forEach((c) => {
       const r = L.createDiv({ cls: "os-cli" + (c.id === hq.activeId ? " cur" : ""), attr: { role: "button", tabindex: "0" } }), tot = (c.turns || []).reduce((n, t) => n + (t.cost || 0), 0);
-      r.createSpan({ cls: "os-clt", text: c.title }); r.createSpan({ cls: "os-cld", text: (c.busy ? "WORKING · " : "") + new Date(c.updated).toLocaleDateString([], { day: "2-digit", month: "short" }) + (tot ? " · ~" + usd(tot) : "") });
+      r.createSpan({ cls: "os-clt", text: c.title }); r.createSpan({ cls: "os-cld", text: (c.busy ? "WORKING · " : "") + (all ? (c.projName || "Lumen") + " · " : "") + new Date(c.updated).toLocaleDateString([], { day: "2-digit", month: "short" }) + (tot ? " · ~" + usd(tot) : "") });
       const del = r.createEl("button", { cls: "os-chb", text: "DEL", attr: { "aria-label": "Delete conversation " + c.title } }); del.onclick = (e) => { e.stopPropagation(); hq.remove(c); u.chatList.addClass("os-hide"); this.osChatLayout(); this.osChatRender(true); };
       const open = () => this.osChatOpenConv(c.id); r.onclick = open; r.addEventListener("keydown", (e) => { if (e.target === r && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); open(); } });
     });
@@ -1686,12 +1790,20 @@ Object.assign(HQView.prototype, {
     ws.getLeaf("tab").openFile(f); // keepFilesBesideHQ places it next to HQ
   },
   osChatSend(text) {
-    const u = this.osUI, hq = this.hq(); text = String(text || "").trim(); if (!text) return;
-    let c = hq.get(hq.activeId); if (!c) c = hq.create(u.model.value, u.effort.value);
-    if (c.busy) return; c.model = u.model.value; c.effort = u.effort.value; u.chatOpen = true; this.osChatWas = true; u.cmdIn.value = ""; this.osAutoGrow();
-    hq.send(c, text); this.osChatLayout(); this.osChatRender(true);
+    const u = this.osUI, hq = this.hq(); text = String(text || "").trim(); const imgs = u.imgs.slice(); if (!text && !imgs.length) return;
+    let c = hq.get(hq.activeId); if (c && hq.projOf(c) !== (this.project && this.project.id)) c = null;
+    if (!c) c = hq.create(u.model.value, u.effort.value, this.project);
+    if (c.busy) return; c.model = u.model.value; c.effort = u.effort.value; u.chatOpen = true; this.osChatWas = true; u.cmdIn.value = ""; u.imgs = []; this.osRenderAtts(); if (text) this.osRemember(text); if (u.full) this.osSetFull(false); this.osAutoGrow();
+    hq.send(c, text, imgs); this.osChatLayout(); this.osChatRender(true);
   },
-  osAutoGrow() { const t = this.osUI && this.osUI.cmdIn; if (!t) return; t.style.height = "auto"; t.style.height = Math.min(120, Math.max(34, t.scrollHeight)) + "px"; },
+  osAutoGrow() {
+    const u = this.osUI, t = u && u.cmdIn; if (!t) return;
+    const n = t.value.length; u.cnt.setText(n ? n.toLocaleString() + " chars · ~" + Math.ceil(n / 4).toLocaleString() + " tokens" : "");
+    if (u.full) { t.style.height = ""; t.style.overflowY = "auto"; return; }
+    const cs = getComputedStyle(t), lh = parseFloat(cs.lineHeight) || 22, pad = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+    const min = Math.max(lh * 3 + pad, u.userH || 0), cap = Math.max(min, (u.mid.clientHeight || 600) * 0.4);
+    t.style.height = "auto"; const sh = t.scrollHeight, h = Math.min(Math.max(sh, min), cap); t.style.height = h + "px"; t.style.overflowY = sh > h + 1 ? "auto" : "hidden";
+  },
 });
 function hqChatIsActive(view, c) { const hq = view.hq(); return !!hq && hq.activeId === c.id; }
 
@@ -1709,6 +1821,7 @@ const PFIELDS = [
   ["queue", "Post queue note (optional)", "Vault path to a note whose unchecked lines are the next posts (HQ_OS shows the next 5 and counts today's posted lines).", "Notes/Post Queue.md"],
   ["slots", "Posting slots (optional)", "Daily times, 24 h, comma separated. HQ_OS counts down to the next one.", "8:43,13:13,19:13"],
   ["creditsScript", "Credits script (optional)", "Vault-relative or absolute path to a Node script; HQ_OS runs `node <script> subscription` at most once an hour and shows the credits left (JSON with a numeric `left`).", "LumenAds/tools/eleven.mjs"],
+  ["playbook", "Playbook / rules inbox note (optional)", "Where SAVE AS RULE (playbook option) appends. Auto-detects Notes/Marketing Playbook.md.", "Notes/Marketing Playbook.md"],
   ["repo", "Git repo path (optional)", "Absolute path (or vault-relative); commits of the last 7 days show as dots in the week strip.", ""],
 ];
 
@@ -1718,11 +1831,16 @@ class ProjectHQSettings extends PluginSettingTab {
     const el = this.containerEl, p = this.plugin, st = p.settings; el.empty();
     el.createEl("h2", { text: "Project HQ" });
     el.createEl("h3", { text: "Projects" });
+    el.createEl("p", { cls: "setting-item-description", text: "Projects are discovered from the folders of Claude'sWorkspace/. Leave a path blank to auto-detect it from <Project>/Notes (shown as the placeholder); type a path to override it." });
+    new Setting(el).addButton((b) => b.setButtonText("Rescan folders").onClick(async () => { if (p.syncProjects()) await p.saveSettings(); p.changed(true); this.display(); }));
     st.projects.forEach((pr) => {
-      const d = el.createEl("details", { cls: "lhq-set" }); d.createEl("summary", { text: pr.name || "Untitled project" });
+      const rp = resolveProject(pr, p.app.vault.adapter.basePath || ""), d = el.createEl("details", { cls: "lhq-set" }); d.createEl("summary", { text: (pr.pinned ? "\u2605 " : "") + (pr.name || "Untitled project") + (pr.hidden ? " (hidden)" : "") });
       new Setting(d).setName("Name").addText((t) => t.setValue(pr.name || "").onChange((v) => { pr.name = v; p.changed(); }));
+      new Setting(d).setName("Project folder").setDesc("Vault path of the project folder. Notes are expected in <folder>/Notes.").addText((t) => t.setPlaceholder("Claude'sWorkspace/Name").setValue(pr.folder || "").onChange((v) => { pr.folder = v.trim().replace(/[/]+$/, ""); p.changed(); }));
+      new Setting(d).setName("Pin to top of the switcher").addToggle((t) => t.setValue(!!pr.pinned).onChange((v) => { pr.pinned = v; p.changed(true); }));
+      new Setting(d).setName("Hide from the switcher").addToggle((t) => t.setValue(!!pr.hidden).onChange((v) => { pr.hidden = v; p.changed(true); }));
       new Setting(d).setName("Accent colour").addColorPicker((c) => c.setValue(pr.accent || "#f5b83d").onChange((v) => { pr.accent = v; p.changed(); }));
-      PFIELDS.forEach(([k, name, desc, ph]) => new Setting(d).setName(name).setDesc(desc).addText((t) => t.setPlaceholder(ph).setValue(pr[k] || "").onChange((v) => { pr[k] = v; p.changed(); })));
+      PFIELDS.forEach(([k, name, desc, ph]) => new Setting(d).setName(name).setDesc(desc).addText((t) => t.setPlaceholder(rp.auto[k] ? "auto: " + rp[k] : ph).setValue(pr[k] || "").onChange((v) => { pr[k] = v; p.changed(); })));
       new Setting(d).addButton((b) => b.setButtonText("Remove project").setWarning().onClick(async () => { st.projects = st.projects.filter((x) => x !== pr); if (st.last === pr.id) st.last = ""; await p.saveSettings(); p.changed(true); this.display(); }));
     });
     new Setting(el).addButton((b) => b.setButtonText("Add project").setCta().onClick(async () => {
@@ -1748,6 +1866,7 @@ class ProjectHQSettings extends PluginSettingTab {
 module.exports = class ProjectHQ extends Plugin {
   async onload() {
     const d = (await this.loadData()) || {}; this.settings = Object.assign({}, DEFAULTS, d); if (!Array.isArray(this.settings.projects)) this.settings.projects = [];
+    if (this.syncProjects()) await this.saveData(this.settings);
     try { this.hq = new HQChats(this); } catch (e) { console.error("Project HQ chat engine", e); this.hq = null; }
     this.registerView(VIEW, (leaf) => new HQView(leaf, this));
     this.addSettingTab(new ProjectHQSettings(this.app, this));
@@ -1777,6 +1896,17 @@ module.exports = class ProjectHQ extends Plugin {
       } catch (e) { console.error("Project HQ: could not move the file tab", e); }
       finally { this._moving = false; }
     }, 0);
+  }
+  // Add a settings entry for every workspace folder that has none yet (blank fields are auto-detected at use time).
+  syncProjects() {
+    const st = this.settings, base = this.app.vault.adapter.basePath || "", known = new Set(); let ch = false;
+    st.projects.forEach((p) => { if (!p.folder) { const f = folderOf(p); if (f) { p.folder = f; ch = true; } } if (p.folder) known.add(p.folder); });
+    discoverFolders(base).forEach((n) => { const f = WS + "/" + n; if (known.has(f)) return; let id = slug(n); while (st.projects.some((p) => p.id === id)) id += "-"; st.projects.push({ id, name: n, folder: f, accent: "#f5b83d", nextHead: "Next", waitHead: "Waiting on", auto: true }); ch = true; });
+    return ch;
+  }
+  visibleProjects() {
+    const base = this.app.vault.adapter.basePath || "", v = this.settings.projects.filter((p) => !p.hidden && (!p.folder || isDir(path.join(base, p.folder))));
+    return v.map((p, i) => [p, i]).sort((a, b) => (b[0].pinned ? 1 : 0) - (a[0].pinned ? 1 : 0) || a[1] - b[1]).map((x) => x[0]);
   }
   async saveSettings() { await this.saveData(this.settings); }
   // Debounced: save and refresh every open HQ view after a settings change.
