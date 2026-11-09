@@ -1551,7 +1551,7 @@ Object.assign(HQView.prototype, {
     this.osAutoGrow();
   },
   osRemember(text) { const H = (this.osHist || []).filter((x) => x !== text); H.push(text); this.osHist = H.slice(-30); try { localStorage.setItem("hqos-hist", JSON.stringify(this.osHist)); } catch (e) {} if (this.osUI) this.osUI.hi = -1; },
-  osGate() { const ui = this.osUI; if (!ui || !this.orb) return; ui.cv.toggleClass("os-hide", !MODS.orb.on); const go = MODS.orb.on && !document.hidden && ui.inView && !(this.osPage === "mods") && (!this.contentEl.isShown || this.contentEl.isShown()); this.orb.run(go);
+  osGate() { const ui = this.osUI; if (!ui || !this.orb) return; const min = !!this.plugin.settings.minimal; this.contentEl.toggleClass("os-min", min); ui.cv.toggleClass("os-hide", !MODS.orb.on || min); const go = MODS.orb.on && !min && !document.hidden && ui.inView && !(this.osPage === "mods") && (!this.contentEl.isShown || this.contentEl.isShown()); this.orb.run(go);
     if (go && MODS.orb.audio) HQAudio.start(); else HQAudio.stop();
     if (go && MODS.orb.nowPlaying) HQNow.start(path.join(this.plugin.hq.dir, "nowplaying.ps1")); else HQNow.stop(); },
   // ---- render everything (cheap; each region redraws only when its signature changed) ----
@@ -1623,7 +1623,9 @@ Object.assign(HQView.prototype, {
         HQ_PRESETS.forEach((p) => ts.createEl("option", { value: p.id, text: p.name.toUpperCase() })); Object.keys(th.saved).forEach((n) => ts.createEl("option", { value: "saved:" + n, text: n.toUpperCase() })); if (th.id === "custom") ts.createEl("option", { value: "custom", text: "CUSTOM" });
         ts.value = th.id; const fit = () => { const o = ts.options[ts.selectedIndex], m = ts.ownerDocument.body.createSpan({ text: o ? o.text : "" }), cs = getComputedStyle(ts); m.style.cssText = "position:absolute;visibility:hidden;white-space:pre;font:" + cs.font + ";letter-spacing:" + cs.letterSpacing; const w = m.getBoundingClientRect().width; m.remove(); ts.style.width = Math.ceil(w + 22) + "px"; }; fit(); ts.onchange = () => { fit(); this.plugin.setThemeId(ts.value); };
         { const cc = r.createDiv({ cls: "os-acccol" }); this.osAccentPicker(cc); this.osAccentPicker(cc, true); }
-        const mb = r.createEl("button", { cls: "os-chb", text: this.osPage === "mods" ? "BACK" : "MODS", attr: { "aria-label": this.osPage === "mods" ? "Back to HQ" : "Open the MODS page (switches, settings, theme)" } }); mb.onclick = () => this.osModsToggle(); }
+        const mc = r.createDiv({ cls: "os-acccol os-modcol" }), mn = !!this.plugin.settings.minimal, mi = mc.createEl("button", { cls: "os-chb os-minb" + (mn ? " on" : ""), text: "MINIMAL", attr: { "aria-label": mn ? "Minimal is on: animations off. Click to bring them back." : "Minimal: turn off all animations (orb, visualizer, pixel scenes)", "aria-pressed": String(mn) } });
+        mi.onclick = () => { this.plugin.settings.minimal = !this.plugin.settings.minimal; this.plugin.saveSoon(); this.osGate(); this.osUI.sig.top = ""; this.osTopRender(); };
+        const mb = mc.createEl("button", { cls: "os-chb", text: this.osPage === "mods" ? "BACK" : "MODS", attr: { "aria-label": this.osPage === "mods" ? "Back to HQ" : "Open the MODS page (switches, settings, theme)" } }); mb.onclick = () => this.osModsToggle(); }
       const ib = (icon, label, fn) => { const b = r.createEl("button", { cls: "os-ib", attr: { "aria-label": label, title: label } }); setIcon(b, icon); b.onclick = fn; };
       ib("refresh-cw", "Refresh", () => this.refreshAll()); ib("settings", "Settings", () => { try { this.app.setting.open(); this.app.setting.openTabById("project-hq"); } catch (e) { new Notice("Open Settings, then HQ OS"); } });
       this.osClockTick();

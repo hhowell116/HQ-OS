@@ -776,3 +776,7 @@
 .hqos .os-ask.done{gap:6px}
 .hqos .os-ask-a{margin-top:6px;padding:6px 10px;border-left:2px solid var(--os-am);color:var(--os-am);background:rgba(var(--os-amrgb),.08);font-weight:600}
 .hqos .os-ask-a.none{opacity:.6;font-weight:400}
+.hqos .os-modcol{flex-direction:column-reverse}
+.hqos .os-modcol .os-chb{height:16px!important;min-height:0!important;padding:0 8px!important;line-height:1;font-size:9px}
+.hqos .os-minb.on{color:var(--os-am);border-color:var(--os-am)}
+.hqos.os-min .os-fill,.hqos.os-min .os-orbw .os-ring,.hqos.os-min .os-orbw .os-cv{display:none!important}
