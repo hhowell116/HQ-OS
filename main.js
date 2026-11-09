@@ -1482,6 +1482,7 @@ Object.assign(HQView.prototype, {
     ui.effort = tb.createEl("select", { cls: "os-sel os-sm", attr: { "aria-label": "Effort" } }); HQ_EFFORTS.forEach((m) => ui.effort.createEl("option", { value: m, text: m ? m.toUpperCase() : "EFFORT: DEFAULT" }));
     tb.createSpan({ cls: "os-sp" });
     ui.hint = tb.createSpan({ cls: "os-hint", text: "ENTER sends · SHIFT+ENTER new line" }); ui.cnt = tb.createSpan({ cls: "os-cnt2", attr: { "aria-live": "off" } });
+    ui.perm = tb.createEl("button", { cls: "os-chb os-perm" }); ui.perm.onclick = () => this.osPermCycle(); this.osPermLabel();
     ui.compact = tb.createEl("button", { cls: "os-chb os-compact", text: "COMPACT", attr: { "aria-label": "Compact this chat (shrinks its history so each message costs less)", title: "Shrink this chat's history so each message costs less" } });
     ui.handoff = tb.createEl("button", { cls: "os-chb os-handoff", text: "HANDOFF", attr: { "aria-label": HANDOFF_TIP, title: HANDOFF_TIP } });
     ui.handoff.onclick = () => this.osHandoff();
@@ -1770,9 +1771,14 @@ Object.assign(HQView.prototype, {
       if (st === "running" && this.claudBusy(id)) { const since = meta.lastActivityAt ? Math.max(0, Math.round((Date.now() - meta.lastActivityAt) / 60000)) : 0;
         const w = b.createDiv({ cls: "os-think os-working" }); w.createDiv({ text: "Claude is replying…" + (since ? " (last update " + since + " min ago)" : "") }); }
       if (near) b.scrollTop = b.scrollHeight;
-      this.osCQRender(); u.chatTitle.setText("CLAUDIAN \u00B7 " + (meta.title || "Untitled")); const act = st === "running" && this.claudBusy(id); u.chatCost.setText(act ? "WORKING" : st === "awaiting-user" ? "NEEDS YOU" : "READY"); u.chatCost.toggleClass("run", act);
+      this.osCQRender(); u.chatTitle.setText("CLAUDIAN \u00B7 " + (meta.title || "Untitled")); const act = st === "running" && this.claudBusy(id); u.chatCost.setText(act ? "WORKING" : st === "awaiting-user" ? "NEEDS YOU" : "READY"); u.chatCost.toggleClass("run", act); this.osPermLabel();
     } catch (e) { console.error("Project HQ claudian view", e); } finally { this.osClaudBusy = false; }
   },
+  // Claudian permission mode (applies to all Claudian chats): ASK -> EDITS -> YOLO
+  osPermLabel() { const u = this.osUI, cp = this.claudian(); if (!u || !u.perm) return; const m = (cp && cp.settings && cp.settings.permissionMode) || "normal", L = { normal: ["ASK", "Ask before edits and commands"], acceptEdits: ["EDITS", "Auto-accept file edits, ask for commands"], yolo: ["YOLO", "Accept all permissions without asking"] }[m] || [String(m).toUpperCase(), ""];
+    u.perm.setText(L[0]); u.perm.toggleClass("yolo", m === "yolo"); u.perm.toggle(!!cp); u.perm.setAttr("aria-label", "Claude permissions: " + L[1] + ". Click to change (applies to all Claudian chats).") },
+  async osPermCycle() { const cp = this.claudian(); if (!(cp && cp.settingsCoordinator)) return; const order = ["normal", "acceptEdits", "yolo"], cur = cp.settings.permissionMode, nx = order[(order.indexOf(cur) + 1) % order.length];
+    try { await cp.settingsCoordinator.mutate((st) => { st.permissionMode = nx; st.savedProviderPermissionMode = Object.assign({}, st.savedProviderPermissionMode, { claude: nx }); }); } catch (e) { new Notice("Could not change permissions: " + (e && e.message || e)); } this.osPermLabel(); },
   osPendAdd(id, text) { this.osPend = this.osPend || {}; (this.osPend[id] = this.osPend[id] || []).push({ text, t: Date.now() }); if (this.osUI) this.osUI.claudKey = ""; },
   async osClaudStop(id) { const cp = this.claudian(); try { await cp.api.send(id, { mode: "interrupt" }); } catch (e) { new Notice("Could not stop: " + (e && e.message || e)); } },
   // queued messages for the picked Claudian chat: SEND NOW interrupts Claude and sends it immediately

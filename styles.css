@@ -745,3 +745,4 @@
 @media (min-width:1101px){.hqos .os-left>.os-files{flex:0 1 auto!important}}
 .hqos .os-duelw{width:100%}
 .hqos .os-left>.os-fill,.hqos .os-right>.os-fill{margin-top:auto}
+.hqos .os-perm.yolo{color:var(--os-am);border-color:var(--os-am)}
