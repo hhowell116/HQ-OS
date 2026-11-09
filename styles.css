@@ -513,3 +513,4 @@
 .hqos .os-chips-l{display:flex;flex-wrap:wrap;gap:4px;width:100%}.hqos .os-chips-l span{border:1px solid var(--os-line);padding:1px 6px;display:inline-flex;gap:6px;align-items:center}
 .hqos .os-chips-l button{background:none;border:0;color:var(--os-red);cursor:pointer;padding:0}
 @media (prefers-reduced-motion:reduce){.hqos .os-sw::after{transition:none}}
+.hqos .os-chips-l button{background:none!important;border:0!important;box-shadow:none!important;padding:0 2px;min-height:0;height:auto;line-height:1;font-size:1.1em}
