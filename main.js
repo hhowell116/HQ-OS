@@ -1339,7 +1339,7 @@ class Orb {
   }
   eq(ctx, cx, cy, R, AF, ak, dpr) {
     // mirrored pixel equalizer: auto-gain so loud audio never turns into a solid slab, tapered ends that fizzle out, soft flickering tips
-    const cols = 81, half = (cols - 1) / 2, span = R * 2.5, cw = span / cols, cell = Math.max(2, cw * 0.72), maxN = 15, A = THEME_RGB.a, B = THEME_RGB.e || THEME_RGB.w;
+    const cols = 69, half = (cols - 1) / 2, span = R * 2.1, cw = span / cols, cell = Math.max(2, cw * 0.72), maxN = 15, A = THEME_RGB.a, B = THEME_RGB.e || THEME_RGB.w;
     this.eqH = this.eqH && this.eqH.length === cols ? this.eqH : new Float32Array(cols);
     let pk = 0; for (let i = 0; i < 24; i++) pk = Math.max(pk, AF[i]); this.eqPk = Math.max(pk, (this.eqPk || 0.3) * 0.996); const gain = 0.82 / Math.max(0.22, this.eqPk);
     // each band also keeps its own slow peak, so quiet highs still move (half global level, half per-band level)
@@ -1348,19 +1348,17 @@ class Orb {
     const sm = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
     for (let c = 0; c < cols; c++) {
       const d = Math.abs(c - half) / half, f = Math.max(0, 1 - d / 0.85) * 23, i0 = Math.floor(f), i1 = Math.min(23, i0 + 1), v = N[i0] + (N[i1] - N[i0]) * (f - i0);
-      const env = (0.45 + 0.55 * sm(0, 0.22, d)) * (1 - 0.92 * sm(0.55, 1, d)); // dip in the centre, taper to nothing at the ends
+      const env = (0.45 + 0.55 * sm(0, 0.22, d)) * (1 - sm(0.6, 1, d)); // dip in the centre, taper to nothing at the ends
       const tgt = Math.min(1, Math.pow(v * ak, 1.25) * env); this.eqH[c] += (tgt - this.eqH[c]) * (tgt > this.eqH[c] ? 0.55 : 0.16);
       const h = this.eqH[c] * maxN, n = Math.max(1, Math.ceil(h)), x = cx - span / 2 + c * cw + (cw - cell) / 2, m = Math.pow(d, 0.8);
       const r = Math.round(A[0] + (B[0] - A[0]) * m), g = Math.round(A[1] + (B[1] - A[1]) * m), b = Math.round(A[2] + (B[2] - A[2]) * m);
-      const fizz = sm(0.6, 1, d); // outer ends: cells drop out and fade, like static
-      for (let k = 0; k < n; k++) {
-        if (fizz > 0 && Math.random() < fizz * 0.65) continue;
-        const top = k === n - 1, frac = top ? Math.max(0.15, h - (n - 1)) : 1; // partial top cell fades in instead of popping
-        let a = (0.95 - 0.6 * Math.pow(k / maxN, 1.4)) * frac * (1 - 0.75 * fizz); if (top && k > 1) a *= 0.55 + 0.45 * Math.random();
-        if (a < 0.03) continue; ctx.fillStyle = "rgba(" + r + "," + g + "," + b + "," + a.toFixed(3) + ")";
+      for (let k = 0; k < n; k++) { // crisp pixels: no random dropout or flicker
+        const a = 0.95 - 0.45 * Math.pow(k / maxN, 1.4); ctx.fillStyle = "rgba(" + r + "," + g + "," + b + "," + a.toFixed(3) + ")";
         const yUp = cy - cell / 2 - k * cw, yDn = cy - cell / 2 + k * cw; ctx.fillRect(x, yUp, cell, cell); if (k) ctx.fillRect(x, yDn, cell, cell);
       }
     }
+    const tail = 7; ctx.fillStyle = "rgba(" + B.join(",") + ",0.85)";
+    for (let j = 1; j <= tail; j++) { const xl = cx - span / 2 - j * cw + (cw - cell) / 2, xr = cx + span / 2 + (j - 1) * cw + (cw - cell) / 2; ctx.fillRect(xl, cy - cell / 2, cell, cell); ctx.fillRect(xr, cy - cell / 2, cell, cell); }
   }
   mode(intensity, warn) { this.target = intensity; this.tintT = warn ? 1 : 0; }
   run(on) { if (on === this.on) return; this.on = on; cancelAnimationFrame(this.raf); if (on) { this.last = 0; this.raf = requestAnimationFrame(this.loop); } }
