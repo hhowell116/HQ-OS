@@ -1,5 +1,5 @@
 // Project HQ: full-page project dashboard for Obsidian. Each page is one entry in SECTIONS: {id, label, icon, render(view, el)}.
-const { Plugin, Notice, ItemView, PluginSettingTab, Setting, requestUrl, TFile, TFolder, setIcon, MarkdownRenderer, parseYaml } = require("obsidian");
+const { Plugin, Notice, Menu, ItemView, PluginSettingTab, Setting, requestUrl, TFile, TFolder, setIcon, MarkdownRenderer, parseYaml } = require("obsidian");
 const fs = require("fs"), path = require("path"), os = require("os");
 const { execFile } = require("child_process");
 const VIEW = "project-hq-view";
@@ -1665,9 +1665,22 @@ Object.assign(HQView.prototype, {
         h.createSpan({ cls: "os-ss", text: r.st === "running in background" ? "RUNNING" : r.st.toUpperCase() });
         c.title = r.title + " — " + (r.kind === "agent" ? r.type + " · " : "") + (r.snip || "(no messages yet)"); c.addClass("one");
         h.insertBefore(createSpan({ cls: "os-sk", text: r.kind === "agent" ? "AGENT" : r.kind === "hq" ? "HQ" : "CLAUDIAN" }), h.children[1]);
-        if (r.kind !== "agent") { const open = () => r.kind === "hq" ? this.osChatOpenConv(r.id) : this.osOpenSession(r.id); c.onclick = open; c.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } }); }
+        if (r.kind !== "agent") { const menu = (e) => this.osChatMenu(r, e); c.onclick = menu; c.addEventListener("contextmenu", (e) => { e.preventDefault(); menu(e); }); c.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); const b = c.getBoundingClientRect(); menu({ clientX: b.left + 20, clientY: b.bottom }); } }); }
       });
     });
+  },
+  // click a chat row: open it, start a new one, or delete it (asks once more before deleting)
+  osChatMenu(r, e) {
+    const m = new Menu(), hq = r.kind === "hq", cp = this.claudian(), busy = r.st === "thinking";
+    m.addItem((i) => i.setTitle("Open chat").setIcon("message-square").onClick(() => hq ? this.osChatOpenConv(r.id) : this.osOpenSession(r.id)));
+    m.addItem((i) => i.setTitle(hq ? "Start new HQ chat" : "Start new Claudian chat").setIcon("plus").onClick(() => { if (hq) { this.osChatNew(); return; } try { this.app.commands.executeCommandById("realclaudian:new-session") || this.app.commands.executeCommandById("claudian:new-session"); } catch (x) {} const ws = this.app.workspace, leaf = ws.getLeavesOfType((this.plugin.settings.chatView || "claudian-view").trim())[0]; if (leaf) ws.revealLeaf(leaf); }));
+    m.addSeparator();
+    m.addItem((i) => { i.setTitle(busy ? "Delete chat (stop it first)" : "Delete chat…").setIcon("trash-2").setDisabled(busy); if (!busy) i.onClick(() => {
+      const ok = new Menu(); ok.addItem((j) => j.setTitle("Yes, delete “" + String(r.title).slice(0, 40) + "”").setIcon("trash-2").onClick(async () => {
+        try { if (hq) { const c = this.hq().get(r.id); if (c) this.hq().remove(c); if (this.osUI) { this.osUI.chatOpen = this.osUI.chatOpen && this.hq().activeId !== ""; this.osChatLayout(); this.osChatRender(true); } } else if (cp && cp.chatHost && cp.chatHost.deleteConversation) await cp.chatHost.deleteConversation(r.id); new Notice("Chat deleted"); } catch (x) { new Notice("Could not delete: " + (x && x.message || x)); }
+        this.osSessData(true); }));
+      ok.addItem((j) => j.setTitle("Cancel").setIcon("x")); ok.showAtPosition({ x: e.clientX, y: e.clientY }); }); });
+    m.showAtPosition({ x: e.clientX, y: e.clientY });
   },
   osOpenSession(id) {
     const cp = this.claudian(), ws = this.app.workspace, type = (this.plugin.settings.chatView || "claudian-view").trim();
@@ -2197,7 +2210,7 @@ Object.assign(HQView.prototype, {
     const u = this.osUI, h = box.createDiv({ cls: "os-chh" });
     u.chatTitle = h.createSpan({ cls: "os-cht", text: "" }); u.chatCost = h.createSpan({ cls: "os-chc", text: "" });
     const bt = (t, label, fn) => { const b = h.createEl("button", { cls: "os-chb", text: t, attr: { "aria-label": label, title: label } }); b.onclick = fn; return b; };
-    bt("NEW", "New conversation", () => this.osChatNew()); bt("CHATS", "Conversation list", () => this.osChatList()); bt("×", "Close chat (keeps running)", () => { u.chatOpen = false; this.osChatWas = false; this.osChatLayout(); u.sig.mid = ""; this.osMidRender(); });
+    bt("NEW", "New conversation", () => this.osChatNew()); bt("CHATS", "Conversation list", () => this.osChatList()); const dl = bt("DELETE", "Delete this conversation", () => { const hq = this.hq(), c = hq.get(hq.activeId); if (!c) return; if (c.busy) { new Notice("Stop Claude first."); return; } if (!dl.hasClass("sure")) { dl.addClass("sure"); dl.setText("SURE?"); setTimeout(() => { dl.removeClass("sure"); dl.setText("DELETE"); }, 3000); return; } dl.removeClass("sure"); dl.setText("DELETE"); hq.remove(c); u.chatOpen = false; this.osChatWas = false; this.osChatLayout(); this.osChatRender(true); this.osSessData(true); }); bt("×", "Close chat (keeps running)", () => { u.chatOpen = false; this.osChatWas = false; this.osChatLayout(); u.sig.mid = ""; this.osMidRender(); });
   },
   osChatNew() { const u = this.osUI, hq = this.hq(); hq.activeId = ""; const c = hq.create(u.model.value, u.effort.value, this.project); u.chatOpen = true; this.osChatWas = true; this.osChatLayout(); this.osChatRender(true); u.cmdIn.focus(); },
   osChatOpenConv(id) { const u = this.osUI, hq = this.hq(); if (!hq.get(id)) return; const cp = hq.projOf(hq.get(id)); if (this.project && cp !== this.project.id && this.plugin.visibleProjects().some((p) => p.id === cp)) { this.osPendingConv = id; hq.activeId = id; this.reload(cp).then(() => { const i = this.osPendingConv; this.osPendingConv = ""; if (i) { hq.activeId = i; this.osChatOpenConv(i); } }); return; } hq.activeId = id; u.chatOpen = true; this.osChatWas = true; u.target.value = "hq"; u.chatList.addClass("os-hide"); this.osChatLayout(); this.osChatRender(true); const b = u.chatBody; b.scrollTop = b.scrollHeight; },
