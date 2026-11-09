@@ -866,7 +866,6 @@ const relLum = (c) => { const [r, g, b] = hex2rgb(c).map((v) => { v /= 255; retu
 const contrastOf = (a, b) => { const l1 = relLum(a), l2 = relLum(b); return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05); };
 const HQ_PRESETS = [
   { id: "cyan", name: "Cyan", accent: "#19e3d0", accent2: "#14b8a6", warn: "#ffb02e", danger: "#ff5d6c", bg: "#04080b", panel: "#071217" },
-  { id: "lumen", name: "Lumen Teal", accent: "#2bb8a3", accent2: "#7dd3c0", warn: "#f5b83d", danger: "#ff6b6b", bg: "#05100f", panel: "#09201f" },
   { id: "amber", name: "Amber", accent: "#ffb02e", accent2: "#f59e0b", warn: "#ff7a2e", danger: "#ff5d6c", bg: "#0a0804", panel: "#16100a" },
   { id: "matrix", name: "Matrix Green", accent: "#3dff6e", accent2: "#19c24a", warn: "#d6ff3d", danger: "#ff5d6c", bg: "#020a04", panel: "#06140a" },
   { id: "crimson", name: "Crimson", accent: "#ff3b5c", accent2: "#d9304f", warn: "#ffb02e", danger: "#ff8a3d", bg: "#0b0406", panel: "#170709" },
@@ -875,7 +874,7 @@ const HQ_PRESETS = [
   { id: "ice", name: "Ice", accent: "#7dd3fc", accent2: "#38bdf8", warn: "#fcd34d", danger: "#fb7185", bg: "#040a10", panel: "#091621" },
 ].map((t) => Object.assign({ glow: 1, grid: 1, scan: 1, scanOn: true }, t));
 // Accent changer (Hayden 2026-11-08): one accent colour laid over any theme. "" = use the theme's own accent.
-const HQ_ACCENTS = [["Cyan", "#19e3d0"], ["Teal", "#2bb8a3"], ["Ice", "#7dd3fc"], ["Blue", "#60a5fa"], ["Violet", "#a78bfa"], ["Pink", "#f472b6"], ["Red", "#ff3b5c"], ["Orange", "#fb923c"], ["Amber", "#ffb02e"], ["Green", "#3dff6e"], ["White", "#e5e7eb"]];
+const HQ_ACCENTS = [["Cyan", "#19e3d0"], ["Teal", "#14b8a6"], ["Ice", "#7dd3fc"], ["Blue", "#60a5fa"], ["Violet", "#a78bfa"], ["Pink", "#f472b6"], ["Red", "#ff3b5c"], ["Orange", "#fb923c"], ["Amber", "#ffb02e"], ["Green", "#3dff6e"], ["White", "#e5e7eb"]];
 const shadeHex = (h, f) => { const n = parseInt(h.slice(1), 16); return "#" + [n >> 16, (n >> 8) & 255, n & 255].map((v) => Math.max(0, Math.min(255, Math.round(v * f))).toString(16).padStart(2, "0")).join(""); };
 const THEME_KEYS = ["accent", "accent2", "warn", "danger", "bg", "panel"];
 const hexOk = (x) => /^#[0-9a-f]{6}$/i.test(String(x || ""));
