@@ -1750,11 +1750,10 @@ Object.assign(HQView.prototype, {
       const b = u.chatBody, near = b.scrollHeight - b.scrollTop - b.clientHeight < 80 || force; b.empty(); u.liveEl = null;
       if (all.length > 40) b.createDiv({ cls: "os-muted os-chint", text: "Showing the last 40 messages. Open it in Claudian for the full chat." });
       msgs.forEach((m) => this.osChatMsg(b, m, false));
-      if (st === "running") { const since = meta.lastActivityAt ? Math.max(0, Math.round((Date.now() - meta.lastActivityAt) / 60000)) : 0;
-        const w = b.createDiv({ cls: "os-think os-working" }); w.createDiv({ text: "Claude is working on your message" + (since ? " (last update " + since + " min ago)" : "") + ". The full reply shows here when the turn finishes." });
-        w.createDiv({ cls: "os-wsub", text: "STOP interrupts it. Messages you send now wait in the queue and go out when it's done." }); }
+      if (st === "running" && this.claudBusy(id)) { const since = meta.lastActivityAt ? Math.max(0, Math.round((Date.now() - meta.lastActivityAt) / 60000)) : 0;
+        const w = b.createDiv({ cls: "os-think os-working" }); w.createDiv({ text: "Claude is replying…" + (since ? " (last update " + since + " min ago)" : "") }); }
       if (near) b.scrollTop = b.scrollHeight;
-      this.osCQRender(); u.chatTitle.setText("CLAUDIAN \u00B7 " + (meta.title || "Untitled")); u.chatCost.setText(st === "running" ? "WORKING" : st === "awaiting-user" ? "NEEDS YOU" : "READY"); u.chatCost.toggleClass("run", st === "running");
+      this.osCQRender(); u.chatTitle.setText("CLAUDIAN \u00B7 " + (meta.title || "Untitled")); const act = st === "running" && this.claudBusy(id); u.chatCost.setText(act ? "WORKING" : st === "awaiting-user" ? "NEEDS YOU" : "READY"); u.chatCost.toggleClass("run", act);
     } catch (e) { console.error("Project HQ claudian view", e); } finally { this.osClaudBusy = false; }
   },
   async osClaudStop(id) { const cp = this.claudian(); try { await cp.api.send(id, { mode: "interrupt" }); } catch (e) { new Notice("Could not stop: " + (e && e.message || e)); } },
@@ -1834,10 +1833,10 @@ Object.assign(HQView.prototype, {
     u.target.value = pend || (convs.some((c) => c[0] === prev) || (prev === "hq" && hqOn) ? prev : (act || (hqOn ? "hq" : "new"))); this.osChatLayout(); this.osTargetLabel(); if (!u.tpop.hasClass("os-hide")) this.osTargetMenu(true);
   },
   // ---- Claudian path (only when a Claudian session is picked in the target list; HQ chat is the default) ----
-  claudBusy(id) { const cp = this.claudian(); try { return !!(cp && cp.sessionMessaging && cp.sessionMessaging.status(id) === "running"); } catch (e) { return false; } },
+  claudBusy(id) { const cp = this.claudian(); try { if (!(cp && cp.sessionMessaging && cp.sessionMessaging.status(id) === "running")) return false; const m = cp.chatHost.getConversationList().find((x) => x.id === id); return !m || !m.lastActivityAt || Date.now() - m.lastActivityAt < 180000; } catch (e) { return false; } },
   async osSend(text, target) {
     const u = this.osUI; text = String(text || "").trim(); if (!target || target === "hq") return;
-    if (!text) { if (this.claudBusy(target)) this.osClaudStop(target); return; }
+    if (!text) return;
     if (target === "new") { u.cmdIn.value = ""; this.osAutoGrow(); try { u.cmdMsg.setText("Starting a new chat in " + (this.project ? this.project.name : "this project") + "\u2026"); await this.osNewClaudChat(text); this.osRemember(text); u.cmdMsg.setText("Sent."); } catch (e) { u.cmdIn.value = text; u.cmdMsg.setText("Could not start a chat: " + (e && e.message || e)); } return; }
     this.osQ = this.osQ || {}; const q = this.osQ[target] = this.osQ[target] || [];
     if (this.claudBusy(target) || q.length) { q.push({ text }); this.osRemember(text); u.cmdIn.value = ""; this.osAutoGrow(); this.osGoLabel(); this.osCQRender(); return; } const say = (m, bad) => { u.cmdMsg.setText(m); u.cmdMsg.toggleClass("bad", !!bad); };
@@ -2439,7 +2438,7 @@ Object.assign(HQView.prototype, {
   },
   osGoLabel() {
     const u = this.osUI, hq = this.hq(); if (!u || !u.go) return;
-    if (u.target.value !== "hq") { const busy = this.claudBusy(u.target.value), has = !!u.cmdIn.value.trim(), q = busy && has; u.go.setText(q ? "QUEUE" : busy ? "STOP" : "SEND"); u.go.toggleClass("stop", busy && !q); u.go.toggleClass("queue", q); u.go.setAttr("aria-label", q ? "Queue this message (sends when Claude finishes)" : busy ? "Stop Claude" : "Send message"); return; } const c = hq && hq.get(hq.activeId), busy = !!(c && c.busy && u.target.value === "hq"), has = !!(u.cmdIn.value.trim() || u.imgs.length), q = busy && has;
+    if (u.target.value !== "hq") { const busy = this.claudBusy(u.target.value), has = !!u.cmdIn.value.trim(), q = busy && has; u.go.setText(q ? "QUEUE" : "SEND"); u.go.toggleClass("stop", false); u.go.toggleClass("queue", q); u.go.setAttr("aria-label", q ? "Queue this message (SEND NOW in the queue interrupts Claude)" : "Send message"); return; } const c = hq && hq.get(hq.activeId), busy = !!(c && c.busy && u.target.value === "hq"), has = !!(u.cmdIn.value.trim() || u.imgs.length), q = busy && has;
     u.go.setText(q ? "QUEUE" : busy ? "STOP" : "SEND"); u.go.toggleClass("stop", busy && !q); u.go.toggleClass("queue", q); u.go.setAttr("aria-label", q ? "Queue this message (sends when Claude finishes)" : busy ? "Stop Claude" : "Send message");
   },
   osChatQueue(text) {
@@ -2449,7 +2448,7 @@ Object.assign(HQView.prototype, {
   },
   osQueueRender(c) {
     const u = this.osUI; if (!u || !u.queue) return; const q = (c && c.queue) || []; u.queue.empty(); u.queue.toggleClass("os-hide", !q.length); if (!q.length) return;
-    u.queue.createDiv({ cls: "os-q-h", text: "QUEUED (" + q.length + ") · sends when Claude finishes" });
+    u.queue.createDiv({ cls: "os-q-h", text: "QUEUED (" + q.length + ") · sends when Claude finishes, or SEND NOW to interrupt" });
     q.forEach((m, i) => { const r = u.queue.createDiv({ cls: "os-q-i" }); r.createSpan({ cls: "os-q-n", text: String(i + 1) }); r.createSpan({ cls: "os-q-t", text: (m.text || "").replace(/\s+/g, " ").slice(0, 160) + (m.imgs.length ? "  [" + m.imgs.length + " image" + (m.imgs.length > 1 ? "s" : "") + "]" : ""), attr: { title: m.text } });
       const ed = r.createEl("button", { cls: "os-chb", text: "EDIT", attr: { "aria-label": "Move queued message " + (i + 1) + " back to the box" } }); ed.onclick = () => { q.splice(i, 1); u.cmdIn.value = m.text; u.imgs = m.imgs; this.osRenderAtts(); this.osAutoGrow(); this.osGoLabel(); this.osQueueRender(c); u.cmdIn.focus(); };
       const x = r.createEl("button", { cls: "os-chb", text: "×", attr: { "aria-label": "Remove queued message " + (i + 1) } }); x.onclick = () => { q.splice(i, 1); this.osQueueRender(c); }; });
