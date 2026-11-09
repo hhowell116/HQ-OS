@@ -1514,10 +1514,13 @@ Object.assign(HQView.prototype, {
     ui.grip.addEventListener("keydown", (e) => { if (e.key === "ArrowUp" || e.key === "ArrowDown") { e.preventDefault(); ui.userH = Math.max(0, t.offsetHeight + (e.key === "ArrowUp" ? 24 : -24)); this.osAutoGrow(true); lsSet("hqos-in-h", ui.userH); } });
     ui.grip.addEventListener("dblclick", () => { ui.userH = 0; lsSet("hqos-in-h", 0); this.osAutoGrow(true); });
     ui.exp.onclick = () => this.osSetFull(!ui.full);
+    ui.fx = cmd.createEl("button", { cls: "os-fx", text: "✕", attr: { "aria-label": "Close the big message box", title: "Close (Esc)" } }); ui.fx.onclick = () => this.osSetFull(false);
     ui.model.onchange = ui.effort.onchange = () => { const c = this.hq().get(this.hq().activeId); if (c && !c.busy) { c.model = ui.model.value; c.effort = ui.effort.value; this.hq().save(c); } };
     ui.model.value = MODS.chat.model || ""; ui.effort.value = MODS.chat.effort || ""; this.osAutoGrow();
   },
-  osSetFull(on) { const u = this.osUI; if (!u) return; u.full = !!on; u.cmd.toggleClass("full", u.full); u.exp.setText(u.full ? "COLLAPSE" : "EXPAND"); u.exp.setAttr("aria-pressed", String(u.full)); this.osAutoGrow(true); u.cmdIn.focus(); },
+  osSetFull(on) { const u = this.osUI; if (!u) return; u.full = !!on; u.grid.toggleClass("cmd-full", u.full);
+    if (u.fullOut) { document.removeEventListener("pointerdown", u.fullOut, true); u.fullOut = null; }
+    if (u.full) { u.fullOut = (e) => { if (!u.cmd.contains(e.target)) { e.preventDefault(); e.stopPropagation(); this.osSetFull(false); } }; setTimeout(() => { if (u.full && u.fullOut) document.addEventListener("pointerdown", u.fullOut, true); }, 0); } u.cmd.toggleClass("full", u.full); u.exp.setText(u.full ? "COLLAPSE" : "EXPAND"); u.exp.setAttr("aria-pressed", String(u.full)); this.osAutoGrow(true); u.cmdIn.focus(); },
   osAddImage(f) {
     const u = this.osUI; if (!u) return; const say = (m) => { u.cmdMsg.setText(m); u.cmdMsg.addClass("bad"); setTimeout(() => { u.cmdMsg.removeClass("bad"); this.osCtxHint(); }, 4000); };
     if (u.imgs.length >= 5) return say("At most 5 images per message."); if (f.size > 5 * 1024 * 1024) return say("Image is over 5 MB.");
