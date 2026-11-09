@@ -483,7 +483,7 @@ function renderInsights(v, el) {
       const h = c.createDiv({ cls: "lhq-top" }); h.createDiv({ cls: "lhq-name", text: a.title, title: a.title });
       const ch = h.createDiv({ cls: "lhq-chips" }); ch.createSpan({ text: a.type }); const mm = shortModel(st && st.model || a.model); if (mm) ch.createSpan({ text: mm }); if (done) ch.createSpan({ text: "Done" });
       const bar = c.createDiv({ cls: "lhq-pbar" + (done ? " done" : " run") }); bar.createEl("i");
-      const row = v.agents.find((x) => x.name === a.type && x.state !== "idle");
+      const row = run.filter((x) => x.type === a.type).length === 1 ? v.agents.find((x) => x.name === a.type && x.state !== "idle") : null; // board rows are per agent type, so only trust them when one agent of that type runs
       c.createDiv({ cls: "lhq-psub", text: redact(row && row.task ? clean(row.task) : a.tool ? stepText(a.tool) : "starting…").slice(0, 140) });
       const m = c.createDiv({ cls: "lhq-meta" });
       const el1 = m.createSpan({ cls: done ? "" : "lhq-el", text: dur((done ? a.mtime : now) - a.start) }); if (!done) el1.dataset.start = a.start;
@@ -938,6 +938,7 @@ class HQView extends ItemView {
       await mainTick();
       const now = Date.now();
       for (const a of this.live) { if (a.jf && (a.status === "running" || (a.status === "done" && now - a.mtime < 30 * 60000))) a.st = await agentStats(a.jf); }
+      const fin = this.live.filter((a) => a.status !== "running").length; if (fin !== this.insFin) { this.insFin = fin; this.insActAt = 0; } // a new finished agent: rescan reports now
       await this.insActionsUpdate(force);
       const ci = cacheInfo(), cards = this.insRules();
       if (this.cacheChip) { const show = ci && (ci.state !== "warm" || ci.compact); this.cacheChip.toggle(!!show); if (show) { this.cacheChip.setText(ci.state !== "warm" ? ci.msg : "Context ~" + kfmt(ci.ctx) + ": consider /compact"); this.cacheChip.toggleClass("cold", ci.state === "cold"); this.cacheChip.title = ci.compact ? "Large chat (" + kfmt(ci.ctx) + " tokens): consider /compact" : ci.msg; } }
