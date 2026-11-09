@@ -691,3 +691,4 @@
 /* message box sits flush with the bottom of the side panels: the status line moves above it and takes no space when empty */
 .hqos .os-mid>.os-cmd{order:3}.hqos .os-mid>.os-cmdmsg{order:2;min-height:0;padding:0 2px}
 .hqos .os-mid>.os-cmdmsg:empty{display:none}
+.hqos .os-chat.claud.nohq .os-chh .os-chb{display:none}

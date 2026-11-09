@@ -833,7 +833,7 @@ const MOD_DEFAULTS = {
   rules: { on: true, triggers: RULE_TRIGGERS.slice(), days: 7, targets: [{ label: "Rules.md", path: "Claude'sWorkspace/Rules.md", kind: "rules" }, { label: "Marketing Playbook", path: "", kind: "playbook" }] },
   actions: { on: true, need: true, money: true, sec: true, fail: true, keywords: "" },
   orb: { on: true, particles: 900, fps: 32, arcs: true, audio: true, audioK: 100, nowPlaying: true },
-  chat: { on: true, model: "", effort: "", tools: true, cost: true },
+  chat: { on: false, model: "", effort: "", tools: true, cost: true }, // HQ's own chat is off by default (2026-11-08): the box talks to Claudian chats
   guard: { on: true, folders: GUARD_FOLDERS.slice() },
 };
 const cloneJ = (o) => JSON.parse(JSON.stringify(o));
@@ -1650,7 +1650,7 @@ Object.assign(HQView.prototype, {
       } else this.osConvs = [];
       const now = Date.now();
       this.live.filter((a) => a.status === "running").slice(0, 8).forEach((a) => rows.push({ kind: "agent", id: a.id, title: clean(a.title), st: "running in background", tok: a.st ? { i: (a.st.tin || 0) + (a.st.tcr || 0) + (a.st.tcc || 0), o: a.st.tout || 0, cost: a.st.cost || 0 } : null, ts: a.mtime, snip: redact(a.tool ? stepText(a.tool) : a.text || "").replace(/\s+/g, " ").slice(0, 180), type: a.type }));
-      if (this.hq()) this.hq().list(this.project && this.project.id).slice(0, 3).reverse().forEach((c) => rows.unshift({ kind: "hq", id: c.id, tok: (() => { const ts = c.turns || []; return ts.length ? { i: ts.reduce((n, t) => n + (t.in || 0) + (t.cache || 0), 0), o: ts.reduce((n, t) => n + (t.out || 0), 0), cost: ts.reduce((n, t) => n + (t.cost || 0), 0) } : null; })(), title: (c.pinned ? "★ " : "") + clean(c.title), st: c.busy ? "thinking" : "idle", ts: c.updated, snip: (() => { const m = c.msgs.filter((x) => x.r === "asst").pop(); const t = m && m.blocks.filter((b) => b.k === "text").map((b) => b.text).join(" "); return clean(redact(t || "")).replace(/\s+/g, " ").slice(0, 180); })() }));
+      if (this.hq() && MODS.chat.on) this.hq().list(this.project && this.project.id).slice(0, 3).reverse().forEach((c) => rows.unshift({ kind: "hq", id: c.id, tok: (() => { const ts = c.turns || []; return ts.length ? { i: ts.reduce((n, t) => n + (t.in || 0) + (t.cache || 0), 0), o: ts.reduce((n, t) => n + (t.out || 0), 0), cost: ts.reduce((n, t) => n + (t.cost || 0), 0) } : null; })(), title: (c.pinned ? "★ " : "") + clean(c.title), st: c.busy ? "thinking" : "idle", ts: c.updated, snip: (() => { const m = c.msgs.filter((x) => x.r === "asst").pop(); const t = m && m.blocks.filter((b) => b.k === "text").map((b) => b.text).join(" "); return clean(redact(t || "")).replace(/\s+/g, " ").slice(0, 180); })() }));
       { let n = 0; const keep = []; rows.forEach((r) => { if (r.kind !== "chat" || r.st !== "idle" || n++ < 3) keep.push(r); }); rows.length = 0; keep.forEach((r) => rows.push(r)); }
       this.osRows = rows; this.osFillTarget(); this.osSessRender();
       for (const [id, key, sn] of reads) { let t = ""; try { t = String(await cp.api.read(id) || ""); } catch (e) {} this.osSnip[id] = { key, at: Date.now(), text: /^.no reply.$/.test(t) ? (sn && sn.text || "") : clean(redact(t)).replace(/\s+/g, " ").trim().slice(0, 180) }; const r = rows.find((x) => x.id === id); if (r) r.snip = this.osSnip[id].text; }
@@ -1759,8 +1759,8 @@ Object.assign(HQView.prototype, {
     const u = this.osUI, P = u.tpop, cp = this.claudian(); if (!keep && !P.hasClass("os-hide")) { this.osTargetClose(); return; }
     P.empty(); P.removeClass("os-hide"); const cur = u.target.value, convs = this.osConvs || [];
     const row = (val, label, sub) => { const r = P.createDiv({ cls: "os-tro" + (val === cur ? " cur" : ""), attr: { role: "option", "aria-selected": String(val === cur) } }); const n = r.createDiv({ cls: "os-trn" }); n.createSpan({ cls: "os-trt", text: label }); if (sub) n.createSpan({ cls: "os-trs", text: sub }); n.onclick = () => this.osTargetPick(val); return r; };
-    const hr = row("hq", "HQ CHAT", "built-in"); const lb = hr.createEl("button", { cls: "os-chb", text: "CHATS", attr: { title: "HQ chat list: open, pin, rename, delete" } }); lb.onclick = (e) => { e.stopPropagation(); this.osTargetClose(); this.osChatList(); };
-    if (convs.length) P.createDiv({ cls: "os-trh", text: "CLAUDIAN" });
+    if (MODS.chat.on) { const hr = row("hq", "HQ CHAT", "built-in"); const lb = hr.createEl("button", { cls: "os-chb", text: "CHATS", attr: { title: "HQ chat list: open, pin, rename, delete" } }); lb.onclick = (e) => { e.stopPropagation(); this.osTargetClose(); this.osChatList(); }; }
+    if (convs.length && MODS.chat.on) P.createDiv({ cls: "os-trh", text: "CLAUDIAN" });
     convs.forEach(([id, title, act]) => {
       const r = row(id, title, act ? "open now" : "");
       const ren = r.createEl("button", { cls: "os-chb", text: "RENAME", attr: { "aria-label": "Rename " + title } });
@@ -1781,8 +1781,9 @@ Object.assign(HQView.prototype, {
   },
   osFillTarget() {
     const u = this.osUI; if (!u || !u.target) return; const prev = u.target.value || "hq", convs = this.osConvs || [], sig = JSON.stringify(convs); if (u.tsig === sig) return; u.tsig = sig; u.target.empty();
-    u.target.createEl("option", { value: "hq", text: "HQ CHAT" }); convs.forEach(([id, t, act]) => u.target.createEl("option", { value: id, text: "CLAUDIAN: " + (act ? "* " : "") + t.slice(0, 28) }));
-    u.target.value = convs.some((c) => c[0] === prev) || prev === "hq" ? prev : "hq"; this.osChatLayout(); this.osTargetLabel(); if (!u.tpop.hasClass("os-hide")) this.osTargetMenu(true);
+    const hqOn = MODS.chat.on || !convs.length; if (hqOn) u.target.createEl("option", { value: "hq", text: "HQ CHAT" }); convs.forEach(([id, t, act]) => u.target.createEl("option", { value: id, text: (MODS.chat.on ? "CLAUDIAN: " : "") + t.slice(0, 40) }));
+    const act = (convs.find((c) => c[2]) || convs[0] || [])[0];
+    u.target.value = convs.some((c) => c[0] === prev) || (prev === "hq" && hqOn) ? prev : (act || "hq"); this.osChatLayout(); this.osTargetLabel(); if (!u.tpop.hasClass("os-hide")) this.osTargetMenu(true);
   },
   // ---- Claudian path (only when a Claudian session is picked in the target list; HQ chat is the default) ----
   async osSend(text, target) {
@@ -2259,7 +2260,7 @@ Object.assign(HQView.prototype, {
   osChatScheduleStream() { if (this.osStreamT) return; this.osStreamT = setTimeout(() => { this.osStreamT = 0; this.osChatRender(false); }, 60); },
   osChatLayout() {
     const u = this.osUI, hq = this.hq(), c = hq && hq.get(hq.activeId), claud = u.target.value !== "hq", open = claud || !!(u.chatOpen && c);
-    u.chatBox.toggleClass("claud", claud); if (claud && u.claudId !== u.target.value) { u.claudId = u.target.value; u.claudKey = ""; setTimeout(() => this.osClaudRender(true), 0); } if (!claud) u.claudId = "";
+    u.chatBox.toggleClass("claud", claud); u.chatBox.toggleClass("nohq", !MODS.chat.on); if (claud && u.claudId !== u.target.value) { u.claudId = u.target.value; u.claudKey = ""; setTimeout(() => this.osClaudRender(true), 0); } if (!claud) u.claudId = "";
     u.mid.toggleClass("chatting", open); u.chatBox.toggleClass("os-hide", !open);
     this.osGoLabel();
     const hqT = u.target.value === "hq"; u.cmdIn.placeholder = hqT ? "Message Claude Code" + (this.project ? " about " + this.project.name : "") + "…  (type / for commands)" : "Message the selected Claudian session…"; u.hint.setText(hqT ? "ENTER sends · SHIFT+ENTER new line · / commands · UP recalls last" : "ENTER sends to Claudian · SHIFT+ENTER new line");
