@@ -1389,7 +1389,7 @@ class Orb {
     const base = [0.22, 0.4, 0.7, 1], sz = [1.1, 1.5, 2, 2.5].map((s) => s * dpr), mix = this.tint;
     const col = (a) => "rgba(" + Math.round(THEME_RGB.a[0] + (THEME_RGB.w[0] - THEME_RGB.a[0]) * mix) + "," + Math.round(THEME_RGB.a[1] + (THEME_RGB.w[1] - THEME_RGB.a[1]) * mix) + "," + Math.round(THEME_RGB.a[2] + (THEME_RGB.w[2] - THEME_RGB.a[2]) * mix) + "," + a.toFixed(3) + ")";
     for (let b = 0; b < 4; b++) { ctx.fillStyle = col(base[b] * (0.55 + 0.45 * I)); const a = this.bx[b], n = this.bn[b], s = sz[b]; for (let j = 0; j < n; j += 2) ctx.fillRect(a[j], a[j + 1], s, s); }
-    if (ak && (HQAudio.on || AL > 0.002)) this.eq(ctx, cx, cy, R, AF, ak, dpr);
+    if (ak && (HQAudio.on || AL > 0.002)) { const dim = ctx.canvas.closest(".os-mid.chatting") ? 0.55 : 1; ctx.save(); ctx.globalAlpha *= dim; this.eq(ctx, cx, cy, R, AF, ak, dpr); ctx.restore(); }
     // lightning arcs: only while agents are working, at most 2 at once, each lives ~0.5 s and they spawn >= 0.55 s apart (never > 3 Hz)
     if (MODS.orb.arcs && !this.still && I > 0.6 && t > this.nextArc && this.arcs.length < 2) {
       this.nextArc = t + 550 + Math.random() * 900; const a = (Math.random() * this.N) | 0; let b = (Math.random() * this.N) | 0, g = 0;
