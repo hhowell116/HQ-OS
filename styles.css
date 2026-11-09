@@ -746,3 +746,4 @@
 .hqos .os-duelw{width:100%}
 .hqos .os-left>.os-fill,.hqos .os-right>.os-fill{margin-top:auto}
 .hqos .os-perm.yolo{color:var(--os-am);border-color:var(--os-am)}
+.hqos .os-cbody,.hqos .os-cbody *{-webkit-user-select:text;user-select:text;cursor:auto}.hqos .os-cbody button{cursor:pointer}
