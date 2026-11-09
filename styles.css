@@ -625,3 +625,8 @@
 .hqos .os-grid .os-p.os-max.collapsed>.os-pb{display:block}
 .hqos .os-tlb{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}.hqos .os-max .os-tlb{display:block;-webkit-line-clamp:unset}
 .hqos .os-stok{flex:none;font-variant-numeric:tabular-nums;color:var(--tx);font-size:.82em;letter-spacing:.04em;padding:0 5px;border:1px solid rgba(var(--os-acrgb),.35)}
+/* now playing, under the globe */
+.hqos .os-np{position:absolute;left:50%;bottom:6%;transform:translateX(-50%);max-width:80%;text-align:center;pointer-events:none;z-index:2;padding:4px 12px;background:rgba(var(--os-bgrgb),.55);border:1px solid rgba(var(--os-acrgb),.3)}
+.hqos .os-npt{color:var(--tx);font-weight:700;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hqos .os-nps{color:var(--os-dim);font-size:.85em;letter-spacing:.08em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hqos .os-mid.chatting .os-np{display:none}

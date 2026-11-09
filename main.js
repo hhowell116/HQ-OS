@@ -832,7 +832,7 @@ const MOD_DEFAULTS = {
   cache: { on: true, warn: 50, cold: 60, compact: 150 },
   rules: { on: true, triggers: RULE_TRIGGERS.slice(), days: 7, targets: [{ label: "Rules.md", path: "Claude'sWorkspace/Rules.md", kind: "rules" }, { label: "Marketing Playbook", path: "", kind: "playbook" }] },
   actions: { on: true, need: true, money: true, sec: true, fail: true, keywords: "" },
-  orb: { on: true, particles: 900, fps: 32, arcs: true, audio: true, audioK: 100 },
+  orb: { on: true, particles: 900, fps: 32, arcs: true, audio: true, audioK: 100, nowPlaying: true },
   chat: { on: true, model: "", effort: "", tools: true, cost: true },
   guard: { on: true, folders: GUARD_FOLDERS.slice() },
 };
@@ -1296,6 +1296,23 @@ const HQAudio = window.__hqAudio = {
     this.level = tot / 24; this.bass = (this.bands[2] + this.bands[3] + this.bands[4] + this.bands[5]) / 4;
   },
 };
+const HQNow = {
+  proc: null, data: null, subs: new Set(), failAt: 0,
+  start(script) {
+    if (this.proc || Date.now() - this.failAt < 60000 || !fs.existsSync(script)) return;
+    try {
+      const p = this.proc = require("child_process").spawn("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script], { windowsHide: true, stdio: ["ignore", "pipe", "ignore"] });
+      let buf = ""; p.stdout.on("data", (d) => { buf += d.toString("utf8"); let i; while ((i = buf.indexOf("\n")) >= 0) { const l = buf.slice(0, i).trim(); buf = buf.slice(i + 1); if (l.startsWith("{")) { try { this.data = JSON.parse(l); this.subs.forEach((f) => f(this.data)); } catch (e) {} } } });
+      p.on("exit", () => { if (this.proc === p) { this.proc = null; this.failAt = Date.now(); } }); p.on("error", () => { if (this.proc === p) { this.proc = null; this.failAt = Date.now(); } });
+    } catch (e) { this.proc = null; this.failAt = Date.now(); }
+  },
+  stop() { const p = this.proc; this.proc = null; if (p) { try { require("child_process").execFile("taskkill", ["/PID", String(p.pid), "/T", "/F"], { windowsHide: true }, () => {}); } catch (e) { try { p.kill(); } catch (e2) {} } } this.data = null; this.subs.forEach((f) => f(null)); },
+  pick(d) { // the playing session Windows calls current, else any playing one
+    const ss = (d && d.sessions) || []; const pl = ss.filter((x) => x.status === "Playing" && x.title); return pl.find((x) => x.app === d.current) || pl[0] || null;
+  },
+  appName(id) { const a = String(id || "").split("!").pop().replace(/\.exe$/i, ""); return /spotify/i.test(a) ? "Spotify" : /msedge/i.test(a) ? "Edge" : /chrome/i.test(a) ? "Chrome" : /brave/i.test(a) ? "Browser" : /firefox/i.test(a) ? "Firefox" : /zune|music/i.test(a) ? "Media Player" : a.charAt(0).toUpperCase() + a.slice(1); },
+};
+window.addEventListener("beforeunload", () => HQNow.stop());
 function hueShift(rgb, deg) { // rotate a colour's hue (for the equalizer's edge colour)
   let [r, g, b] = rgb.map((x) => x / 255); const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2, d = mx - mn; let h = 0, s2 = 0;
   if (d) { s2 = d / (1 - Math.abs(2 * l - 1)); h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; h *= 60; }
@@ -1394,7 +1411,7 @@ Object.assign(HQView.prototype, {
     this.contentEl.toggleClass("hqos", on); this.osStop(); if (this.pageEl) { this.pageEl.empty(); this.pageEl.toggleClass("os", on); }
     if (!on) ["--tx", "--glass", "--glass-b"].forEach((k) => this.contentEl.style.removeProperty(k));
   },
-  osStop() { HQAudio.stop(); if (this.osTipMO) { this.osTipMO.disconnect(); this.osTipMO = null; } if (this.osUnsub) { this.osUnsub(); this.osUnsub = null; } clearTimeout(this.osStreamT); this.osStreamT = 0; if (this.orb) this.orb.run(false); if (this.osIO) this.osIO.disconnect(); if (this.osRO) this.osRO.disconnect(); this.orb = null; this.osIO = this.osRO = null; this.osUI = null; },
+  osStop() { HQAudio.stop(); HQNow.stop(); if (this.osNpUnsub) { this.osNpUnsub(); this.osNpUnsub = null; } if (this.osTipMO) { this.osTipMO.disconnect(); this.osTipMO = null; } if (this.osUnsub) { this.osUnsub(); this.osUnsub = null; } clearTimeout(this.osStreamT); this.osStreamT = 0; if (this.orb) this.orb.run(false); if (this.osIO) this.osIO.disconnect(); if (this.osRO) this.osRO.disconnect(); this.orb = null; this.osIO = this.osRO = null; this.osUI = null; },
   osBuild() {
     const page = this.pageEl; page.empty(); page.addClass("os"); const ui = this.osUI = { sig: {}, inView: true }, wrap = page.createDiv({ cls: "os-wrap" });
     wrap.createDiv({ cls: "os-sweep" }); ui.top = wrap.createDiv({ cls: "os-top" }); ui.run = wrap.createDiv({ cls: "os-run os-hide", attr: { role: "status", "aria-live": "polite", "aria-label": "Running agents" } });
@@ -1406,6 +1423,9 @@ Object.assign(HQView.prototype, {
       const tg = () => { this.osColl.has(k) ? this.osColl.delete(k) : this.osColl.add(k); p.p.toggleClass("collapsed", this.osColl.has(k)); p.h.setAttr("aria-expanded", String(!this.osColl.has(k))); }; p.h.onclick = tg; p.h.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); tg(); } }); });
     const orbw = M.createDiv({ cls: "os-orbw" }); ui.cv = orbw.createEl("canvas", { cls: "os-cv", attr: { "aria-hidden": "true" } });
     orbw.insertAdjacentHTML("beforeend", '<svg class="os-ring" viewBox="0 0 200 200" aria-hidden="true"><circle cx="100" cy="100" r="96" class="r1"/><circle cx="100" cy="100" r="88" class="r2"/><path class="r3" d="M100 2v10M100 188v10M2 100h10M188 100h10"/></svg>');
+    ui.np = orbw.createDiv({ cls: "os-np os-hide", attr: { "aria-live": "polite" } }); ui.npT = ui.np.createDiv({ cls: "os-npt" }); ui.npS = ui.np.createDiv({ cls: "os-nps" });
+    const npShow = (d) => { if (this.osUI !== ui) return; const x = HQNow.pick(d); ui.np.toggleClass("os-hide", !x); if (!x) return; const t = String(x.title).slice(0, 120), a = [x.artist, HQNow.appName(x.app)].filter(Boolean).join("  ·  ").slice(0, 100); if (ui.npT.textContent !== "\u266A " + t) ui.npT.setText("\u266A " + t); if (ui.npS.textContent !== a) ui.npS.setText(a); };
+    HQNow.subs.add(npShow); this.osNpUnsub = () => HQNow.subs.delete(npShow); npShow(HQNow.data);
     ui.status = M.createDiv({ cls: "os-status", attr: { role: "status", "aria-live": "polite" } });
     ui.mid = M; ui.chatBox = M.createDiv({ cls: "os-chat os-hide" }); this.osChatHeader(ui.chatBox); ui.chatList = ui.chatBox.createDiv({ cls: "os-clist os-hide" }); ui.chatBody = ui.chatBox.createDiv({ cls: "os-cbody", attr: { role: "log", "aria-live": "polite", "aria-label": "Claude Code conversation" } }); ui.queue = ui.chatBox.createDiv({ cls: "os-queue os-hide", attr: { "aria-label": "Queued messages" } });
     { const tip = ui.tip = wrap.createDiv({ cls: "os-tip os-hide", attr: { "aria-hidden": "true" } });
@@ -1502,7 +1522,8 @@ Object.assign(HQView.prototype, {
   },
   osRemember(text) { const H = (this.osHist || []).filter((x) => x !== text); H.push(text); this.osHist = H.slice(-30); try { localStorage.setItem("hqos-hist", JSON.stringify(this.osHist)); } catch (e) {} if (this.osUI) this.osUI.hi = -1; },
   osGate() { const ui = this.osUI; if (!ui || !this.orb) return; ui.cv.toggleClass("os-hide", !MODS.orb.on); const go = MODS.orb.on && !document.hidden && ui.inView && !(this.osPage === "mods") && (!this.contentEl.isShown || this.contentEl.isShown()); this.orb.run(go);
-    if (go && MODS.orb.audio) HQAudio.start(); else HQAudio.stop(); },
+    if (go && MODS.orb.audio) HQAudio.start(); else HQAudio.stop();
+    if (go && MODS.orb.nowPlaying) HQNow.start(path.join(this.plugin.hq.dir, "nowplaying.ps1")); else HQNow.stop(); },
   // ---- render everything (cheap; each region redraws only when its signature changed) ----
   osRender(force) {
     if (!this.osUI) this.osBuild();
@@ -1895,7 +1916,7 @@ Object.assign(HQView.prototype, {
     f = card("actions"); [["need", "Decisions (needs you)"], ["money", "Costs"], ["sec", "Security"], ["fail", "Failures"]].forEach(([fl, l]) => chk(f, "actions", fl, l));
     { const r = f.createDiv({ cls: "os-f" }), id = nid(); r.createEl("label", { text: "Custom keywords", attr: { for: id } }); const i = r.createEl("input", { attr: { id, type: "text", placeholder: "comma separated, e.g. deadline, refund" } }); i.value = MODS.actions.keywords; i.onkeydown = (e) => e.stopPropagation(); i.oninput = () => set("actions", { keywords: i.value }); }
     // --- orb
-    f = card("orb"); num(f, "orb", "particles", "Particles", 100, 1500, 50); num(f, "orb", "fps", "FPS cap", 10, 60); chk(f, "orb", "arcs", "Lightning arcs"); chk(f, "orb", "audio", "Audio equalizer across the globe"); num(f, "orb", "audioK", "Audio strength %", 10, 300, 10);
+    f = card("orb"); num(f, "orb", "particles", "Particles", 100, 1500, 50); num(f, "orb", "fps", "FPS cap", 10, 60); chk(f, "orb", "arcs", "Lightning arcs"); chk(f, "orb", "audio", "Audio equalizer across the globe"); chk(f, "orb", "nowPlaying", "Show what's playing (Spotify, YouTube…)"); num(f, "orb", "audioK", "Audio strength %", 10, 300, 10);
     // --- chat
     f = card("chat"); sel(f, "chat", "model", "Default model", HQ_MODELS.map((m) => [m, m ? m.toUpperCase() : "DEFAULT"])); sel(f, "chat", "effort", "Default effort", HQ_EFFORTS.map((m) => [m, m ? m.toUpperCase() : "DEFAULT"])); chk(f, "chat", "tools", "Show tool lines"); chk(f, "chat", "cost", "Show cost");
     // --- guard
