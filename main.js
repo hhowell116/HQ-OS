@@ -2529,10 +2529,15 @@ const HQ_SCENES = [
   { name: "INVADERS", draw(ctx, t, A, B, st, rgb, W = 64) {
     const H = 30;
     if (!st.dead) { st.dead = new Set(); st.by = -1; st.bx = 0; st.boom = null; }
-    const ox = ((W - 64) >> 1) + 4 + Math.abs(((t >> 1) % 16) - 8), fr = (t >> 2) % 2;
+    const oxAt = (tt) => ((W - 64) >> 1) + 4 + Math.abs(((tt >> 1) % 16) - 8), ox = oxAt(t), fr = (t >> 2) % 2;
     const al = fr ? [".###.", "#.#.#", ".#.#."] : [".###.", "#.#.#", "#...#"];
-    const sx = (W >> 1) - 2 + Math.round((W / 2 - 10) * Math.sin(t / 9));
-    if (st.by < 0 && t % 5 === 0) { st.bx = sx + 2; st.by = H - 7; }
+    // the ship hunts: pick the closest column that still has an alien, lead the target a little, fire once lined up
+    if (st.sx == null) st.sx = (W >> 1) - 2;
+    let tx = null, best = 1e9; const ox2 = oxAt(t + 4);
+    for (let c = 0; c < 6; c++) { let alive = false; for (let r = 0; r < 3; r++) if (!st.dead.has(r * 6 + c)) alive = true; if (!alive) continue; const x = ox2 + c * 8, d = Math.abs(x - st.sx); if (d < best) { best = d; tx = x; } }
+    if (tx != null) { const dx = tx - st.sx; st.sx += Math.max(-1.5, Math.min(1.5, dx)); }
+    const sx = Math.round(st.sx);
+    if (st.by < 0 && tx != null && Math.abs(tx - st.sx) < 1.2 && t - (st.shot || 0) >= 2) { st.bx = sx + 2; st.by = H - 7; st.shot = t; }
     if (st.by >= 0) {
       st.by -= 2;
       for (let r = 0; r < 3 && st.by >= 0; r++) for (let c = 0; c < 6; c++) {
@@ -2600,6 +2605,31 @@ const HQ_SCENES = [
     ctx.save(); ctx.fillStyle = k; ctx.beginPath(); ctx.ellipse(x + w / 2, y + 9, w / 2, 2, 0, 0, Math.PI * 2); ctx.fill();
     ctx.globalCompositeOperation = "destination-out"; ctx.font = "bold 2.6px Arial, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("VIDEO", x + w / 2, y + 9.15); ctx.restore();
     if (st.fx > 0) { st.fx--; ctx.fillStyle = "rgba(255,240,180," + (st.fx / 40) + ")"; for (let i = 0; i < 12; i++) ctx.fillRect(Math.floor(hqHash(i * 31 + st.c) * W), Math.floor(hqHash(i * 17 + st.c * 3) * Hb), 1, 1); }
+  } },
+  { name: "WIZARDS", smooth: true, draw(ctx, t, A, B, st, rgb, W = 64) {
+    // two wizards volley a spell: cast, it arcs across, the other catches it (it orbits the staff), winds up and fires it back
+    const H = 30, G = H - 3, lx = 6, rx = W - 7, TR = 46, HOLD = 16, WIND = 8, CYC = TR + HOLD + WIND, ph = t % (CYC * 2), side = ph < CYC ? 0 : 1, k = ph % CYC;
+    const tipOf = (x, f, up) => [x + 3 * f, G - (up ? 12 : 10)];
+    const wiz = (x, f, col, raise, glow) => {
+      const c = rgb(col, 0.95), d = rgb(col, 0.6), P = (dx, dy, w, h, kk) => { ctx.fillStyle = kk; ctx.fillRect(f === 1 ? x + dx : x - dx - w + 1, G - dy - h + 1, w, h); };
+      P(-2, 0, 5, 2, d); P(-1, 2, 3, 4, c); P(-1, 6, 3, 2, "rgba(255,226,200,.95)"); P(0, 6, 1, 1, "rgba(20,20,40,.9)"); P(-1, 5, 3, 1, "rgba(235,235,245,.9)");
+      P(-2, 8, 5, 1, c); P(-1, 9, 3, 1, c); P(-1, 10, 2, 1, c); P(-2, 11, 2, 1, c);
+      P(2, 3, 1, 1, "rgba(255,226,200,.95)"); P(3, 0, 1, raise ? 12 : 10, "rgba(170,120,70,.95)");
+      const [tx, ty] = tipOf(x, f, raise); ctx.fillStyle = glow ? "rgba(255,255,255,.95)" : rgb(col, 0.9); ctx.fillRect(tx, ty, 1, 1);
+      if (glow) { ctx.fillStyle = rgb(col, 0.35); ctx.fillRect(tx - 1, ty - 1, 3, 3); }
+    };
+    const from = side ? rx : lx, to = side ? lx : rx, ff = side ? -1 : 1, tf = side ? 1 : -1, colC = side ? B : A;
+    const [x0, y0] = tipOf(from, ff, true), [x1, y1] = tipOf(to, tf, false);
+    let bx, by, raiseFrom = false, raiseTo = false, glowTo = false;
+    if (k < TR) { const p = k / TR, e = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2; bx = x0 + (x1 - x0) * e; by = y0 + (y1 - y0) * e - Math.sin(Math.PI * e) * 7; raiseFrom = k < 6; }
+    else if (k < TR + HOLD) { const a = (k - TR) / 3; bx = x1 + Math.cos(a) * 2.2; by = y1 + Math.sin(a) * 2.2; glowTo = true; }
+    else { const [ux, uy] = tipOf(to, tf, true); bx = ux; by = uy - (k - TR - HOLD) * 0.25; raiseTo = true; glowTo = true; }
+    const ballCol = k < TR ? colC : side ? A : B;
+    st.tr = st.tr || []; st.tr.push([bx, by]); if (st.tr.length > 7) st.tr.shift();
+    wiz(lx, 1, A, side ? raiseTo : raiseFrom, side ? glowTo : false); wiz(rx, -1, B, side ? raiseFrom : raiseTo, side ? false : glowTo);
+    st.tr.forEach(([x, y], i) => { ctx.fillStyle = rgb(ballCol, 0.08 + i * 0.06); ctx.fillRect(Math.round(x), Math.round(y), 1, 1); });
+    const X = Math.round(bx), Y = Math.round(by); ctx.fillStyle = rgb(ballCol, 0.45); ctx.fillRect(X - 1, Y - 1, 3, 3); ctx.fillStyle = "rgba(255,255,255,.95)"; ctx.fillRect(X, Y, 1, 1);
+    if (k >= TR && k < TR + 3) { ctx.fillStyle = "rgba(255,240,180," + (1 - (k - TR) / 3) + ")"; [[-2, 0], [2, 0], [0, -2], [0, 2]].forEach(([a, b]) => ctx.fillRect(x1 + a, y1 + b, 1, 1)); }
   } },
   { name: "CITY", draw(ctx, t, A, B, st, rgb, W = 64) {
     const H = 30;
