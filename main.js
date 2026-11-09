@@ -1092,7 +1092,7 @@ class HQView extends ItemView {
 
 // ===== HQ_OS: sci-fi mission-control layout. Replaces the classic home unless settings.classicLayout is on. =====
 // Presentation only: every data function above (usage, agents, review, insights, todo) is reused. One shared 1 s timer (HQView.osTick) plus the orb's own rAF loop (paused when hidden).
-const OS_PERSONAL = /💀|personal/i;
+const OS_PERSONAL = /💀|(^|[\/])personal[\/]/i;
 const claudianOf = (app) => { const pl = app.plugins && app.plugins.plugins; return pl && (pl.realclaudian || pl.claudian) || null; };
 const osMono = (n) => String(n).padStart(2, "0");
 const shortName = (s) => clean(String(s)).replace(/\s*[(,:].*$/, "").slice(0, 16) || "Section";
@@ -1149,7 +1149,7 @@ class Orb {
   resize() {
     const cv = this.cv, w = cv.clientWidth, h = cv.clientHeight; if (!w || !h) return;
     const dpr = Math.min(window.devicePixelRatio || 1, 1.5); cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
-    this.w = cv.width; this.h = cv.height; this.s = Math.min(this.w, this.h) * 0.4; this.dpr = dpr;
+    this.w = cv.width; this.h = cv.height; this.s = Math.min(this.w, this.h) * 0.42; this.dpr = dpr;
     const gs = this.gs = Math.round(this.s * 2.8), mk = (rgb) => { const g = document.createElement("canvas"); g.width = g.height = gs; const x = g.getContext("2d"), rg = x.createRadialGradient(gs / 2, gs / 2, this.s * 0.1, gs / 2, gs / 2, gs / 2); rg.addColorStop(0, "rgba(" + rgb + ",.34)"); rg.addColorStop(0.45, "rgba(" + rgb + ",.1)"); rg.addColorStop(1, "rgba(" + rgb + ",0)"); x.fillStyle = rg; x.fillRect(0, 0, gs, gs); return g; };
     this.glow = mk("25,227,208"); this.glowA = mk("255,176,46");
   }
@@ -1178,7 +1178,7 @@ class Orb {
       const x = this.X[i], y = this.Y[i], z = this.Z[i], x1 = x * cr + z * sr, z1 = -x * sr + z * cr, y2 = y * cs[0] - z1 * cs[1], z2 = y * cs[1] + z1 * cs[0], p = 1 + z2 * 0.22;
       const b = z2 < -0.4 ? 0 : z2 < 0 ? 1 : z2 < 0.5 ? 2 : 3, a = this.bx[b], n = this.bn[b]; a[n] = cx + x1 * R * p; a[n + 1] = cy + y2 * R * p; this.bn[b] = n + 2;
     }
-    const base = [0.16, 0.32, 0.6, 0.95], sz = [1, 1.3, 1.7, 2.1].map((s) => s * dpr), mix = this.tint;
+    const base = [0.22, 0.4, 0.7, 1], sz = [1.1, 1.5, 2, 2.5].map((s) => s * dpr), mix = this.tint;
     const col = (a) => "rgba(" + Math.round(25 + 230 * mix) + "," + Math.round(227 - 51 * mix) + "," + Math.round(208 - 162 * mix) + "," + a.toFixed(3) + ")";
     for (let b = 0; b < 4; b++) { ctx.fillStyle = col(base[b] * (0.55 + 0.45 * I)); const a = this.bx[b], n = this.bn[b], s = sz[b]; for (let j = 0; j < n; j += 2) ctx.fillRect(a[j], a[j + 1], s, s); }
     // lightning arcs: only while agents are working, at most 2 at once, each lives ~0.5 s and they spawn >= 0.55 s apart (never > 3 Hz)
@@ -1228,6 +1228,7 @@ Object.assign(HQView.prototype, {
     ui.tick = M.createDiv({ cls: "os-ticker" });
     this.orb = new Orb(ui.cv); this.osRO = new ResizeObserver(() => { if (this.orb) this.orb.resize(); }); this.osRO.observe(orbw);
     this.osIO = new IntersectionObserver((es) => { ui.inView = es[es.length - 1].isIntersecting; this.osGate(); }); this.osIO.observe(orbw);
+    if (!this.usage) { try { const c = JSON.parse(localStorage.getItem("project-hq-usage") || "null"); if (c) { this.usage = c.u; this.at = new Date(c.at); } } catch (e) {} }
     sampleVitals(); setTimeout(() => { if (this.osUI === ui) { sampleVitals(); this.osVitalsRender(); } }, 1500);
     this.osSessData(true); this.osElevenCheck(true); setTimeout(() => this.osGate(), 300);
   },
@@ -1283,7 +1284,7 @@ Object.assign(HQView.prototype, {
         const list = cp.chatHost.getConversationList().filter((c) => !c.isArchived && !OS_PERSONAL.test((c.linkedContentPath || "") + " " + (c.title || ""))).sort((a, b) => (b.lastActivityAt || 0) - (a.lastActivityAt || 0)).slice(0, 7);
         for (const c of list) {
           const st = cp.sessionMessaging.status(c.id), key = [c.lastActivityAt, c.messageCount, st].join("|"), sn = this.osSnip[c.id];
-          if (rows.length < 4 && cp.api && (!sn || (sn.key !== key && Date.now() - sn.at > 8000))) { let t = ""; try { t = String(await cp.api.read(c.id) || ""); } catch (e) {} this.osSnip[c.id] = { key, at: Date.now(), text: /^\(no reply\)$/.test(t) ? "" : redact(t).replace(/\s+/g, " ").trim().slice(0, 180) }; }
+          if (rows.length < 4 && cp.api && (!sn || (sn.key !== key && Date.now() - sn.at > 8000))) { let t = ""; try { t = String(await cp.api.read(c.id) || ""); } catch (e) {} this.osSnip[c.id] = { key, at: Date.now(), text: /^\(no reply\)$/.test(t) ? (sn && sn.text || "") : clean(redact(t)).replace(/\s+/g, " ").trim().slice(0, 180) }; }
           rows.push({ kind: "chat", id: c.id, title: clean(c.title || "Untitled"), st: st === "running" ? "thinking" : st === "awaiting-user" ? "needs you" : "idle", ts: c.lastActivityAt || 0, snip: (this.osSnip[c.id] || {}).text || "" });
         }
         this.osConvs = list.map((c) => [c.id, clean(c.title || "Untitled"), !!(cp.api && cp.api.getActiveSessionId && cp.api.getActiveSessionId() === c.id)]);
@@ -1369,7 +1370,7 @@ Object.assign(HQView.prototype, {
   osMidRender() {
     const u = this.osUI, run = this.live.filter((a) => a.status === "running").length, ci = cacheInfo(), cold = ci && ci.state === "cold", hot = vit.cpu > 85;
     const el = this.osEleven && this.osEleven.ok ? this.osEleven : null, posts = this.queue ? this.queue.posted : null, lv = this.todo && this.todo.live;
-    if (this.orb) this.orb.mode(run ? 1 : cold ? 0.15 : 0.28, cold || hot);
+    if (this.orb) this.orb.mode(run ? 1 : cold ? 0.15 : 0.28, !!cold);
     const msg = run ? run + (run === 1 ? " agent" : " agents") + " running" : cold ? "Cache cold: next message re-reads the chat" : hot ? "High system load" : "All systems operational", cls = run ? "run" : (cold || hot) ? "warn" : "ok";
     this.osReg("mid", JSON.stringify([msg, cls, run, posts, el && el.left, this.osEleven && this.osEleven.err, lv]), () => {
       u.status.empty(); u.status.className = "os-status " + cls; u.status.createSpan({ cls: "os-dot" }); u.status.createSpan({ text: msg.toUpperCase() });
