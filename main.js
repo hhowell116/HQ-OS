@@ -1846,7 +1846,8 @@ Object.assign(HQView.prototype, {
   osPickerOpts(hqT) { // model/effort options: Claudian chats use Claudian's visible-model list (Settings > Claudian), defaults spelled out
     const u = this.osUI, cp = this.claudian(); if (!u || !u.model) return; let mods = [], defM = "OPUS 5.5", defE = "";
     try { const c = cp.settings.providerConfigs.claude, disc = c.discoveredModels || [], d = disc.find((x) => x.value === "default"); if (d && d.description) defM = String(d.description).split("·")[0].trim().toUpperCase();
-      mods = (c.selectedModels || []).map((x) => [x.value, String(x.label || x.value).toUpperCase()]); defE = String(cp.settings.effortLevel || (cp.settings.savedProviderEffort || {}).claude || "").toUpperCase(); } catch (e) {}
+      const lab = (v) => { const x = disc.find((y) => y.value === v) || (c.selectedModels || []).find((y) => y.value === v); return String((x && x.label) || v).toUpperCase(); };
+      mods = (Array.isArray(c.visibleModels) && c.visibleModels.length ? c.visibleModels : (c.selectedModels || []).map((x) => x.value)).filter((v) => v !== "default").map((v) => [v, lab(v)]); defE = String(cp.settings.effortLevel || (cp.settings.savedProviderEffort || {}).claude || "").toUpperCase(); } catch (e) {}
     const want = hqT ? HQ_MODELS.map((m) => [m, m ? HQ_MODEL_LABEL[m] || m.toUpperCase() : "DEFAULT"]) : [["", "DEFAULT (" + defM + ")"]].concat(mods.length ? mods : [["opus", "OPUS 5.5"], ["haiku", "HAIKU 5.5"]]);
     const sig = JSON.stringify(want); if (u.modelSig !== sig) { u.modelSig = sig; const v = u.model.value; u.model.empty(); want.forEach(([val, l]) => u.model.createEl("option", { value: val, text: l })); u.model.value = want.some((w) => w[0] === v) ? v : ""; }
     const eo = [...u.effort.options].find((o) => o.value === ""), et = hqT || !defE ? "DEFAULT EFFORT" : "DEFAULT (" + defE + ")"; if (eo && eo.text !== et) eo.text = et;
