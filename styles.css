@@ -440,7 +440,7 @@
 .hqos .os-cli:hover,.hqos .os-cli.cur{background:rgba(25,227,208,.1)}.hqos .os-cli:focus-visible{outline:2px solid var(--os-cy);outline-offset:-2px}
 .hqos .os-clt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.hqos .os-cld{flex:none;color:var(--os-dim);font-size:.8em}
 .hqos .os-sel.os-sm{max-width:15%;font-size:.8em;padding:0 4px}
-.hqos textarea.os-in{resize:none;box-sizing:border-box;height:auto;max-height:none;padding:8px 10px;font-size:1.1em;line-height:1.5;overflow-y:hidden;width:100%}
+.hqos textarea.os-in{resize:none;flex:none;box-sizing:border-box;height:auto;max-height:none;padding:8px 10px;font-size:1.1em;line-height:1.5;overflow-y:hidden;width:100%}
 .hqos .os-go.stop{background:var(--os-red);color:#04080b}
 @keyframes os-pulse{50%{opacity:.45}}
 @media (prefers-reduced-motion:reduce){.hqos .os-think,.hqos .os-tool.run .os-tn{animation:none}}
@@ -474,3 +474,6 @@
 .hqos .os-cmd.full .os-cbox{flex:1}.hqos .os-cmd.full .os-grip{display:none}
 .hqos .os-cmd.full textarea.os-in{flex:1;height:100%}
 .hqos .os-hide{display:none!important}
+.hqos button.os-mi{display:flex;justify-content:flex-start;width:100%}
+.hqos .os-cnt2{margin-left:6px;padding-left:8px;border-left:1px solid var(--os-line)}
+.hqos .os-cnt2:empty{display:none}

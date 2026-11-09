@@ -876,7 +876,7 @@ class HQView extends ItemView {
     if (id) { this.plugin.settings.last = id; await this.plugin.saveSettings(); }
     this.applyProject(); this.resetData(); this.buildSwitcher(); this.buildDock();
     if (this.os && this.osUI) { this.osUI.sig = {}; this.osTaskAdd = null; this.osTaskAll = false; this.osRevAll = false; this.osEleven = undefined; this.osProjSwitch(); this.osElevenCheck(true); }
-    this.show("home"); await this.loadAll();
+    this.touchedAt = 0; this.show("home"); await this.loadAll(); this.touchedAt = 0; this.renderPage(false, true);
   }
   async loadAll() { await this.loadFiles(); await this.loadReview(); this.loadDays(); this.runMetrics(false); this.loadLive(); this.loadCommits(true); await this.loadUsage(); }
   getIcon() { return "layout-dashboard"; }
