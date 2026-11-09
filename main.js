@@ -1605,7 +1605,7 @@ Object.assign(HQView.prototype, {
       const r = t.createDiv({ cls: "os-r" }); this.osClock = r.createDiv({ cls: "os-clock" });
       { const ts = r.createEl("select", { cls: "os-sel os-modsw", attr: { "aria-label": "Colour theme" } }), th = this.plugin.settings.theme;
         HQ_PRESETS.forEach((p) => ts.createEl("option", { value: p.id, text: p.name.toUpperCase() })); Object.keys(th.saved).forEach((n) => ts.createEl("option", { value: "saved:" + n, text: n.toUpperCase() })); if (th.id === "custom") ts.createEl("option", { value: "custom", text: "CUSTOM" });
-        ts.value = th.id; const fit = () => { const o = ts.options[ts.selectedIndex]; ts.style.width = "calc(" + ((o ? o.text.length : 6) + 1) + "ch + 34px)"; }; fit(); ts.onchange = () => { fit(); this.plugin.setThemeId(ts.value); };
+        ts.value = th.id; const fit = () => { const o = ts.options[ts.selectedIndex], m = ts.ownerDocument.body.createSpan({ text: o ? o.text : "" }), cs = getComputedStyle(ts); m.style.cssText = "position:absolute;visibility:hidden;white-space:pre;font:" + cs.font + ";letter-spacing:" + cs.letterSpacing; const w = m.getBoundingClientRect().width; m.remove(); ts.style.width = Math.ceil(w + 22) + "px"; }; fit(); ts.onchange = () => { fit(); this.plugin.setThemeId(ts.value); };
         this.osAccentPicker(r);
         const mb = r.createEl("button", { cls: "os-chb", text: this.osPage === "mods" ? "BACK" : "MODS", attr: { "aria-label": this.osPage === "mods" ? "Back to HQ" : "Open the MODS page (switches, settings, theme)" } }); mb.onclick = () => this.osModsToggle(); }
       const ib = (icon, label, fn) => { const b = r.createEl("button", { cls: "os-ib", attr: { "aria-label": label, title: label } }); setIcon(b, icon); b.onclick = fn; };
@@ -1748,8 +1748,25 @@ Object.assign(HQView.prototype, {
       msgs.forEach((m) => this.osChatMsg(b, m, false));
       if (st === "running") b.createDiv({ cls: "os-think", text: "Claude is working\u2026 (the reply appears here when it finishes)" });
       if (near) b.scrollTop = b.scrollHeight;
-      u.chatTitle.setText("CLAUDIAN \u00B7 " + (meta.title || "Untitled")); u.chatCost.setText(st === "running" ? "WORKING" : st === "awaiting-user" ? "NEEDS YOU" : "READY"); u.chatCost.toggleClass("run", st === "running");
+      this.osCQRender(); u.chatTitle.setText("CLAUDIAN \u00B7 " + (meta.title || "Untitled")); u.chatCost.setText(st === "running" ? "WORKING" : st === "awaiting-user" ? "NEEDS YOU" : "READY"); u.chatCost.toggleClass("run", st === "running");
     } catch (e) { console.error("Project HQ claudian view", e); } finally { this.osClaudBusy = false; }
+  },
+  async osClaudStop(id) { const cp = this.claudian(); try { await cp.api.send(id, { mode: "interrupt" }); } catch (e) { new Notice("Could not stop: " + (e && e.message || e)); } },
+  // queued messages for the picked Claudian chat: SEND NOW interrupts Claude and sends it immediately
+  osCQRender() {
+    const u = this.osUI; if (!u || !u.queue) return; const id = u.target.value, q = (this.osQ && this.osQ[id]) || [];
+    if (id === "hq") return; u.queue.empty(); u.queue.toggleClass("os-hide", !q.length); if (!q.length) return;
+    u.queue.createDiv({ cls: "os-q-h", text: "QUEUED (" + q.length + ") \u00B7 sends when Claude finishes" });
+    q.forEach((m, i) => { const r = u.queue.createDiv({ cls: "os-q-i" }); r.createSpan({ cls: "os-q-n", text: String(i + 1) }); r.createSpan({ cls: "os-q-t", text: m.text.replace(/\s+/g, " ").slice(0, 200), attr: { title: m.text } });
+      const now = r.createEl("button", { cls: "os-chb os-qnow", text: "SEND NOW", attr: { title: "Stop what Claude is doing and send this right away" } });
+      now.onclick = async () => { q.splice(i, 1); this.osCQRender(); const cp = this.claudian(); try { await cp.api.send(id, { text: m.text, mode: "interrupt" }); this.osUI.cmdMsg.setText("Interrupted and sent."); } catch (e) { new Notice("Could not send: " + (e && e.message || e)); } setTimeout(() => this.osClaudRender(true), 800); };
+      const ed = r.createEl("button", { cls: "os-chb", text: "EDIT" }); ed.onclick = () => { q.splice(i, 1); u.cmdIn.value = m.text; this.osAutoGrow(); this.osGoLabel(); this.osCQRender(); u.cmdIn.focus(); };
+      const x = r.createEl("button", { cls: "os-chb", text: "\u00D7", attr: { "aria-label": "Remove queued message" } }); x.onclick = () => { q.splice(i, 1); this.osCQRender(); }; });
+  },
+  async osCQPump() { // send the next queued message once a chat goes idle
+    if (this.osCQBusy || !this.osQ) return; const cp = this.claudian(); if (!cp || !cp.api) return;
+    for (const id of Object.keys(this.osQ)) { const q = this.osQ[id]; if (!q.length || this.claudBusy(id)) continue;
+      this.osCQBusy = true; const m = q.shift(); try { await cp.api.send(id, { text: m.text }); } catch (e) { q.unshift(m); } this.osCQBusy = false; this.osCQRender(); setTimeout(() => this.osClaudRender(true), 800); break; }
   },
   osTargetLabel() { const u = this.osUI; if (!u || !u.tbtn) return; const o = u.target.options[u.target.selectedIndex]; u.tbtn.setText((o ? o.text : "HQ CHAT") + "  \u25BE"); },
   osTargetPick(v) { const u = this.osUI; u.target.value = v; this.osChatLayout(); this.osTargetLabel(); this.osTargetClose(); u.cmdIn.focus(); },
@@ -1786,8 +1803,12 @@ Object.assign(HQView.prototype, {
     u.target.value = convs.some((c) => c[0] === prev) || (prev === "hq" && hqOn) ? prev : (act || "hq"); this.osChatLayout(); this.osTargetLabel(); if (!u.tpop.hasClass("os-hide")) this.osTargetMenu(true);
   },
   // ---- Claudian path (only when a Claudian session is picked in the target list; HQ chat is the default) ----
+  claudBusy(id) { const cp = this.claudian(); try { return !!(cp && cp.sessionMessaging && cp.sessionMessaging.status(id) === "running"); } catch (e) { return false; } },
   async osSend(text, target) {
-    const u = this.osUI; text = String(text || "").trim(); if (!text || !target || target === "hq") return; const say = (m, bad) => { u.cmdMsg.setText(m); u.cmdMsg.toggleClass("bad", !!bad); };
+    const u = this.osUI; text = String(text || "").trim(); if (!target || target === "hq") return;
+    if (!text) { if (this.claudBusy(target)) this.osClaudStop(target); return; }
+    this.osQ = this.osQ || {}; const q = this.osQ[target] = this.osQ[target] || [];
+    if (this.claudBusy(target) || q.length) { q.push({ text }); this.osRemember(text); u.cmdIn.value = ""; this.osAutoGrow(); this.osGoLabel(); this.osCQRender(); return; } const say = (m, bad) => { u.cmdMsg.setText(m); u.cmdMsg.toggleClass("bad", !!bad); };
     const cp = this.claudian(); if (!(cp && cp.api && cp.api.send)) { say("Claudian is not available.", true); return; }
     u.cmdIn.disabled = true; say("Sending…");
     try { const title = ((this.osConvs || []).find((c) => c[0] === target) || [])[1] || "session"; await cp.api.send(target, { text }); this.osRemember(text); u.cmdIn.value = ""; this.osAutoGrow(); say("Sent to Claudian: " + title + "."); this.osSessData(true); setTimeout(() => this.osClaudRender(true), 800); }
@@ -1905,7 +1926,7 @@ Object.assign(HQView.prototype, {
     });
   },
   osTick() {
-    if (!this.os) return; this.osClockTick(); this.osCountTick(); this.osGate(); this.osHandoffHint(); if (this.osUI && this.osUI.target && this.osUI.target.value !== "hq" && (this.osClaudTick = (this.osClaudTick || 0) + 1) % 2 === 0) this.osClaudRender(false);
+    if (!this.os) return; this.osClockTick(); this.osCountTick(); this.osGate(); this.osHandoffHint(); this.osCQPump(); this.osGoLabel(); if (this.osUI && this.osUI.target && this.osUI.target.value !== "hq" && (this.osClaudTick = (this.osClaudTick || 0) + 1) % 2 === 0) this.osClaudRender(false);
     if (document.hidden || (this.contentEl.isShown && !this.contentEl.isShown())) return;
     const now = Date.now();
     if (now - (this.osVitAt || 0) >= 4000) { this.osVitAt = now; if (this.osPage === "mods") { guardVerify(); this.osModsStatus(); if (this.osUI.guardLog) this.osUI.guardLog.setText(guardLogTail(50)); } sampleVitals(); if (this.osUI) { this.osVitalsRender(); this.osTopRender(); this.osMidRender(); } }
@@ -2385,7 +2406,8 @@ Object.assign(HQView.prototype, {
     u.cmdIn.value = "/" + nm; u.slash.addClass("os-hide"); u.slashItems = null; this.osChatSend("/" + nm);
   },
   osGoLabel() {
-    const u = this.osUI, hq = this.hq(); if (!u || !u.go) return; const c = hq && hq.get(hq.activeId), busy = !!(c && c.busy && u.target.value === "hq"), has = !!(u.cmdIn.value.trim() || u.imgs.length), q = busy && has;
+    const u = this.osUI, hq = this.hq(); if (!u || !u.go) return;
+    if (u.target.value !== "hq") { const busy = this.claudBusy(u.target.value), has = !!u.cmdIn.value.trim(), q = busy && has; u.go.setText(q ? "QUEUE" : busy ? "STOP" : "SEND"); u.go.toggleClass("stop", busy && !q); u.go.toggleClass("queue", q); u.go.setAttr("aria-label", q ? "Queue this message (sends when Claude finishes)" : busy ? "Stop Claude" : "Send message"); return; } const c = hq && hq.get(hq.activeId), busy = !!(c && c.busy && u.target.value === "hq"), has = !!(u.cmdIn.value.trim() || u.imgs.length), q = busy && has;
     u.go.setText(q ? "QUEUE" : busy ? "STOP" : "SEND"); u.go.toggleClass("stop", busy && !q); u.go.toggleClass("queue", q); u.go.setAttr("aria-label", q ? "Queue this message (sends when Claude finishes)" : busy ? "Stop Claude" : "Send message");
   },
   osChatQueue(text) {
