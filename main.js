@@ -1253,7 +1253,8 @@ function parseQueue(md) {
     if (m[1].toLowerCase() === "x") { const d = /posted[^)]*?(\d{4}-\d{2}-\d{2})/i.exec(m[2]); if (d && d[1] === today) posted++; return; }
     if (/\bHOLD\b/.test(m[2])) return;
     const parts = m[2].split("|").map((x) => x.trim()), file = (parts[1] || "").split(/[\\/]/).pop().replace(/\.\w+(\s|$).*/, "").replace(/_9x16.*/, "");
-    open.push({ line: i, text: (parts[0] || "") + " · " + (file || parts[1] || "").slice(0, 60) });
+    const plat = { TT: "TikTok", YT: "YouTube", FB: "Facebook", IG: "Instagram", X: "X", PIN: "Pinterest" }[(parts[0] || "").toUpperCase()] || parts[0] || "";
+    open.push({ line: i, text: plat + " · " + (file || parts[1] || "").replace(/-v\d+$/, "").replace(/-/g, " ").slice(0, 60) });
   });
   return { open, posted };
 }
