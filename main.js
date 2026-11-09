@@ -1427,7 +1427,7 @@ Object.assign(HQView.prototype, {
     const grid = ui.grid = wrap.createDiv({ cls: "os-grid" }), modsEl = ui.modsEl = wrap.createDiv({ cls: "os-mods os-hide" }), L = grid.createDiv({ cls: "os-col os-left" }), M = grid.createDiv({ cls: "os-col os-mid" }), Rt = grid.createDiv({ cls: "os-col os-right" });
     ui.vit = osPanel(L, "SYSTEM VITALS", "os-vit"); ui.sess = osPanel(L, "AGENTS & CHATS", "os-sess"); ui.next = osPanel(L, "NEXT UP", "os-next"); ui.files = osPanel(L, "FILES IN PLAY", "os-files");
     ui.tasks = osPanel(Rt, "TOP TASKS", "os-tasks"); ui.rev = osPanel(Rt, "REVIEW QUEUE", "os-rev"); ui.acts = osPanel(Rt, "ACTION ITEMS", "os-acts");
-    [L, Rt].forEach((col) => { const f = col.createDiv({ cls: "os-fill", attr: { "aria-hidden": "true" } }); f.createDiv({ cls: "os-fill-ring" }); f.createDiv({ cls: "os-fill-ring r2" }); f.createDiv({ cls: "os-fill-lbl", text: "STANDBY" }); const eq = f.createDiv({ cls: "os-fill-eq" }); for (let i = 0; i < 28; i++) { const b = eq.createSpan(); b.style.animationDelay = (-Math.random() * 2.4).toFixed(2) + "s"; b.style.animationDuration = (1.6 + Math.random() * 1.6).toFixed(2) + "s"; } });
+    { const f = L.createDiv({ cls: "os-fill", attr: { "aria-hidden": "true" } }); hqDuel(f); }
     this.osColl = this.osColl || new Set(MODS.files.collapsed ? ["files"] : []);
     [["files", ui.files]].forEach(([k, p]) => { p.p.addClass("os-coll"); p.p.toggleClass("collapsed", this.osColl.has(k)); p.h.setAttr("role", "button"); p.h.setAttr("tabindex", "0"); p.h.setAttr("aria-expanded", String(!this.osColl.has(k)));
       const tg = () => { this.osColl.has(k) ? this.osColl.delete(k) : this.osColl.add(k); p.p.toggleClass("collapsed", this.osColl.has(k)); p.h.setAttr("aria-expanded", String(!this.osColl.has(k))); }; p.h.onclick = tg; p.h.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); tg(); } }); });
@@ -2472,6 +2472,63 @@ Object.assign(HQView.prototype, {
     t.style.height = "auto"; const sh = t.scrollHeight, h = Math.min(Math.max(sh, min), cap); t.style.height = h + "px"; t.style.overflowY = sh > h + 1 ? "auto" : "hidden"; if (u.go) u.go.style.height = t.offsetHeight + "px";
   },
 });
+// Pixel swordfight for the spare space in the left column. Drawn in code (no assets), theme coloured, ~10 fps, idle when hidden.
+function hqDuel(host) {
+  const cv = host.createEl("canvas", { cls: "os-duel" }), ctx = cv.getContext("2d"), W = 64, H = 30;
+  let tick = 0, round = 0;
+  const rgb = (v, a) => "rgba(" + (v || "25,227,208") + "," + a + ")";
+  // one fighter: x = feet centre, f = facing (1 right, -1 left), pose, flash = hit flash, col = "r,g,b"
+  const fighter = (x, f, pose, col, flash, bob) => {
+    const c = flash ? "rgba(255,255,255,.95)" : rgb(col, 0.95), d = rgb(col, 0.55), s = "rgba(235,245,255,.95)";
+    const P = (dx, dy, w, h, k) => { ctx.fillStyle = k; const px = f === 1 ? x + dx : x - dx - w + 1; ctx.fillRect(px, H - 3 - dy - h + 1 + bob, w, h); };
+    const lean = pose === "slash" || pose === "lunge" ? 1 : pose === "hit" ? -1 : 0;
+    // legs
+    if (pose === "walk" && tick % 4 < 2) { P(-2, 0, 1, 4, d); P(1, 0, 1, 4, d); } else { P(-1, 0, 1, 4, d); P(1, 0, 1, 4, d); }
+    if (pose === "lunge") P(3, 0, 1, 2, d);
+    // body + head
+    P(-1 + lean, 4, 3, 5, c); P(-1 + lean, 5, 3, 1, d); P(-2 + lean, 8, 1, 1, c); P(0 + lean, 10, 2, 3, c); P(1 + lean, 11, 1, 1, "rgba(0,0,0,.65)"); P(-1 + lean, 12, 1, 2, d); P(-2 + lean, 13, 1, 1, d);
+    // arm + sword
+    const hx = 2 + lean, hy = 7;
+    if (pose === "raise") { P(hx, hy, 1, 3, c); P(hx, hy + 3, 1, 6, s); }
+    else if (pose === "slash" || pose === "lunge") { P(hx, hy, 2, 1, c); P(hx + 2, hy, 7, 1, s); }
+    else if (pose === "block") { P(hx + 1, hy, 1, 1, c); P(hx + 2, hy - 2, 1, 8, s); }
+    else if (pose === "hit") { P(hx - 1, hy + 1, 1, 1, c); P(hx - 2, hy + 2, 1, 5, s); }
+    else { P(hx, hy, 1, 1, c); for (let i = 1; i <= 5; i++) P(hx + i, hy + i, 1, 1, s); }
+  };
+  const spark = (x, y, k) => { ctx.fillStyle = "rgba(255,240,180," + (1 - k * 0.3) + ")"; [[0, 0], [1, 1], [-1, 1], [1, -1], [-1, -1], [2 + k, 0], [-2 - k, 0], [0, 2 + k], [0, -2 - k]].forEach(([a, b]) => ctx.fillRect(x + a, y + b, 1, 1)); };
+  // 64-tick script; on odd rounds the roles swap so each side wins in turn
+  const step = (t) => {
+    let ax = 16, bx = 47, ap = "idle", bp = "idle", af = 0, bf = 0, sp = null;
+    if (t >= 8 && t < 16) { const k = (t - 8) / 8; ax = 16 + 8 * k; bx = 47 - 8 * k; ap = bp = "walk"; }
+    if (t >= 16) { ax = 24; bx = 39; }
+    if (t >= 16 && t < 19) ap = "raise";
+    if (t >= 19 && t < 22) { ap = "slash"; bp = "block"; if (t < 21) sp = [32, H - 13, t - 19]; }
+    if (t >= 23 && t < 26) bp = "raise";
+    if (t >= 26 && t < 29) { bp = "slash"; ap = "block"; if (t < 28) sp = [31, H - 13, t - 26]; }
+    if (t >= 30 && t < 32) ap = "raise";
+    if (t >= 32 && t < 35) { ap = "lunge"; ax = 27; bp = "hit"; bf = t < 34 ? 1 : 0; bx = 39 + (t - 31); if (t < 34) sp = [35, H - 10, t - 32]; }
+    if (t >= 35 && t < 44) { ap = "idle"; bp = t % 2 ? "hit" : "idle"; bx = 43; ax = 25; }
+    if (t >= 44 && t < 56) { const k = (t - 44) / 12; ax = 25 - 9 * k; bx = 43 + 4 * k; ap = bp = "walk"; }
+    return { ax, bx, ap, bp, af, bf, sp };
+  };
+  const draw = () => {
+    if (!host.isConnected) { clearInterval(iv); return; }
+    const r = host.getBoundingClientRect(); if (r.height < 40 || document.hidden || !host.offsetParent) return;
+    const sc = Math.max(1, Math.floor(Math.min(r.width / W, (r.height * 0.8) / H)));
+    if (cv.width !== W * sc || cv.height !== H * sc) { cv.width = W * sc; cv.height = H * sc; }
+    const cs = getComputedStyle(host), A = cs.getPropertyValue("--os-acrgb").trim(), B = cs.getPropertyValue("--os-amrgb").trim();
+    ctx.setTransform(sc, 0, 0, sc, 0, 0); ctx.imageSmoothingEnabled = false; ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = rgb(A, 0.35); for (let x = 2; x < W - 2; x += 2) ctx.fillRect(x, H - 2, 1, 1);
+    const t = tick % 64, s = step(t), sw = round % 2 === 1, bob = (k) => (s.ap === "idle" && (tick + k) % 8 < 4 ? 1 : 0);
+    // swap who wins: mirror the whole scene on odd rounds
+    if (sw) { ctx.setTransform(-sc, 0, 0, sc, W * sc, 0); }
+    fighter(s.ax, 1, s.ap, sw ? B : A, s.af, bob(0)); fighter(s.bx, -1, s.bp, sw ? A : B, s.bf, bob(3));
+    if (s.sp) spark(s.sp[0], s.sp[1], s.sp[2]);
+    tick++; if (tick % 64 === 0) round++;
+  };
+  const iv = setInterval(draw, 110);
+  return cv;
+}
 function hqChatIsActive(view, c) { const hq = view.hq(); return !!hq && hq.activeId === c.id; }
 
 const DEFAULTS = { mods: {}, theme: { id: "cyan", custom: null, saved: {} }, projects: [], last: "", claudeDir: "", excludeRe: "personal", person: "", chatView: "claudian-view", filesBesideHQ: true, textScale: 125, claudePath: "" };
