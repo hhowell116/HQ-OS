@@ -418,7 +418,7 @@
 .hqos .os-chb:hover{background:var(--os-cy);color:var(--os-bg0)}.hqos .os-chb:focus-visible{outline:2px solid var(--os-cy);outline-offset:1px}
 .hqos .os-cbody{flex:1;min-height:0;overflow-y:auto;padding:8px 10px;display:flex;flex-direction:column;gap:10px}
 .hqos .os-msg{max-width:100%;font-size:.95em;line-height:1.5}
-.hqos .os-msg.user .os-mt{background:rgba(var(--os-cyrgb),.1);border-left:2px solid var(--os-cy);padding:5px 9px;white-space:pre-wrap;overflow-wrap:anywhere}
+.hqos .os-msg.user .os-mt{background:rgba(var(--os-amrgb),.1);border-left:2px solid var(--os-am);color:var(--os-am);padding:5px 9px;white-space:pre-wrap;overflow-wrap:anywhere}
 .hqos .os-msg.asst .os-mt{overflow-wrap:anywhere}
 .hqos .os-md p{margin:0 0 4px}.hqos .os-md .os-gap{height:6px}.hqos .os-md ul,.hqos .os-md ol{margin:2px 0 4px 18px;padding:0}
 .hqos .os-md h3,.hqos .os-md h4,.hqos .os-md h5,.hqos .os-md h6{margin:6px 0 2px;color:var(--os-cy);font-size:1em;letter-spacing:.05em}
