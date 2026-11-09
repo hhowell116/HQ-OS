@@ -1279,12 +1279,12 @@ Object.assign(HQView.prototype, {
   async osSessData(force) {
     if (this.osSessBusy) return; if (!force && Date.now() - (this.osSessAt || 0) < 4500) return; this.osSessBusy = true; this.osSessAt = Date.now();
     try {
-      const cp = this.claudian(), rows = []; this.osSnip = this.osSnip || {};
+      const cp = this.claudian(), rows = [], reads = []; this.osSnip = this.osSnip || {};
       if (cp && cp.chatHost && cp.sessionMessaging) {
         const list = cp.chatHost.getConversationList().filter((c) => !c.isArchived && !OS_PERSONAL.test((c.linkedContentPath || "") + " " + (c.title || ""))).sort((a, b) => (b.lastActivityAt || 0) - (a.lastActivityAt || 0)).slice(0, 7);
         for (const c of list) {
           const st = cp.sessionMessaging.status(c.id), key = [c.lastActivityAt, c.messageCount, st].join("|"), sn = this.osSnip[c.id];
-          if (rows.length < 4 && cp.api && (!sn || (sn.key !== key && Date.now() - sn.at > 8000))) { let t = ""; try { t = String(await cp.api.read(c.id) || ""); } catch (e) {} this.osSnip[c.id] = { key, at: Date.now(), text: /^\(no reply\)$/.test(t) ? (sn && sn.text || "") : clean(redact(t)).replace(/\s+/g, " ").trim().slice(0, 180) }; }
+          if (rows.length < 4 && cp.api && (!sn || (sn.key !== key && Date.now() - sn.at > 8000))) reads.push([c.id, key, sn]);
           rows.push({ kind: "chat", id: c.id, title: clean(c.title || "Untitled"), st: st === "running" ? "thinking" : st === "awaiting-user" ? "needs you" : "idle", ts: c.lastActivityAt || 0, snip: (this.osSnip[c.id] || {}).text || "" });
         }
         this.osConvs = list.map((c) => [c.id, clean(c.title || "Untitled"), !!(cp.api && cp.api.getActiveSessionId && cp.api.getActiveSessionId() === c.id)]);
@@ -1292,6 +1292,8 @@ Object.assign(HQView.prototype, {
       const now = Date.now();
       this.live.filter((a) => a.status === "running" || (a.status === "done" && now - a.mtime < 3600000)).slice(0, 8).forEach((a) => rows.push({ kind: "agent", id: a.id, title: clean(a.title), st: a.status === "running" ? "running in background" : "done", ts: a.mtime, snip: redact(a.tool ? stepText(a.tool) : a.text || "").replace(/\s+/g, " ").slice(0, 180), type: a.type }));
       this.osRows = rows; this.osFillTarget(); this.osSessRender();
+      for (const [id, key, sn] of reads) { let t = ""; try { t = String(await cp.api.read(id) || ""); } catch (e) {} this.osSnip[id] = { key, at: Date.now(), text: /^.no reply.$/.test(t) ? (sn && sn.text || "") : clean(redact(t)).replace(/\s+/g, " ").trim().slice(0, 180) }; const r = rows.find((x) => x.id === id); if (r) r.snip = this.osSnip[id].text; }
+      if (reads.length) this.osSessRender();
     } catch (e) { console.error("Project HQ OS sessions", e); } finally { this.osSessBusy = false; }
   },
   osSessRender() {
