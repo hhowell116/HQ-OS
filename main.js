@@ -1380,7 +1380,7 @@ Object.assign(HQView.prototype, {
     ui.grip = cmd.createDiv({ cls: "os-grip", attr: { role: "separator", "aria-orientation": "horizontal", "aria-label": "Resize message box (drag, or Up and Down arrows). Double-click resets.", tabindex: "0", title: "Drag to resize the message box" } });
     const box = cmd.createDiv({ cls: "os-cbox" }), left = box.createDiv({ cls: "os-cleft" });
     ui.chips = left.createDiv({ cls: "os-atts os-hide" });
-    ui.cmdIn = left.createEl("textarea", { cls: "os-in", attr: { rows: "3", placeholder: "Message Claude Code… (type / for commands)", "aria-label": "Message for Claude Code", autocomplete: "off", spellcheck: "false" } });
+    ui.cmdIn = left.createEl("textarea", { cls: "os-in", attr: { rows: "1", placeholder: "Message Claude Code… (type / for commands)", "aria-label": "Message for Claude Code", autocomplete: "off", spellcheck: "false" } });
     ui.slash = cmd.createDiv({ cls: "os-slash os-hide", attr: { role: "listbox", "aria-label": "Commands" } });
     ui.go = box.createEl("button", { cls: "os-go", text: "SEND", attr: { "aria-label": "Send message" } }); ui.cmdMsg = M.createDiv({ cls: "os-cmdmsg" });
     const t = ui.cmdIn, zoom = () => (this.plugin.settings.textScale || 125) / 100;
@@ -2188,7 +2188,7 @@ Object.assign(HQView.prototype, {
     const n = t.value.length; u.cnt.setText(n ? n.toLocaleString() + " chars · ~" + Math.ceil(n / 4).toLocaleString() + " tokens" : "");
     if (u.full) { t.style.height = ""; t.style.overflowY = "auto"; return; }
     const cs = getComputedStyle(t), lh = parseFloat(cs.lineHeight) || 22, pad = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
-    const min = Math.max(lh * 4.5 + pad, u.userH || 0), cap = Math.max(min, (u.mid.clientHeight || 600) * 0.45);
+    const min = Math.max(lh + pad, u.userH || 0), cap = Math.max(min, (u.mid.clientHeight || 600) * 0.45);
     t.style.height = "auto"; const sh = t.scrollHeight, h = Math.min(Math.max(sh, min), cap); t.style.height = h + "px"; t.style.overflowY = sh > h + 1 ? "auto" : "hidden";
   },
 });
