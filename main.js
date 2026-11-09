@@ -1089,13 +1089,13 @@ class HQView extends ItemView {
       const live = await scanAgents();
       const sig = JSON.stringify(live.map((a) => [a.id, a.status, a.count, a.tool && stepText(a.tool), a.text]));
       this.live = live;
-      if (sig !== this.liveSig) { this.liveSig = sig; if (this.page === "agents" || this.page === "home") this.renderPage(); }
+      if (sig !== this.liveSig) { this.liveSig = sig; if (this.page === "agents" || this.page === "home" || this.os) this.renderPage(); }
     } catch (e) { console.error("Project HQ live", e); } finally { this.scanning = false; }
   }
   clock() {
     const n = new Date();
     this.contentEl.querySelectorAll(".lhq-el").forEach((e) => { e.setText(dur(Date.now() - +e.dataset.start)); });
-    this.clockEl.setText(n.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).replace(/\s?[AP]M/i, ""));
+    this.clockEl.setText(n.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }));
     this.dateEl.setText(n.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric", year: "numeric" }));
   }
   show(id) {
@@ -1346,9 +1346,9 @@ Object.assign(HQView.prototype, {
   osStop() { if (this.osUnsub) { this.osUnsub(); this.osUnsub = null; } clearTimeout(this.osStreamT); this.osStreamT = 0; if (this.orb) this.orb.run(false); if (this.osIO) this.osIO.disconnect(); if (this.osRO) this.osRO.disconnect(); this.orb = null; this.osIO = this.osRO = null; this.osUI = null; },
   osBuild() {
     const page = this.pageEl; page.empty(); page.addClass("os"); const ui = this.osUI = { sig: {}, inView: true }, wrap = page.createDiv({ cls: "os-wrap" });
-    wrap.createDiv({ cls: "os-sweep" }); ui.top = wrap.createDiv({ cls: "os-top" });
+    wrap.createDiv({ cls: "os-sweep" }); ui.top = wrap.createDiv({ cls: "os-top" }); ui.run = wrap.createDiv({ cls: "os-run os-hide", attr: { role: "status", "aria-live": "polite", "aria-label": "Running agents" } });
     const grid = ui.grid = wrap.createDiv({ cls: "os-grid" }), modsEl = ui.modsEl = wrap.createDiv({ cls: "os-mods os-hide" }), L = grid.createDiv({ cls: "os-col os-left" }), M = grid.createDiv({ cls: "os-col os-mid" }), Rt = grid.createDiv({ cls: "os-col os-right" });
-    ui.vit = osPanel(L, "SYSTEM VITALS", "os-vit"); ui.sess = osPanel(L, "ACTIVE AI SESSIONS", "os-sess"); ui.prog = osPanel(L, "PROJECT PROGRESS", "os-prog"); ui.next = osPanel(L, "NEXT UP", "os-next");
+    ui.vit = osPanel(L, "SYSTEM VITALS", "os-vit"); ui.sess = osPanel(L, "ACTIVE AI SESSIONS", "os-sess"); ui.next = osPanel(L, "NEXT UP", "os-next");
     ui.tasks = osPanel(Rt, "TOP TASKS", "os-tasks"); ui.rev = osPanel(Rt, "REVIEW QUEUE", "os-rev"); ui.acts = osPanel(Rt, "ACTION ITEMS", "os-acts"); ui.rules = osPanel(Rt, "SAVE AS RULE", "os-rules"); ui.ap = osPanel(Rt, "AGENT PROGRESS", "os-ap"); ui.files = osPanel(Rt, "FILES IN PLAY", "os-files");
     this.osColl = this.osColl || new Set(MODS.files.collapsed ? ["files"] : []);
     [["ap", ui.ap], ["files", ui.files]].forEach(([k, p]) => { p.p.addClass("os-coll"); p.p.toggleClass("collapsed", this.osColl.has(k)); p.h.setAttr("role", "button"); p.h.setAttr("tabindex", "0"); p.h.setAttr("aria-expanded", String(!this.osColl.has(k)));
@@ -1356,7 +1356,7 @@ Object.assign(HQView.prototype, {
     const orbw = M.createDiv({ cls: "os-orbw" }); ui.cv = orbw.createEl("canvas", { cls: "os-cv", attr: { "aria-hidden": "true" } });
     orbw.insertAdjacentHTML("beforeend", '<svg class="os-ring" viewBox="0 0 200 200" aria-hidden="true"><circle cx="100" cy="100" r="96" class="r1"/><circle cx="100" cy="100" r="88" class="r2"/><path class="r3" d="M100 2v10M100 188v10M2 100h10M188 100h10"/></svg>');
     ui.status = M.createDiv({ cls: "os-status", attr: { role: "status", "aria-live": "polite" } });
-    ui.mid = M; ui.chatBox = M.createDiv({ cls: "os-chat os-hide" }); this.osChatHeader(ui.chatBox); ui.chatList = ui.chatBox.createDiv({ cls: "os-clist os-hide" }); ui.chatBody = ui.chatBox.createDiv({ cls: "os-cbody", attr: { role: "log", "aria-live": "polite", "aria-label": "Claude Code conversation" } });
+    ui.mid = M; ui.chatBox = M.createDiv({ cls: "os-chat os-hide" }); this.osChatHeader(ui.chatBox); ui.chatList = ui.chatBox.createDiv({ cls: "os-clist os-hide" }); ui.chatBody = ui.chatBox.createDiv({ cls: "os-cbody", attr: { role: "log", "aria-live": "polite", "aria-label": "Claude Code conversation" } }); ui.queue = ui.chatBox.createDiv({ cls: "os-queue os-hide", attr: { "aria-label": "Queued messages" } });
     ui.chatBody.addEventListener("click", (e) => { const a = e.target.closest && e.target.closest("a.os-lk"); if (a) { e.preventDefault(); this.osChatLink(a.getAttribute("data-u")); } });
     this.osBuildInput(M, ui);
     ui.tick = M.createDiv({ cls: "os-ticker" });
@@ -1383,14 +1383,14 @@ Object.assign(HQView.prototype, {
     ui.cmdIn = left.createEl("textarea", { cls: "os-in", attr: { rows: "3", placeholder: "Message Claude Code…", "aria-label": "Message for Claude Code", autocomplete: "off", spellcheck: "false" } });
     ui.go = box.createEl("button", { cls: "os-go", text: "SEND", attr: { "aria-label": "Send message" } }); ui.cmdMsg = M.createDiv({ cls: "os-cmdmsg" });
     const t = ui.cmdIn, zoom = () => (this.plugin.settings.textScale || 125) / 100;
-    const go = () => { const c = this.hq().get(this.hq().activeId); if (ui.target.value === "hq" && c && c.busy) return this.hq().stop(c); if (ui.target.value === "hq") return this.osChatSend(t.value); this.osSend(t.value, ui.target.value); };
+    const go = () => { const c = this.hq().get(this.hq().activeId); if (ui.target.value === "hq" && c && c.busy) return (t.value.trim() || ui.imgs.length) ? this.osChatQueue(t.value) : this.hq().stop(c); if (ui.target.value === "hq") return this.osChatSend(t.value); this.osSend(t.value, ui.target.value); };
     ui.go.onclick = go; ui.target.onchange = () => this.osChatLayout();
-    t.addEventListener("input", () => { if (t.value !== ui.histVal) ui.hi = -1; this.osAutoGrow(); });
+    t.addEventListener("input", () => { if (t.value !== ui.histVal) ui.hi = -1; this.osAutoGrow(); this.osGoLabel(); });
     const setVal = (v) => { t.value = v; ui.histVal = v; this.osAutoGrow(); t.setSelectionRange(v.length, v.length); };
     t.addEventListener("keydown", (e) => {
       e.stopPropagation();
       if (e.key === "Escape" && ui.full) { e.preventDefault(); this.osSetFull(false); return; }
-      if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); const c = this.hq().get(this.hq().activeId); if (!(c && c.busy && ui.target.value === "hq")) go(); return; }
+      if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); const c = this.hq().get(this.hq().activeId); if (c && c.busy && ui.target.value === "hq" && !t.value.trim() && !ui.imgs.length) return; go(); return; }
       const H = this.osHist || [], mine = ui.hi >= 0 && t.value === ui.histVal;
       if (e.key === "ArrowUp" && !e.shiftKey && !e.altKey && H.length && (!t.value || mine)) { e.preventDefault(); ui.hi = Math.min(ui.hi + 1, H.length - 1); setVal(H[H.length - 1 - ui.hi]); }
       else if (e.key === "ArrowDown" && !e.shiftKey && !e.altKey && mine) { e.preventDefault(); ui.hi--; setVal(ui.hi < 0 ? "" : H[H.length - 1 - ui.hi]); }
@@ -1436,8 +1436,27 @@ Object.assign(HQView.prototype, {
   osRender(force) {
     if (!this.osUI) this.osBuild();
     const ae = document.activeElement, held = !force && (Date.now() - (this.touchedAt || 0) < 20000 || (ae && /TEXTAREA|INPUT/.test(ae.tagName) && this.contentEl.contains(ae)));
-    this.osTopRender(); this.osVitalsRender(); this.osSessRender(); this.osProgRender(); this.osNextRender(); this.osMidRender();
+    this.osTopRender(); this.osRunRender(); this.osVitalsRender(); this.osSessRender(); this.osNextRender(); this.osMidRender();
     if (!held) { this.osTasksRender(); this.osReviewRender(); this.osInsRender(); }
+  },
+  // ---- running agents strip (top of page, hidden when none): name, type/model, current step, elapsed time ----
+  osRunRender() {
+    const u = this.osUI; if (!u || !u.run) return;
+    const live = this.live || [], run = live.filter((a) => a.status === "running");
+    const items = run.map((a) => { const row = run.filter((x) => x.type === a.type).length === 1 ? (this.agents || []).find((x) => x.name === a.type && x.state !== "idle") : null;
+      return { a, step: redact(a.waiting ? a.text : row && row.task ? clean(row.task) : a.tool ? stepText(a.tool) : "starting…").replace(/\s+/g, " ").slice(0, 120) }; });
+    this.osReg("run", JSON.stringify(items.map((i) => [i.a.id, i.step])), () => {
+      const b = u.run; b.empty(); b.toggleClass("os-hide", !items.length); if (!items.length) return;
+      const h = b.createDiv({ cls: "os-run-h" }); h.createSpan({ cls: "os-dot" }); h.createSpan({ text: items.length + " AGENT" + (items.length > 1 ? "S" : "") + " RUNNING" });
+      const g = b.createDiv({ cls: "os-run-g" });
+      items.forEach((i) => {
+        const c = g.createDiv({ cls: "os-run-c" }), t = c.createDiv({ cls: "os-run-t" });
+        t.createSpan({ cls: "os-run-n", text: clean(i.a.title), attr: { title: i.a.title } });
+        const mm = shortModel((i.a.st && i.a.st.model) || i.a.model); t.createSpan({ cls: "os-run-k", text: (i.a.type + (mm ? " · " + mm : "")).toUpperCase() });
+        const m = c.createDiv({ cls: "os-run-m" }); m.createSpan({ cls: "os-run-s", text: i.step, attr: { title: i.step } });
+        const r = m.createSpan({ cls: "os-run-r" }); const e = r.createSpan({ cls: "lhq-el", text: dur(Date.now() - i.a.start) }); e.dataset.start = i.a.start;
+      });
+    });
   },
   osReg(name, sig, fn) { const u = this.osUI; if (u.sig[name] === sig) return; u.sig[name] = sig; fn(); },
   osPlanName() { if (this.osPlan === undefined) { this.osPlan = ""; try { const c = JSON.parse(fs.readFileSync(path.join(os.homedir(), ".claude", ".credentials.json"), "utf8")); this.osPlan = String((c.claudeAiOauth && c.claudeAiOauth.subscriptionType) || "").slice(0, 12); } catch (e) {} } return this.osPlan; },
@@ -1486,7 +1505,7 @@ Object.assign(HQView.prototype, {
   },
   osCtxHint() { const u = this.osUI; if (u && u.cmdMsg && !u.cmdMsg.hasClass("bad")) u.cmdMsg.setText(this.project ? "Project: " + this.project.name + (this.project.folder ? "  ·  " + this.project.folder : "") : ""); },
   osFocusInsights() { const u = this.osUI; if (u && u.acts) u.acts.p.scrollIntoView({ behavior: "smooth", block: "nearest" }); },
-  osClockTick() { if (!this.osClock) return; const n = new Date(); this.osClock.setText(osMono(n.getHours()) + ":" + osMono(n.getMinutes()) + ":" + osMono(n.getSeconds()) + "  ·  " + n.toLocaleDateString([], { weekday: "short", day: "2-digit", month: "short", year: "numeric" }).toUpperCase().replace(/,/g, "")); },
+  osClockTick() { if (!this.osClock) return; const n = new Date(); this.osClock.setText(((n.getHours() % 12) || 12) + ":" + osMono(n.getMinutes()) + ":" + osMono(n.getSeconds()) + (n.getHours() < 12 ? " AM" : " PM") + "  ·  " + n.toLocaleDateString([], { weekday: "short", day: "2-digit", month: "short", year: "numeric" }).toUpperCase().replace(/,/g, "")); },
   osVitalsRender() {
     const u = this.osUI, b = u.vit.body, warn = vit.cpu > 85 || vit.mem > 85;
     this.osReg("vit", JSON.stringify([vit.cpu, vit.mem, Math.floor(vit.up / 60)]), () => {
@@ -1553,25 +1572,12 @@ Object.assign(HQView.prototype, {
     finally { u.cmdIn.disabled = false; u.cmdIn.focus(); }
   },
   // ---- project progress rings ----
-  osProgRender() {
-    const u = this.osUI, secs = (this.secs || []).filter((s) => !/^done/i.test(s.name)).map((s) => { const it = s.items.filter((i) => i.st !== "-"); return { n: shortName(s.name), done: it.filter((i) => i.st === "x").length, tot: it.length }; }).filter((s) => s.tot > 0);
-    this.osReg("prog", JSON.stringify(secs), () => {
-      const b = u.prog.body; b.empty(); u.prog.meta.setText(secs.reduce((n, s) => n + s.done, 0) + "/" + secs.reduce((n, s) => n + s.tot, 0));
-      if (!secs.length) { b.createDiv({ cls: "os-muted", text: "No To-Do sections found." }); return; }
-      const g = b.createDiv({ cls: "os-rings" });
-      secs.slice(0, 6).forEach((s) => {
-        const pct = Math.round(100 * s.done / s.tot), c = g.createDiv({ cls: "os-rg", attr: { title: s.n + ": " + s.done + " of " + s.tot + " done" } }), C = 2 * Math.PI * 22;
-        c.insertAdjacentHTML("beforeend", '<svg viewBox="0 0 56 56" aria-hidden="true"><circle cx="28" cy="28" r="22" class="bg"/><circle cx="28" cy="28" r="22" class="fg" stroke-dasharray="' + (C * pct / 100).toFixed(1) + " " + C.toFixed(1) + '" transform="rotate(-90 28 28)"/></svg>');
-        c.createDiv({ cls: "os-rp", text: pct + "%" }); c.createDiv({ cls: "os-rl", text: s.n }); c.createDiv({ cls: "os-rc", text: s.done + "/" + s.tot });
-      });
-    });
-  },
   // ---- next posting slot ----
   osNextRender() {
     const u = this.osUI, pr = this.project || {}, nx = nextSlot(pr.slots, new Date()), wait = this.needsCount(), q = this.queue || { open: [] };
     this.osReg("next", JSON.stringify([nx && nx.getTime(), wait, q.open[0] && q.open[0].text]), () => {
       const b = u.next.body; b.empty(); u.next.meta.setText(wait ? wait + " WAITING" : "CLEAR");
-      if (nx) { const r = b.createDiv({ cls: "os-nrow" }); r.createSpan({ cls: "k", text: "NEXT POST" }); r.createSpan({ cls: "v", text: osMono(nx.getHours()) + ":" + osMono(nx.getMinutes()) }); this.osCount = b.createDiv({ cls: "os-count" }); this.osCountAt = nx.getTime(); this.osCountTick(); }
+      if (nx) { const r = b.createDiv({ cls: "os-nrow" }); r.createSpan({ cls: "k", text: "NEXT POST" }); r.createSpan({ cls: "v", text: ((nx.getHours() % 12) || 12) + ":" + osMono(nx.getMinutes()) + (nx.getHours() < 12 ? " AM" : " PM") }); this.osCount = b.createDiv({ cls: "os-count" }); this.osCountAt = nx.getTime(); this.osCountTick(); }
       else { this.osCount = null; b.createDiv({ cls: "os-muted", text: "No posting slots set (Settings: Posting slots)." }); }
       if (q.open[0]) b.createDiv({ cls: "os-muted os-qn", text: "Queue: " + q.open[0].text });
       const w = b.createDiv({ cls: "os-nrow" + (wait ? " warn" : "") }); w.createSpan({ cls: "k", text: "WAITING ON " + String(this.plugin.settings.person || "YOU").toUpperCase() }); w.createSpan({ cls: "v", text: String(wait) });
@@ -1951,6 +1957,7 @@ class HQChats {
   finish(c, err) {
     const cur = c.cur; if (err && cur) cur.blocks.push({ k: "error", text: err }); if (cur) { cur.blocks.forEach((b) => { if (b.k === "tool") b.open = false; }); if (c.stopping) cur.stopped = true; }
     c.busy = false; c.stopping = false; c.cur = null; c.lastUse = Date.now(); this.save(c); this.emit(c, "done");
+    if (c.queue && c.queue.length && !this.dead) setTimeout(() => { if (!c.busy && c.queue && c.queue.length) { const q = c.queue.shift(); this.send(c, q.text, q.imgs); } }, 300);
   }
   onLine(c, line) {
     let j; try { j = JSON.parse(line); } catch (e) { this.log("bad line " + line.slice(0, 120)); return; }
@@ -2006,7 +2013,7 @@ Object.assign(HQView.prototype, {
   osChatLayout() {
     const u = this.osUI, hq = this.hq(), c = hq && hq.get(hq.activeId), open = !!(u.chatOpen && c);
     u.mid.toggleClass("chatting", open); u.chatBox.toggleClass("os-hide", !open);
-    const busy = !!(c && c.busy); u.go.setText(busy ? "STOP" : "SEND"); u.go.toggleClass("stop", busy); u.go.setAttr("aria-label", busy ? "Stop Claude" : "Send message");
+    this.osGoLabel();
     const hqT = u.target.value === "hq"; u.cmdIn.placeholder = hqT ? "Message Claude Code" + (this.project ? " about " + this.project.name : "") + "…" : "Message the selected Claudian session…"; u.hint.setText(hqT ? "ENTER sends · SHIFT+ENTER new line · UP recalls last" : "ENTER sends to Claudian · SHIFT+ENTER new line");
     u.model.toggleClass("os-hide", !hqT); u.effort.toggleClass("os-hide", !hqT);
     if (c && hqT) { u.model.value = c.model || ""; u.effort.value = c.effort || ""; }
@@ -2015,7 +2022,7 @@ Object.assign(HQView.prototype, {
     const u = this.osUI, hq = this.hq(), c = hq && hq.get(hq.activeId); if (!u || !c || !u.chatOpen) { if (u && u.chatBody && full) u.chatBody.empty(); return; }
     const sig = c.id + "|" + c.msgs.length + "|" + c.busy;
     if (full || u.chatSig !== sig) { u.chatSig = sig; this.osChatFull(c); } else this.osChatLive(c);
-    u.chatTitle.setText(c.title); const tot = (c.turns || []).reduce((n, t) => n + (t.cost || 0), 0); u.chatCost.setText(c.busy ? "WORKING" : tot && MODS.chat.cost ? "~" + usd(tot) : "READY"); u.chatCost.toggleClass("run", !!c.busy);
+    this.osQueueRender(c); u.chatTitle.setText(c.title); const tot = (c.turns || []).reduce((n, t) => n + (t.cost || 0), 0); u.chatCost.setText(c.busy ? "WORKING" : tot && MODS.chat.cost ? "~" + usd(tot) : "READY"); u.chatCost.toggleClass("run", !!c.busy);
   },
   osChatFull(c) {
     const u = this.osUI, b = u.chatBody, near = b.scrollHeight - b.scrollTop - b.clientHeight < 80; b.empty(); u.liveEl = null;
@@ -2077,6 +2084,22 @@ Object.assign(HQView.prototype, {
     if (!c) c = hq.create(u.model.value, u.effort.value, this.project);
     if (c.busy) return; c.model = u.model.value; c.effort = u.effort.value; u.chatOpen = true; this.osChatWas = true; u.cmdIn.value = ""; u.imgs = []; this.osRenderAtts(); if (text) this.osRemember(text); if (u.full) this.osSetFull(false); this.osAutoGrow();
     hq.send(c, text, imgs); this.osChatLayout(); this.osChatRender(true);
+  },
+  osGoLabel() {
+    const u = this.osUI, hq = this.hq(); if (!u || !u.go) return; const c = hq && hq.get(hq.activeId), busy = !!(c && c.busy && u.target.value === "hq"), has = !!(u.cmdIn.value.trim() || u.imgs.length), q = busy && has;
+    u.go.setText(q ? "QUEUE" : busy ? "STOP" : "SEND"); u.go.toggleClass("stop", busy && !q); u.go.toggleClass("queue", q); u.go.setAttr("aria-label", q ? "Queue this message (sends when Claude finishes)" : busy ? "Stop Claude" : "Send message");
+  },
+  osChatQueue(text) {
+    const u = this.osUI, hq = this.hq(), c = hq.get(hq.activeId); text = String(text || "").trim(); const imgs = u.imgs.slice(); if (!c || (!text && !imgs.length)) return;
+    if (!c.busy) return this.osChatSend(text);
+    (c.queue = c.queue || []).push({ text, imgs }); u.cmdIn.value = ""; u.imgs = []; this.osRenderAtts(); if (text) this.osRemember(text); if (u.full) this.osSetFull(false); this.osAutoGrow(); this.osGoLabel(); this.osQueueRender(c);
+  },
+  osQueueRender(c) {
+    const u = this.osUI; if (!u || !u.queue) return; const q = (c && c.queue) || []; u.queue.empty(); u.queue.toggleClass("os-hide", !q.length); if (!q.length) return;
+    u.queue.createDiv({ cls: "os-q-h", text: "QUEUED (" + q.length + ") · sends when Claude finishes" });
+    q.forEach((m, i) => { const r = u.queue.createDiv({ cls: "os-q-i" }); r.createSpan({ cls: "os-q-n", text: String(i + 1) }); r.createSpan({ cls: "os-q-t", text: (m.text || "").replace(/\s+/g, " ").slice(0, 160) + (m.imgs.length ? "  [" + m.imgs.length + " image" + (m.imgs.length > 1 ? "s" : "") + "]" : ""), attr: { title: m.text } });
+      const ed = r.createEl("button", { cls: "os-chb", text: "EDIT", attr: { "aria-label": "Move queued message " + (i + 1) + " back to the box" } }); ed.onclick = () => { q.splice(i, 1); u.cmdIn.value = m.text; u.imgs = m.imgs; this.osRenderAtts(); this.osAutoGrow(); this.osGoLabel(); this.osQueueRender(c); u.cmdIn.focus(); };
+      const x = r.createEl("button", { cls: "os-chb", text: "×", attr: { "aria-label": "Remove queued message " + (i + 1) } }); x.onclick = () => { q.splice(i, 1); this.osQueueRender(c); }; });
   },
   osAutoGrow() {
     const u = this.osUI, t = u && u.cmdIn; if (!t) return;

@@ -514,3 +514,24 @@
 .hqos .os-chips-l button{background:none;border:0;color:var(--os-red);cursor:pointer;padding:0}
 @media (prefers-reduced-motion:reduce){.hqos .os-sw::after{transition:none}}
 .hqos .os-chips-l button{background:none!important;border:0!important;box-shadow:none!important;padding:0 2px;min-height:0;height:auto;line-height:1;font-size:1.1em}
+/* running agents strip (top of HQ_OS) */
+.hqos .os-run{position:relative;z-index:2;padding:8px 14px 10px;border-bottom:1px solid var(--os-line);background:rgba(var(--os-cyrgb),.06)}
+.hqos .os-run-h{display:flex;align-items:center;gap:8px;font-size:.72em;letter-spacing:.14em;color:var(--os-cy);margin-bottom:6px}
+.hqos .os-run-h .os-dot{animation:os-run-pulse 1.2s ease-in-out infinite}
+.hqos .os-run-g{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px}
+.hqos .os-run-c{border:1px solid rgba(var(--os-cyrgb),.3);background:rgba(var(--os-bgrgb),.6);padding:7px 9px;min-width:0}
+.hqos .os-run-t{display:flex;align-items:baseline;gap:8px;min-width:0}
+.hqos .os-run-n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;color:var(--tx)}
+.hqos .os-run-k{flex:none;font-size:.7em;letter-spacing:.1em;color:var(--tx2)}
+.hqos .os-run-m{display:flex;gap:8px;margin-top:4px;font-size:.78em;color:var(--tx2);min-width:0}
+.hqos .os-run-s{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hqos .os-run-r{flex:none;font-variant-numeric:tabular-nums}
+@keyframes os-run-pulse{50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){.hqos .os-run-h .os-dot{animation:none}}
+/* queued chat messages */
+.hqos .os-queue{border-top:1px dashed rgba(var(--os-cyrgb),.35);padding:6px 10px;display:flex;flex-direction:column;gap:4px;max-height:30%;overflow:auto}
+.hqos .os-q-h{font-size:.7em;letter-spacing:.12em;color:var(--os-cy)}
+.hqos .os-q-i{display:flex;align-items:center;gap:8px;font-size:.85em;color:var(--tx2);min-width:0}
+.hqos .os-q-n{flex:none;width:1.6em;text-align:center;color:var(--os-cy)}
+.hqos .os-q-t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hqos .os-go.queue{background:rgba(var(--os-cyrgb),.25)}
