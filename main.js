@@ -2362,14 +2362,32 @@ const toolTarget = (name, inp) => {
 };
 const escH = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 // Safe markdown: everything is HTML-escaped first; only a fixed set of tags is generated. Links carry data-u (no href) and are opened by a click handler.
+// Bare web addresses in Claude's replies become clickable (Hayden 2026-11-09): https://..., www..., and plain domains like
+// search.google.com/search-console. Text inside tags or existing links is left alone; trailing punctuation is not part of the link.
+const URL_RE = /(^|[\s(>"'\u201C])((?:https?:\/\/|www\.)[^\s<>"'\u201D]+|(?:[a-z0-9-]+\.)+(?:com|org|net|io|app|dev|ai|co|gov|edu|us|me|so|gg)(?:\/[^\s<>"'\u201D]*)?)/gi;
+const URL_ONLY = /^(?:https?:\/\/|www\.)\S+$|^(?:[a-z0-9-]+\.)+(?:com|org|net|io|app|dev|ai|co|gov|edu|us|me|so|gg)(?:\/\S*)?$/i;
+function webUrl(u) { u = String(u).replace(/&amp;/g, "&"); return /^https?:\/\//i.test(u) ? u : "https://" + u; }
+function autoLink(h) {
+  let inA = 0;
+  return h.split(/(<[^>]+>)/).map((part) => {
+    if (part.startsWith("<")) { if (/^<a[\s>]/i.test(part)) inA++; else if (/^<\/a>/i.test(part)) inA = Math.max(0, inA - 1); return part; }
+    if (inA) return part;
+    return part.replace(URL_RE, (m, pre, url) => {
+      const tail = (/[.,;:!?)]+$/.exec(url) || [""])[0], core = tail ? url.slice(0, -tail.length) : url;
+      if (!core || /^\d+(\.\d+)+$/.test(core)) return m;
+      return pre + '<a class="os-lk" data-u="' + webUrl(core).replace(/"/g, "&quot;") + '">' + core + "</a>" + tail;
+    });
+  }).join("");
+}
 function mdSafe(src) {
   return String(src || "").split(/(```[\s\S]*?(?:```|$))/).map((seg) => {
     if (seg.startsWith("```")) return "<pre><code>" + escH(seg.replace(/^```[^\n]*\n?/, "").replace(/```$/, "")) + "</code></pre>";
     const stash = [];
-    let h = escH(seg).replace(/`([^`\n]+)`/g, (m, c) => { const raw = c.replace(/&amp;/g, "&"); stash.push(/^[^\s<>|*?"]+\.(md|canvas)$/.test(raw) ? '<a class="os-lk" data-u="' + c + '"><code>' + c + "</code></a>" : "<code>" + c + "</code>"); return "\u0000" + (stash.length - 1) + "\u0000"; });
+    let h = escH(seg).replace(/`([^`\n]+)`/g, (m, c) => { const raw = c.replace(/&amp;/g, "&"); stash.push(URL_ONLY.test(raw) ? '<a class="os-lk" data-u="' + webUrl(raw) + '"><code>' + c + "</code></a>" : /^[^\s<>|*?"]+\.(md|canvas)$/.test(raw) ? '<a class="os-lk" data-u="' + c + '"><code>' + c + "</code></a>" : "<code>" + c + "</code>"); return "\u0000" + (stash.length - 1) + "\u0000"; });
     h = h.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (m, t, a) => '<a class="os-lk" data-u="[[' + t + ']]">' + (a || t) + "</a>")
       .replace(/\[([^\]\n]+)\]\(([^)\s]+)\)/g, '<a class="os-lk" data-u="$2">$1</a>')
       .replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>").replace(/(^|[\s(])\*([^*\n]+)\*(?=[\s).,;:!?]|$)/g, "$1<em>$2</em>");
+    h = autoLink(h);
     const out = []; let list = "";
     const close = () => { if (list) { out.push("</" + list + ">"); list = ""; } };
     h.split("\n").forEach((l) => {
