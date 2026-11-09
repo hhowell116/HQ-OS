@@ -641,3 +641,9 @@
 .hqos .os-cmd.full textarea.os-in{padding:44px 16px 12px}
 .hqos .os-cmd.full .os-cbox .os-go{align-self:flex-end;min-height:0;height:46px;min-width:120px;margin:0 12px 12px;border:1px solid var(--os-ac)}
 .hqos .os-grid.cmd-full{z-index:50}.hqos .os-cmd.full textarea.os-in:focus{box-shadow:none}
+/* toolbar stays one line: the hint shrinks (ellipsis) instead of pushing EXPAND to a new row */
+.hqos .os-ctool{flex-wrap:nowrap;overflow:hidden}
+.hqos .os-ctool .os-sp{flex:0 0 4px}
+.hqos .os-ctool .os-hint{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hqos .os-ctool .os-cnt2,.hqos .os-ctool .os-chb,.hqos .os-ctool .os-sel{flex:none;white-space:nowrap}
+.hqos .os-ctool .os-cnt2:empty{display:none}
