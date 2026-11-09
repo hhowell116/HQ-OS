@@ -12,9 +12,9 @@
    git clone https://github.com/hhowell116/HQ-OS.git .obsidian/plugins/project-hq
    ```
    You can also download the ZIP from GitHub and unzip it into `<vault>/.obsidian/plugins/project-hq`. The folder must hold `main.js`, `manifest.json` and `styles.css` directly (not in a subfolder).
-2. **Turn it on.** Restart Obsidian, open Settings, then Community plugins. Turn off Restricted mode if asked, and enable **Project HQ**.
-3. **Open it.** Click the dashboard icon in the left ribbon, or run the command **Open Project HQ**. **Command center layout** opens HQ with the chat beside it.
-4. **Add a project.** Settings, Project HQ, **Add project**. Give it a name, and point it at a To-Do note (format below). Everything else is optional; tiles with no source simply hide. Projects in a `Claude'sWorkspace/<Project>/Notes/` folder are picked up automatically.
+2. **Turn it on.** Restart Obsidian, open Settings, then Community plugins. Turn off Restricted mode if asked, and enable **HQ OS**.
+3. **Open it.** Click the dashboard icon in the left ribbon, or run the command **Open HQ OS**. **Command center layout** opens HQ with the chat beside it.
+4. **Add a project.** Settings, HQ OS, **Add project**. Give it a name, and point it at a To-Do note (format below). Everything else is optional; tiles with no source simply hide. Projects in a `Claude'sWorkspace/<Project>/Notes/` folder are picked up automatically.
 5. **Pick a look.** Choose a theme (colour wave) and switch modules on or off in Settings. The orb, visualizer and chat all follow the theme.
 
 To update later, run `git pull` inside `.obsidian/plugins/project-hq`, then turn the plugin off and on again (or restart Obsidian).
@@ -28,7 +28,7 @@ To update later, run `git pull` inside `.obsidian/plugins/project-hq`, then turn
 A console-style command center for Obsidian. One full-page view with a live orb and audio visualizer, a Claude chat panel, your project plan, live Claude Code agents, a "needs you" list, Claude usage rings, daily metrics with sparklines, and a review inbox. Desktop only (Windows, macOS, Linux).
 
 ## Project settings
-Settings, Project HQ, **Add project**. Every field except the name is optional; a tile whose source is not set simply hides.
+Settings, HQ OS, **Add project**. Every field except the name is optional; a tile whose source is not set simply hides.
 
 | Field | What it does |
 |---|---|
@@ -59,7 +59,7 @@ Use the dropdown in the top bar to switch projects; the last one is remembered. 
 Numbered items may look like `5c.`. Checkboxes in "Needs you" write `[x]` back to the note.
 
 ## Optional metrics script
-Any command that writes YAML frontmatter into `<daily folder>/YYYY-MM-DD.md` (local date). Project HQ shows every numeric (or boolean) key, plus `updated: <ISO time>` for the "Updated Xm ago" label.
+Any command that writes YAML frontmatter into `<daily folder>/YYYY-MM-DD.md` (local date). HQ OS shows every numeric (or boolean) key, plus `updated: <ISO time>` for the "Updated Xm ago" label.
 ```
 ---
 users_total: 16

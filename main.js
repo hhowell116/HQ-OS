@@ -918,7 +918,7 @@ const THEME_RGB = { a: [25, 227, 208], w: [255, 176, 46], glow: 1, key: "" };
 class HQView extends ItemView {
   constructor(leaf, plugin) { super(leaf); this.plugin = plugin; }
   getViewType() { return VIEW; }
-  getDisplayText() { return "Project HQ"; }
+  getDisplayText() { return "HQ OS"; }
   applyProject() {
     const st = this.plugin.settings; BASE = this.app.vault.adapter.basePath || "";
     const vis = this.plugin.visibleProjects(), pr0 = vis.find((p) => p.id === st.last) || vis[0] || null, pr = pr0 ? resolveProject(pr0, BASE) : null;
@@ -1113,7 +1113,7 @@ class HQView extends ItemView {
     this.page = id; const s = SECTIONS.find((x) => x.id === id);
     this.contentEl.toggleClass("lhq-onhome", id === "home"); this.pageEl.toggleClass("fit", id === "home");
     Object.entries(this.dockBtns).forEach(([k, b]) => b.toggleClass("on", k === id));
-    this.crumb.empty(); this.crumb.createSpan({ cls: "lhq-c1", text: this.project ? this.project.name : "Project HQ" }); this.crumb.createSpan({ cls: "lhq-c2", text: " / " + s.label });
+    this.crumb.empty(); this.crumb.createSpan({ cls: "lhq-c1", text: this.project ? this.project.name : "HQ OS" }); this.crumb.createSpan({ cls: "lhq-c2", text: " / " + s.label });
     this.renderPage(true, true);
   }
   renderPage(anim, force) {
@@ -1122,7 +1122,7 @@ class HQView extends ItemView {
     // swallowed Approve/Changes/Reject clicks and wiped typed feedback, so hold redraws there while the user is interacting.
     if (!force && (this.page === "view" || this.page === "insights") && (Date.now() - (this.touchedAt || 0) < 20000 || (document.activeElement && document.activeElement.tagName === "TEXTAREA" && this.contentEl.contains(document.activeElement)))) return;
     { const lv = (this.todo && this.todo.live) || "", b = /batch (\d+)/i.exec(lv), c = /[0-9a-f]{7,}/.exec(lv); this.chip.setText(lv ? "Live: " + (b ? "batch " + b[1] : "") + (b && c ? " · " : "") + (c ? c[0] : "") : ""); this.chip.toggle(!!lv); }
-    if (!this.project) { this.pageEl.empty(); const e = this.pageEl.createDiv({ cls: "lhq-empty" }); e.createDiv({ cls: "lhq-big", text: "Welcome to Project HQ" }); e.createDiv({ cls: "lhq-sub", text: "Add your first project in Settings → Project HQ" }); const b = e.createEl("button", { cls: "lhq-btn", text: "Open settings" }); b.onclick = () => { this.app.setting.open(); this.app.setting.openTabById("project-hq"); }; return; }
+    if (!this.project) { this.pageEl.empty(); const e = this.pageEl.createDiv({ cls: "lhq-empty" }); e.createDiv({ cls: "lhq-big", text: "Welcome to HQ OS" }); e.createDiv({ cls: "lhq-sub", text: "Add your first project in Settings → HQ OS" }); const b = e.createEl("button", { cls: "lhq-btn", text: "Open settings" }); b.onclick = () => { this.app.setting.open(); this.app.setting.openTabById("project-hq"); }; return; }
     const s = SECTIONS.find((x) => x.id === this.page), keep = this.pageEl.scrollTop;
     this.pageEl.empty(); this.pageEl.toggleClass("enter", false);
     s.render(this, this.pageEl.createDiv({ cls: "lhq-pg lhq-pg-" + s.id }));
@@ -1625,7 +1625,7 @@ Object.assign(HQView.prototype, {
         { const cc = r.createDiv({ cls: "os-acccol" }); this.osAccentPicker(cc); this.osAccentPicker(cc, true); }
         const mb = r.createEl("button", { cls: "os-chb", text: this.osPage === "mods" ? "BACK" : "MODS", attr: { "aria-label": this.osPage === "mods" ? "Back to HQ" : "Open the MODS page (switches, settings, theme)" } }); mb.onclick = () => this.osModsToggle(); }
       const ib = (icon, label, fn) => { const b = r.createEl("button", { cls: "os-ib", attr: { "aria-label": label, title: label } }); setIcon(b, icon); b.onclick = fn; };
-      ib("refresh-cw", "Refresh", () => this.refreshAll()); ib("settings", "Settings", () => { try { this.app.setting.open(); this.app.setting.openTabById("project-hq"); } catch (e) { new Notice("Open Settings, then Project HQ"); } });
+      ib("refresh-cw", "Refresh", () => this.refreshAll()); ib("settings", "Settings", () => { try { this.app.setting.open(); this.app.setting.openTabById("project-hq"); } catch (e) { new Notice("Open Settings, then HQ OS"); } });
       this.osClockTick();
     });
   },
@@ -2295,7 +2295,7 @@ class HQChats {
   todayTotals() { const d0 = new Date(); d0.setHours(0, 0, 0, 0); let cost = 0, tin = 0, tout = 0, cache = 0, n = 0; for (const c of this.convs.values()) for (const t of c.turns || []) if (t.at >= d0.getTime()) { cost += t.cost || 0; tin += t.in || 0; tout += t.out || 0; cache += t.cache || 0; n++; } return { cost, tin, tout, cache, n }; }
   // ---- process ----
   spawnProc(c) {
-    const exe = this.exe(); if (!fs.existsSync(exe)) throw new Error("Claude Code was not found at " + exe + ". Install it, or set its path in Project HQ settings (Claude Code path).");
+    const exe = this.exe(); if (!fs.existsSync(exe)) throw new Error("Claude Code was not found at " + exe + ". Install it, or set its path in HQ OS settings (Claude Code path).");
     const args = ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--include-partial-messages", "--permission-mode", "bypassPermissions"];
     if (c.model) args.push("--model", c.model); if (c.effort) args.push("--effort", c.effort); if (c.sessionId) args.push("--resume", c.sessionId);
     this.log("spawn " + path.basename(exe) + " " + args.join(" ") + " (conv " + c.id + ")");
@@ -2781,7 +2781,7 @@ class ProjectHQSettings extends PluginSettingTab {
   constructor(app, plugin) { super(app, plugin); this.plugin = plugin; }
   display() {
     const el = this.containerEl, p = this.plugin, st = p.settings; el.empty();
-    el.createEl("h2", { text: "Project HQ" });
+    el.createEl("h2", { text: "HQ OS" });
     el.createEl("h3", { text: "Projects" });
     el.createEl("p", { cls: "setting-item-description", text: "Projects are discovered from the folders of Claude'sWorkspace/. Leave a path blank to auto-detect it from <Project>/Notes (shown as the placeholder); type a path to override it." });
     new Setting(el).addButton((b) => b.setButtonText("Rescan folders").onClick(async () => { if (p.syncProjects()) await p.saveSettings(); p.changed(true); this.display(); }));
@@ -2805,12 +2805,12 @@ class ProjectHQSettings extends PluginSettingTab {
     g("excludeRe", "Exclude folders (regex)", "Session folders whose name matches are skipped when scanning agents.", "personal");
     g("person", "Your name", "Used in 'Waiting on <name>'. Empty matches any 'Waiting on' heading.", "");
     g("chatView", "Chat view type", "Used by the Command center layout. Default: claudian-view", "claudian-view");
-    new Setting(el).setName("Text size").setDesc("Scales all of Project HQ. 100% = original size.")
+    new Setting(el).setName("Text size").setDesc("Scales all of HQ OS. 100% = original size.")
       .addSlider((s) => s.setLimits(90, 175, 5).setValue(st.textScale || 125).setDynamicTooltip().onChange((v) => { st.textScale = v; p.changed(); p.app.workspace.getLeavesOfType(VIEW).forEach((l) => { l.view.contentEl.style.zoom = String(v / 100); }); }));
     new Setting(el).setName("Claude Code path").setDesc("Used by the HQ chat. Leave empty for ~/.local/bin/claude.exe").addText((t) => t.setPlaceholder("~/.local/bin/claude.exe").setValue(st.claudePath || "").onChange((v) => { st.claudePath = v.trim(); p.changed(); }));
-    new Setting(el).setName("Classic layout").setDesc("Safety fallback: turn on to use the original Project HQ pages instead of HQ_OS.")
+    new Setting(el).setName("Classic layout").setDesc("Safety fallback: turn on to use the original classic pages instead of HQ_OS.")
       .addToggle((t) => t.setValue(!!st.classicLayout).onChange((v) => { st.classicLayout = v; p.changed(true); }));
-    new Setting(el).setName("Open files beside Project HQ").setDesc("Notes and files never open in the chat pane; they move to Project HQ's side.")
+    new Setting(el).setName("Open files beside HQ OS").setDesc("Notes and files never open in the chat pane; they move to HQ OS's side.")
       .addToggle((t) => t.setValue(st.filesBesideHQ !== false).onChange((v) => { st.filesBesideHQ = v; p.changed(); }));
   }
 }
@@ -2823,11 +2823,11 @@ module.exports = class ProjectHQ extends Plugin {
     try { this.hq = new HQChats(this); } catch (e) { console.error("Project HQ chat engine", e); this.hq = null; }
     this.registerView(VIEW, (leaf) => new HQView(leaf, this));
     this.addSettingTab(new ProjectHQSettings(this.app, this));
-    this.addRibbonIcon("layout-dashboard", "Project HQ", () => this.open());
-    this.addCommand({ id: "open", name: "Open Project HQ", callback: () => this.open() });
-    this.addRibbonIcon("monitor", "Project HQ command center (HQ + chat)", () => this.commandCenter());
+    this.addRibbonIcon("layout-dashboard", "HQ OS", () => this.open());
+    this.addCommand({ id: "open", name: "Open HQ OS", callback: () => this.open() });
+    this.addRibbonIcon("monitor", "HQ OS command center (HQ + chat)", () => this.commandCenter());
     this.addCommand({ id: "command-center", name: "Command center layout (HQ + chat)", callback: () => this.commandCenter() });
-    // Keep the chat pane for chat only: any note or file that opens in the chat's tab group moves to Project HQ's tab group.
+    // Keep the chat pane for chat only: any note or file that opens in the chat's tab group moves to HQ OS's tab group.
     this.registerEvent(this.app.workspace.on("active-leaf-change", (leaf) => this.keepFilesBesideHQ(leaf)));
   }
   keepFilesBesideHQ(leaf) {
