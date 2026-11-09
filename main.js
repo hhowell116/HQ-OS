@@ -2699,6 +2699,10 @@ function hqDuel(host, key = "hq-fill-scene", def = 0, side = "l") {
     // full box width: the scale is fixed by the width, the scene gets as many columns as fit
     const sc = Math.max(1, Math.min(3, Math.floor(host.clientWidth / W))), nw = Math.max(W, Math.floor(host.clientWidth / sc));
     if (nw !== CW) { CW = nw; st = {}; }
+    { // box height = space below the chat panel, so the panels above end exactly level with the chat's bottom edge
+      const z = host.offsetHeight ? r.height / host.offsetHeight : 1, col = host.parentElement, hq = host.closest(".hqos"), ch = hq && hq.querySelector(".os-mid .os-chat");
+      let v = ""; if (ch && ch.offsetParent && col) { const gap = parseFloat(getComputedStyle(col).rowGap) || 0, want = Math.round((col.getBoundingClientRect().bottom - ch.getBoundingClientRect().bottom) / z - gap); if (want > 40) v = want + "px"; }
+      if (host.style.height !== v) host.style.height = v; }
     if (cv.width !== CW * sc || cv.height !== H * sc) { cv.width = CW * sc; cv.height = H * sc; wr.style.marginBottom = -sc + "px"; }
     const cs = getComputedStyle(host), A = cs.getPropertyValue("--os-acrgb").trim(), B = cs.getPropertyValue("--os-amrgb").trim();
     ctx.setTransform(sc, 0, 0, sc, 0, 0); ctx.imageSmoothingEnabled = false; ctx.clearRect(0, 0, CW, H);

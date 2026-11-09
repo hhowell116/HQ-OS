@@ -757,3 +757,5 @@
 .hqos .os-left>.os-sess,.hqos .os-left>.os-files{flex:1 1 0!important;min-height:104px}
 .hqos .os-right>.os-tasks,.hqos .os-right>.os-rev{flex:1 1 0!important;min-height:0}
 .hqos .os-right>.os-next{flex:0 0 auto!important}}
+.hqos .os-cmdmsg:not(.bad){display:none}
+.hqos .os-fill{background:none!important;align-items:flex-end!important}
