@@ -680,3 +680,4 @@
 .hqos .os-trh{padding:5px 8px 3px;color:var(--os-dim);font-size:.75em;letter-spacing:.16em}
 .hqos .os-tro .os-chb.sure{background:var(--os-red);color:var(--os-bg0);border-color:var(--os-red)}
 .hqos .os-tro .os-chb:disabled{opacity:.4;cursor:not-allowed}
+.hqos .os-chat.claud .os-chh .os-chb:not(:last-child){display:none}
