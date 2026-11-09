@@ -742,7 +742,7 @@
 .hqos .os-duelw>.os-fillsw.r{left:auto;right:3px}
 .hqos .os-fill{justify-content:flex-start}
 .hqos .os-duel{width:100%;height:auto}
-@media (min-width:1101px){.hqos .os-left>.os-files{flex:0 1 auto!important}}
+
 .hqos .os-duelw{width:100%}
 .hqos .os-left>.os-fill,.hqos .os-right>.os-fill{margin-top:auto}
 .hqos .os-perm.yolo{color:var(--os-am);border-color:var(--os-am)}
@@ -751,3 +751,9 @@
 .hqos .os-mid:not(.chatting){position:relative}
 .hqos .os-left>.os-sess{min-height:104px}
 .hqos .os-right>.os-next{flex:0 0 auto!important}
+/* static panel sizes (Hayden 2026-11-09): content never resizes the boxes; lists scroll inside */
+@media (min-width:1101px){
+.hqos .os-left>.os-vit{flex:0 0 auto!important}
+.hqos .os-left>.os-sess,.hqos .os-left>.os-files{flex:1 1 0!important;min-height:104px}
+.hqos .os-right>.os-tasks,.hqos .os-right>.os-rev{flex:1 1 0!important;min-height:0}
+.hqos .os-right>.os-next{flex:0 0 auto!important}}
