@@ -1500,13 +1500,13 @@ Object.assign(HQView.prototype, {
         setTimeout(() => { const c = menu.querySelector(".cur") || menu.querySelector(".os-mi"); if (c) c.focus(); }, 0);
         const off = (e) => { if (!pw.contains(e.target)) { document.removeEventListener("pointerdown", off, true); if (this.osMenuOpen) closeM(); } }; setTimeout(() => document.addEventListener("pointerdown", off, true), 0);
       }
-      const on = brand.createSpan({ cls: "os-online" }); on.createSpan({ cls: "os-dot" }); on.createSpan({ text: "ONLINE" });
+      const on = brand.createSpan({ cls: "os-online", attr: { title: "Online" } }); on.createSpan({ cls: "os-dot" });
       const chips = t.createDiv({ cls: "os-chips" }), chip = (k, v, c, tip) => { const e = chips.createSpan({ cls: "os-chip " + (c || "") }); e.createSpan({ cls: "k", text: k }); e.createSpan({ cls: "v", text: v }); if (tip) e.title = tip; return e; };
-      const acct = this.osAccount(); if (acct.email) chip("ACCOUNT", acct.email, "os-acct", [acct.name, acct.email, acct.org, this.osPlanName() ? "plan: " + this.osPlanName() : ""].filter(Boolean).join("  ·  "));
+      const acct = this.osAccount(); if (acct.email) chip("ACCT", acct.email.split("@")[0], "os-acct", [acct.name, acct.email, acct.org, this.osPlanName() ? "plan: " + this.osPlanName() : ""].filter(Boolean).join("  ·  "));
       if (model) chip("MODEL", model.toUpperCase());
       { const n = this.osRunCount(); if (n) { const e = chip("RUNNING", String(n), "run click", "Agents and chats working now. Click to see them."); e.onclick = () => { const s = u.sess && u.sess.p; if (s) s.scrollIntoView({ behavior: "smooth", block: "nearest" }); }; } }
-      chip("WEEK", wv === null ? "N/A" : wv + "%", cl(wv), wk && wk.resets_at ? "Resets " + when(wk.resets_at) + " (in " + left(wk.resets_at) + ")" : this.err || "");
-      chip("SESSION", sv === null ? "N/A" : sv + "%", cl(sv), se && se.resets_at ? "Resets " + when(se.resets_at) + " (in " + left(se.resets_at) + ")" : this.err || "");
+      { const e = chip("USAGE", "", cl(wv) || cl(sv), [wk && wk.resets_at ? "Week " + (wv === null ? "n/a" : wv + "%") + ": resets " + when(wk.resets_at) + " (in " + left(wk.resets_at) + ")" : "", se && se.resets_at ? "Session " + (sv === null ? "n/a" : sv + "%") + ": resets " + when(se.resets_at) + " (in " + left(se.resets_at) + ")" : ""].filter(Boolean).join("\n") || this.err || "");
+        const v = e.querySelector(".v"); v.empty(); v.createSpan({ cls: cl(wv), text: "W " + (wv === null ? "N/A" : wv + "%") }); v.appendText(" · "); v.createSpan({ cls: cl(sv), text: "S " + (sv === null ? "N/A" : sv + "%") }); }
       if (ci) { const e = chip("CACHE", ci.state === "cold" ? "COLD" : ci.state === "warn" ? "COOLING" : "WARM", ci.state === "cold" ? "bad" : ci.state === "warn" ? "warn" : "", ci.msg); e.addClass("click"); e.onclick = () => this.osFocusInsights(); }
       if (vit.cpu > 85) chip("LOAD", vit.cpu + "%", "bad", "System load is high");
       if (!MODS.guard.on) { const e = chip("GUARD", "OFF", "bad os-offchip", "Delete guard is OFF: recursive deletes are not checked. Click to open MODS."); e.setAttr("role", "button"); e.setAttr("tabindex", "0"); e.addClass("click"); e.onclick = () => { if (this.osPage !== "mods") this.osModsToggle(); }; }
@@ -1529,7 +1529,7 @@ Object.assign(HQView.prototype, {
   },
   osCtxHint() { const u = this.osUI; if (u && u.cmdMsg && !u.cmdMsg.hasClass("bad")) u.cmdMsg.setText(this.project ? "Project: " + this.project.name + (this.project.folder ? "  ·  " + this.project.folder : "") : ""); },
   osFocusInsights() { const u = this.osUI; if (u && u.acts) u.acts.p.scrollIntoView({ behavior: "smooth", block: "nearest" }); },
-  osClockTick() { if (!this.osClock) return; const n = new Date(); this.osClock.setText(((n.getHours() % 12) || 12) + ":" + osMono(n.getMinutes()) + ":" + osMono(n.getSeconds()) + (n.getHours() < 12 ? " AM" : " PM") + "  ·  " + n.toLocaleDateString([], { weekday: "short", day: "2-digit", month: "short", year: "numeric" }).toUpperCase().replace(/,/g, "")); },
+  osClockTick() { if (!this.osClock) return; const n = new Date(); this.osClock.setText(((n.getHours() % 12) || 12) + ":" + osMono(n.getMinutes()) + (n.getHours() < 12 ? " AM" : " PM")); const dt = n.toLocaleDateString([], { weekday: "long", day: "numeric", month: "long", year: "numeric" }); if (this.osClock.getAttribute("data-tip") !== dt) this.osClock.setAttribute("data-tip", dt); },
   osVitalsRender() {
     const u = this.osUI, b = u.vit.body, warn = vit.cpu > 85 || vit.mem > 85;
     this.osReg("vit", JSON.stringify([vit.cpu, vit.mem, Math.floor(vit.up / 60)]), () => {
@@ -1747,7 +1747,7 @@ Object.assign(HQView.prototype, {
     const btn = wrap.createEl("button", { cls: "os-chb", attr: { "aria-label": "Accent colour", title: "Accent: sphere and highlight colour", "aria-expanded": "false" } });
     btn.style.display = "inline-flex"; btn.style.alignItems = "center"; btn.style.gap = "6px";
     const dot = btn.createSpan({ attr: { "aria-hidden": "true", style: "width:11px;height:11px;border-radius:50%;display:inline-block;box-shadow:0 0 6px currentColor" } }); dot.style.background = P.curTheme().accent; dot.style.color = P.curTheme().accent;
-    btn.appendText("ACCENT");
+
     const tray = wrap.createDiv({ attr: { role: "listbox", "aria-label": "Accent colours", style: "position:absolute;top:calc(100% + 6px);right:0;z-index:50;display:none;flex-wrap:wrap;gap:6px;width:236px;padding:8px;background:var(--os-solid,#071217);border:1px solid var(--os-cy,#19e3d0);box-shadow:0 0 14px rgba(0,0,0,.6)" } });
     const close = () => { tray.style.display = "none"; btn.setAttr("aria-expanded", "false"); document.removeEventListener("mousedown", outside, true); };
     const outside = (e) => { if (!wrap.contains(e.target)) close(); };

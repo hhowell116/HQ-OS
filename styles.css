@@ -594,3 +594,12 @@
 .hqos .os-tlb.click{cursor:pointer}.hqos .os-tlb.click:hover{color:var(--os-ac);text-decoration:underline}
 .hqos .os-task.done .os-tlb{text-decoration:line-through;opacity:.55}
 .hqos .os-task input[type=checkbox]{cursor:pointer}
+/* top bar on one line */
+.hqos .os-top{flex-wrap:nowrap;gap:10px;padding:6px 12px}
+.hqos .os-brand{flex:none;gap:10px}
+.hqos .os-chips{flex:1 1 auto;min-width:0;flex-wrap:nowrap;overflow:hidden;gap:5px}
+.hqos .os-chip{flex:none;white-space:nowrap;padding:2px 7px}
+.hqos .os-chip .v .warn{color:var(--os-am)}.hqos .os-chip .v .bad{color:var(--os-red)}
+.hqos .os-r{flex:none;margin-left:auto;display:flex;align-items:center;gap:6px;flex-wrap:nowrap}
+.hqos .os-clock{white-space:nowrap;letter-spacing:.1em}
+.hqos .os-online{gap:0}
