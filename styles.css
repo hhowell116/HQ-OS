@@ -849,3 +849,5 @@
 .hqos .os-cbody,.hqos .os-cbody *:not(code):not(pre):not(kbd):not(code *):not(pre *){font-family:Inter,"Segoe UI",system-ui,sans-serif!important}
 /* Hayden 2026-11-09: darker chat background (was #071014) */
 .hqos .os-cbody{background:#020507}
+/* Hayden 2026-11-09: chat background slightly brighter than #020507 */
+.hqos .os-cbody{background:#060b0e}
