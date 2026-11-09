@@ -1427,7 +1427,7 @@ Object.assign(HQView.prototype, {
     const grid = ui.grid = wrap.createDiv({ cls: "os-grid" }), modsEl = ui.modsEl = wrap.createDiv({ cls: "os-mods os-hide" }), L = grid.createDiv({ cls: "os-col os-left" }), M = grid.createDiv({ cls: "os-col os-mid" }), Rt = grid.createDiv({ cls: "os-col os-right" });
     ui.vit = osPanel(L, "SYSTEM VITALS", "os-vit"); ui.sess = osPanel(L, "AGENTS & CHATS", "os-sess"); ui.next = osPanel(L, "NEXT UP", "os-next"); ui.files = osPanel(L, "FILES IN PLAY", "os-files");
     ui.tasks = osPanel(Rt, "TOP TASKS", "os-tasks"); ui.rev = osPanel(Rt, "REVIEW QUEUE", "os-rev"); ui.acts = osPanel(Rt, "ACTION ITEMS", "os-acts");
-    { const f = L.createDiv({ cls: "os-fill", attr: { "aria-hidden": "true" } }); hqDuel(f); }
+    { const f = L.createDiv({ cls: "os-fill" }); hqDuel(f); }
     this.osColl = this.osColl || new Set(MODS.files.collapsed ? ["files"] : []);
     [["files", ui.files]].forEach(([k, p]) => { p.p.addClass("os-coll"); p.p.toggleClass("collapsed", this.osColl.has(k)); p.h.setAttr("role", "button"); p.h.setAttr("tabindex", "0"); p.h.setAttr("aria-expanded", String(!this.osColl.has(k)));
       const tg = () => { this.osColl.has(k) ? this.osColl.delete(k) : this.osColl.add(k); p.p.toggleClass("collapsed", this.osColl.has(k)); p.h.setAttr("aria-expanded", String(!this.osColl.has(k))); }; p.h.onclick = tg; p.h.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); tg(); } }); });
@@ -2472,10 +2472,97 @@ Object.assign(HQView.prototype, {
     t.style.height = "auto"; const sh = t.scrollHeight, h = Math.min(Math.max(sh, min), cap); t.style.height = h + "px"; t.style.overflowY = sh > h + 1 ? "auto" : "hidden"; if (u.go) u.go.style.height = t.offsetHeight + "px";
   },
 });
-// Pixel swordfight for the spare space in the left column. Drawn in code (no assets), theme coloured, ~10 fps, idle when hidden.
+// Extra filler scenes on the same 64x30 pixel canvas. draw(ctx, t, A, B, st, rgb): t = tick, A/B = theme rgb, st = per-scene state.
+const hqHash = (n) => { n = (n ^ 61) ^ (n >>> 16); n = Math.imul(n, 9); n ^= n >>> 4; n = Math.imul(n, 0x27d4eb2d); n ^= n >>> 15; return (n >>> 0) / 4294967296; };
+const hqSprite = (ctx, x, y, rows, k) => { ctx.fillStyle = k; rows.forEach((r, j) => { for (let i = 0; i < r.length; i++) if (r[i] === "#") ctx.fillRect(x + i, y + j, 1, 1); }); };
+const HQ_SCENES = [
+  { name: "DUEL" },
+  { name: "INVADERS", draw(ctx, t, A, B, st, rgb) {
+    const H = 30;
+    if (!st.dead) { st.dead = new Set(); st.by = -1; st.bx = 0; st.boom = null; }
+    const ox = 4 + Math.abs(((t >> 1) % 16) - 8), fr = (t >> 2) % 2;
+    const al = fr ? [".###.", "#.#.#", ".#.#."] : [".###.", "#.#.#", "#...#"];
+    const sx = 30 + Math.round(22 * Math.sin(t / 9));
+    if (st.by < 0 && t % 5 === 0) { st.bx = sx + 2; st.by = H - 7; }
+    if (st.by >= 0) {
+      st.by -= 2;
+      for (let r = 0; r < 3 && st.by >= 0; r++) for (let c = 0; c < 6; c++) {
+        const id = r * 6 + c, x = ox + c * 8, y = 2 + r * 5;
+        if (!st.dead.has(id) && st.bx >= x && st.bx < x + 5 && st.by >= y && st.by < y + 4) { st.dead.add(id); st.boom = [x + 2, y + 1, 0]; st.by = -1; break; }
+      }
+      if (st.by < 0 && st.by !== -1) st.by = -1;
+    }
+    if (st.dead.size >= 18) st.dead.clear();
+    for (let r = 0; r < 3; r++) for (let c = 0; c < 6; c++) if (!st.dead.has(r * 6 + c)) hqSprite(ctx, ox + c * 8, 2 + r * 5, al, rgb(A, r === 0 ? 0.95 : 0.7));
+    if (st.by >= 0) { ctx.fillStyle = "rgba(255,255,255,.95)"; ctx.fillRect(st.bx, st.by, 1, 2); }
+    if (st.boom) { const [x, y, k] = st.boom; ctx.fillStyle = "rgba(255,240,180," + (1 - k * 0.3) + ")"; [[-1 - k, 0], [1 + k, 0], [0, -1 - k], [0, 1 + k], [-1, -1], [1, 1], [1, -1], [-1, 1]].forEach(([a, b]) => ctx.fillRect(x + a, y + b, 1, 1)); st.boom = k < 2 ? [x, y, k + 1] : null; }
+    hqSprite(ctx, sx, H - 5, ["..#..", "#####"], rgb(B, 0.95));
+  } },
+  { name: "CHASE", draw(ctx, t, A, B, st, rgb) {
+    const W = 64, H = 30, L = W + 30, p = t % L, rev = Math.floor(t / L) % 2 === 1, y = H - 10;
+    const px = rev ? W + 12 - p : p - 12, gx = rev ? px - 12 : px - 13;
+    ctx.fillStyle = rgb(A, 0.6);
+    for (let x = 3; x < W; x += 5) if (rev ? false : x > px + 3) ctx.fillRect(x, y, 1, 1);
+    if (!rev) { ctx.fillStyle = rgb(A, 0.9); if (W - 4 > px + 3) ctx.fillRect(W - 5, y - 1, 3, 3); }
+    // pac: 7x7 disc with a chomping mouth facing its direction
+    const f = rev ? -1 : 1, open = t % 4 < 2;
+    ctx.fillStyle = rgb(B, 0.95);
+    for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) { if (dx * dx + dy * dy > 10) continue; const fx = dx * f; if (open && fx > 0 && Math.abs(dy) <= fx) continue; ctx.fillRect(px + dx, y + dy, 1, 1); }
+    // ghost: chases on the way out, runs scared on the way back
+    const scared = rev, gk = scared ? (p > L - 20 && t % 2 ? "rgba(255,255,255,.9)" : "rgba(90,110,255,.95)") : rgb(A, 0.95);
+    ctx.fillStyle = gk;
+    for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) {
+      if (dy === -3 && Math.abs(dx) > 1) continue; if (dy === -2 && Math.abs(dx) > 2) continue;
+      if (dy === 3 && (dx + (t % 2)) % 2 !== 0) continue; ctx.fillRect(gx + dx, y + dy, 1, 1);
+    }
+    ctx.fillStyle = "rgba(255,255,255,.95)"; ctx.fillRect(gx - 2, y - 1, 1, 2); ctx.fillRect(gx + 1, y - 1, 1, 2);
+    if (!scared) { ctx.fillStyle = "rgba(20,30,60,.95)"; ctx.fillRect(gx - 1, y, 1, 1); ctx.fillRect(gx + 2, y, 1, 1); }
+  } },
+  { name: "SNAKE", draw(ctx, t, A, B, st, rgb) {
+    const C = 32, R = 13, cell = 2;
+    const free = (x, y) => x >= 0 && y >= 0 && x < C && y < R && !st.body.some((b) => b[0] === x && b[1] === y);
+    const apple = () => { for (let i = 0; i < 50; i++) { const x = Math.floor(Math.random() * C), y = Math.floor(Math.random() * R); if (free(x, y)) return [x, y]; } return [0, 0]; };
+    if (!st.body || st.reset) { st.body = [[6, 6], [5, 6], [4, 6]]; st.dir = [1, 0]; st.apple = apple(); st.reset = 0; }
+    const h = st.body[0], opts = [[1, 0], [-1, 0], [0, 1], [0, -1]].filter((d) => !(d[0] === -st.dir[0] && d[1] === -st.dir[1]) && free(h[0] + d[0], h[1] + d[1]));
+    if (!opts.length || st.body.length > 45) st.reset = 1;
+    else {
+      const dist = (d) => Math.abs(h[0] + d[0] - st.apple[0]) + Math.abs(h[1] + d[1] - st.apple[1]) + (Math.random() < 0.08 ? 3 : 0);
+      opts.sort((a, b) => dist(a) - dist(b)); st.dir = opts[0];
+      const n = [h[0] + st.dir[0], h[1] + st.dir[1]]; st.body.unshift(n);
+      if (n[0] === st.apple[0] && n[1] === st.apple[1]) st.apple = apple(); else st.body.pop();
+    }
+    ctx.fillStyle = rgb(A, 0.12); ctx.fillRect(0, 0, C * cell, R * cell);
+    ctx.fillStyle = rgb(B, t % 6 < 3 ? 0.95 : 0.7); ctx.fillRect(st.apple[0] * cell, st.apple[1] * cell, cell, cell);
+    st.body.forEach((b, i) => { ctx.fillStyle = rgb(A, i === 0 ? 1 : Math.max(0.35, 0.9 - i * 0.015)); ctx.fillRect(b[0] * cell, b[1] * cell, cell, cell); });
+  } },
+  { name: "CITY", draw(ctx, t, A, B, st, rgb) {
+    const W = 64, H = 30;
+    if (!st.b) {
+      st.b = []; for (let x = 0; x < W;) { const w = 5 + Math.floor(Math.random() * 6), h = 7 + Math.floor(Math.random() * 15); st.b.push({ x, w, h }); x += w + 1; }
+      st.d = Array.from({ length: 28 }, () => ({ x: Math.random() * (W + 20), y: Math.random() * H, s: 1.5 + Math.random() }));
+    }
+    if (t % 140 < 2 && t % 280 < 140) { ctx.fillStyle = "rgba(255,255,255," + (t % 2 ? 0.08 : 0.2) + ")"; ctx.fillRect(0, 0, W, H); }
+    ctx.fillStyle = rgb(B, 0.8); ctx.fillRect(52, 3, 3, 3); ctx.fillRect(51, 4, 1, 1);
+    st.b.forEach((b, i) => {
+      ctx.fillStyle = rgb(A, 0.22); ctx.fillRect(b.x, H - 2 - b.h, b.w, b.h);
+      ctx.fillStyle = rgb(A, 0.5); ctx.fillRect(b.x, H - 2 - b.h, b.w, 1);
+      for (let wy = H - b.h; wy < H - 3; wy += 3) for (let wx = b.x + 1; wx < b.x + b.w - 1; wx += 2) {
+        const on = hqHash(i * 977 + wx * 31 + wy * 7 + Math.floor((t + i * 13) / 40) * 101) < 0.35;
+        if (on) { ctx.fillStyle = rgb(B, 0.75); ctx.fillRect(wx, wy, 1, 1); }
+      }
+    });
+    ctx.fillStyle = "rgba(200,225,255,.45)";
+    st.d.forEach((d) => { ctx.fillRect(Math.round(d.x), Math.round(d.y), 1, 2); d.y += d.s; d.x -= 0.5; if (d.y > H) { d.y = -2; d.x = Math.random() * (W + 20); } });
+  } },
+];
+// Pixel animations for the spare space in the left column (swordfight + HQ_SCENES). Drawn in code (no assets), theme coloured, ~10 fps, idle when hidden.
 function hqDuel(host) {
-  const cv = host.createEl("canvas", { cls: "os-duel" }), ctx = cv.getContext("2d"), W = 64, H = 30;
-  let tick = 0, round = 0;
+  const cv = host.createEl("canvas", { cls: "os-duel", attr: { "aria-hidden": "true" } }), ctx = cv.getContext("2d"), W = 64, H = 30;
+  let tick = 0, round = 0, st = {}, scene = Math.min(HQ_SCENES.length - 1, Math.max(0, parseInt(localStorage.getItem("hq-fill-scene") || "0", 10) || 0));
+  const swb = host.createEl("button", { cls: "os-fillsw", attr: { "aria-label": "Swap animation", title: "Swap animation" } });
+  const lbl = () => swb.setText("⇄ " + HQ_SCENES[scene].name);
+  lbl();
+  swb.addEventListener("click", (e) => { e.stopPropagation(); scene = (scene + 1) % HQ_SCENES.length; localStorage.setItem("hq-fill-scene", String(scene)); st = {}; tick = 0; round = 0; lbl(); draw(); });
   const rgb = (v, a) => "rgba(" + (v || "25,227,208") + "," + a + ")";
   // one fighter: x = feet centre, f = facing (1 right, -1 left), pose, flash = hit flash, col = "r,g,b"
   const fighter = (x, f, pose, col, flash, bob) => {
@@ -2519,6 +2606,7 @@ function hqDuel(host) {
     const cs = getComputedStyle(host), A = cs.getPropertyValue("--os-acrgb").trim(), B = cs.getPropertyValue("--os-amrgb").trim();
     ctx.setTransform(sc, 0, 0, sc, 0, 0); ctx.imageSmoothingEnabled = false; ctx.clearRect(0, 0, W, H);
     ctx.fillStyle = rgb(A, 0.35); for (let x = 2; x < W - 2; x += 2) ctx.fillRect(x, H - 2, 1, 1);
+    if (scene) { try { HQ_SCENES[scene].draw(ctx, tick, A, B, st, rgb); } catch (e) { st = {}; } tick++; return; }
     const t = tick % 64, s = step(t), sw = round % 2 === 1, bob = (k) => (s.ap === "idle" && (tick + k) % 8 < 4 ? 1 : 0);
     // swap who wins: mirror the whole scene on odd rounds
     if (sw) { ctx.setTransform(-sc, 0, 0, sc, W * sc, 0); }
