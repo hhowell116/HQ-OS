@@ -1338,16 +1338,26 @@ class Orb {
     this.glow = mk(THEME_RGB.a.join(",")); this.glowA = mk(THEME_RGB.w.join(","));
   }
   eq(ctx, cx, cy, R, AF, ak, dpr) {
-    const cols = 81, half = (cols - 1) / 2, span = R * 2.5, cw = span / cols, cell = Math.max(2, cw * 0.74), maxN = 16, A = THEME_RGB.a, B = THEME_RGB.e || THEME_RGB.w;
+    // mirrored pixel equalizer: auto-gain so loud audio never turns into a solid slab, tapered ends that fizzle out, soft flickering tips
+    const cols = 81, half = (cols - 1) / 2, span = R * 2.5, cw = span / cols, cell = Math.max(2, cw * 0.72), maxN = 15, A = THEME_RGB.a, B = THEME_RGB.e || THEME_RGB.w;
     this.eqH = this.eqH && this.eqH.length === cols ? this.eqH : new Float32Array(cols);
+    let pk = 0; for (let i = 0; i < 24; i++) pk = Math.max(pk, AF[i]); this.eqPk = Math.max(pk, (this.eqPk || 0.3) * 0.996); const gain = 0.82 / Math.max(0.22, this.eqPk);
+    // each band also keeps its own slow peak, so quiet highs still move (half global level, half per-band level)
+    const bp = this.eqBP = this.eqBP || new Float32Array(24).fill(0.2), N = this.eqN = this.eqN || new Float32Array(24);
+    for (let i = 0; i < 24; i++) { bp[i] = Math.max(AF[i], bp[i] * 0.997, 0.06); N[i] = 0.5 * Math.min(1, AF[i] * gain) + 0.5 * Math.min(1, 0.85 * AF[i] / bp[i]) * Math.min(1, pk * 4); }
+    const sm = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
     for (let c = 0; c < cols; c++) {
-      const d = Math.abs(c - half) / half, f = (1 - d) * 23, i0 = Math.floor(f), i1 = Math.min(23, i0 + 1), v = AF[i0] + (AF[i1] - AF[i0]) * (f - i0);
-      const shape = 0.55 + 0.45 * Math.sin(Math.PI * Math.min(1, d * 1.5)); // a little extra lift away from the very centre, like the reference
-      const tgt = Math.min(1, v * ak * shape * 1.25); this.eqH[c] += (tgt - this.eqH[c]) * (tgt > this.eqH[c] ? 0.6 : 0.18); // fast attack, gentle fall
-      const n = Math.max(1, Math.round(this.eqH[c] * maxN)), x = cx - span / 2 + c * cw + (cw - cell) / 2, m = Math.pow(d, 0.8);
+      const d = Math.abs(c - half) / half, f = Math.max(0, 1 - d / 0.85) * 23, i0 = Math.floor(f), i1 = Math.min(23, i0 + 1), v = N[i0] + (N[i1] - N[i0]) * (f - i0);
+      const env = (0.45 + 0.55 * sm(0, 0.22, d)) * (1 - 0.92 * sm(0.55, 1, d)); // dip in the centre, taper to nothing at the ends
+      const tgt = Math.min(1, Math.pow(v * ak, 1.25) * env); this.eqH[c] += (tgt - this.eqH[c]) * (tgt > this.eqH[c] ? 0.55 : 0.16);
+      const h = this.eqH[c] * maxN, n = Math.max(1, Math.ceil(h)), x = cx - span / 2 + c * cw + (cw - cell) / 2, m = Math.pow(d, 0.8);
       const r = Math.round(A[0] + (B[0] - A[0]) * m), g = Math.round(A[1] + (B[1] - A[1]) * m), b = Math.round(A[2] + (B[2] - A[2]) * m);
+      const fizz = sm(0.6, 1, d); // outer ends: cells drop out and fade, like static
       for (let k = 0; k < n; k++) {
-        const a = (0.95 - 0.55 * (k / maxN)) * (d > 0.97 ? 0.7 : 1); ctx.fillStyle = "rgba(" + r + "," + g + "," + b + "," + a.toFixed(3) + ")";
+        if (fizz > 0 && Math.random() < fizz * 0.65) continue;
+        const top = k === n - 1, frac = top ? Math.max(0.15, h - (n - 1)) : 1; // partial top cell fades in instead of popping
+        let a = (0.95 - 0.6 * Math.pow(k / maxN, 1.4)) * frac * (1 - 0.75 * fizz); if (top && k > 1) a *= 0.55 + 0.45 * Math.random();
+        if (a < 0.03) continue; ctx.fillStyle = "rgba(" + r + "," + g + "," + b + "," + a.toFixed(3) + ")";
         const yUp = cy - cell / 2 - k * cw, yDn = cy - cell / 2 + k * cw; ctx.fillRect(x, yUp, cell, cell); if (k) ctx.fillRect(x, yDn, cell, cell);
       }
     }
