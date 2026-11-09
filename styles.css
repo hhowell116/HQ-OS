@@ -857,3 +857,5 @@
 .hqos .os-cbody{background:#04181a}
 /* Hayden 2026-11-09: teal background too bright; back to the almost-black he liked */
 .hqos .os-cbody{background:#060b0e}
+/* Hayden 2026-11-09: back to Inter */
+.hqos .os-cbody,.hqos .os-cbody *:not(code):not(pre):not(kbd):not(code *):not(pre *){font-family:Inter,"Segoe UI",system-ui,sans-serif!important}
