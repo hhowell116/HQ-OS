@@ -647,3 +647,12 @@
 .hqos .os-ctool .os-hint{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .hqos .os-ctool .os-cnt2,.hqos .os-ctool .os-chb,.hqos .os-ctool .os-sel{flex:none;white-space:nowrap}
 .hqos .os-ctool .os-cnt2:empty{display:none}
+/* review items: media always fits (whole frame visible); expanded review shows cards in a grid */
+.hqos .os-rev .lhq-media,.hqos .os-rev .lhq-rbody img,.hqos .os-rev .lhq-rbody video{display:block;max-width:100%;max-height:260px;width:auto;height:auto;margin:0 auto;object-fit:contain;background:#000}
+.hqos .os-rev .lhq-rbody{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
+.hqos .os-rev.os-max>.os-pb{display:grid!important;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px;align-content:start}
+.hqos .os-rev.os-max>.os-pb>*:not(.lhq-rcard){grid-column:1/-1}
+.hqos .os-rev.os-max .lhq-media,.hqos .os-rev.os-max .lhq-rbody img,.hqos .os-rev.os-max .lhq-rbody video{max-height:46vh}
+.hqos .os-rev .lhq-rbody>*{flex:0 1 auto;min-width:0}
+.hqos .os-rev .lhq-rcard:has(.lhq-rbody .lhq-media) .lhq-md :is(video,img,.internal-embed.media-embed){display:none}
+.hqos .os-rev .lhq-md :is(video,img){display:block;max-width:100%;max-height:220px;width:auto;height:auto;object-fit:contain;margin:0 auto}
