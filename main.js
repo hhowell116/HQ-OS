@@ -1484,6 +1484,7 @@ Object.assign(HQView.prototype, {
     ui.hint = tb.createSpan({ cls: "os-hint", text: "ENTER sends · SHIFT+ENTER new line" }); ui.cnt = tb.createSpan({ cls: "os-cnt2", attr: { "aria-live": "off" } });
     ui.perm = tb.createEl("button", { cls: "os-chb os-perm" }); ui.perm.onclick = () => this.osPermCycle(); this.osPermLabel();
     ui.compact = tb.createEl("button", { cls: "os-chb os-compact", text: "COMPACT", attr: { "aria-label": "Compact this chat (shrinks its history so each message costs less)", title: "Shrink this chat's history so each message costs less" } });
+    ui.tidy = tb.createEl("button", { cls: "os-chb os-tidy", text: "TIDY MEMORY" }); ui.tidy.onclick = () => this.osTidyMemory();
     ui.handoff = tb.createEl("button", { cls: "os-chb os-handoff", text: "HANDOFF", attr: { "aria-label": HANDOFF_TIP, title: HANDOFF_TIP } });
     ui.handoff.onclick = () => this.osHandoff();
     ui.compact.onclick = () => { if (ui.target.value === "hq") { const hq = this.hq(), c = hq && hq.get(hq.activeId); if (!c || !c.sessionId) { ui.cmdMsg.setText("Open a chat with some history first."); return; } if (c.busy) { ui.cmdMsg.setText("Wait for Claude to finish, then compact."); return; } this.osChatSend("/compact"); } else this.osSend("/compact", ui.target.value); };
@@ -1771,8 +1772,36 @@ Object.assign(HQView.prototype, {
       if (st === "running" && this.claudBusy(id)) { const since = meta.lastActivityAt ? Math.max(0, Math.round((Date.now() - meta.lastActivityAt) / 60000)) : 0;
         const w = b.createDiv({ cls: "os-think os-working" }); w.createDiv({ text: "Claude is replying…" + (since ? " (last update " + since + " min ago)" : "") }); }
       if (near) b.scrollTop = b.scrollHeight;
-      this.osCQRender(); u.chatTitle.setText("CLAUDIAN \u00B7 " + (meta.title || "Untitled")); const act = st === "running" && this.claudBusy(id); u.chatCost.setText(act ? "WORKING" : st === "awaiting-user" ? "NEEDS YOU" : "READY"); u.chatCost.toggleClass("run", act); this.osPermLabel();
+      this.osCQRender(); u.chatTitle.setText("CLAUDIAN \u00B7 " + (meta.title || "Untitled")); const act = st === "running" && this.claudBusy(id); u.chatCost.setText(act ? "WORKING" : st === "awaiting-user" ? "NEEDS YOU" : "READY"); u.chatCost.toggleClass("run", act); this.osPermLabel(); this.osTidyLabel();
     } catch (e) { console.error("Project HQ claudian view", e); } finally { this.osClaudBusy = false; }
+  },
+  // ---- TIDY MEMORY: one cheap one-shot Claude run that rewrites the project's shared MEMORY.md shorter (backup first) ----
+  osMemPath() { const cp = this.claudian(), id = this.claudProjId(); try { const p = cp.chatHost.domains.projects.list().find((x) => x.id === id); if (p && p.memoryPath) return p.memoryPath; } catch (e) {} const nm = String(this.project ? this.project.name : "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""); return nm ? ".claudian/projects/" + nm + "/MEMORY.md" : ""; },
+  osMemInfo() { const rel = this.osMemPath(); if (!rel) return null; const abs = path.join(BASE, rel); try { const t = fs.readFileSync(abs, "utf8"); return { rel, abs, text: t, lines: t.split("\n").length }; } catch (e) { return null; } },
+  osTidyLabel() { const u = this.osUI; if (!u || !u.tidy) return; const m = this.osMemInfo(), busy = !!this.osTidying; u.tidy.toggle(!!m || busy); if (!m) return;
+    const big = m.lines > 150, txt = busy ? "TIDYING…" : "TIDY MEMORY"; if (u.tidy.textContent !== txt) u.tidy.setText(txt); u.tidy.toggleClass("hot", big && !busy); u.tidy.disabled = busy;
+    const tip = "Project memory: " + m.lines + " lines (" + m.rel + ").\nEvery new chat in this project reads it first, so a long one costs usage on every start.\n\nClick to have Claude (Sonnet, one short run) merge repeats, drop finished or outdated items, and keep requirements, current state, open to-dos, decisions and dead ends. The old version is backed up next to it first." + (big ? "\n\nLit up: it's over 150 lines." : "");
+    if (u.tidyTip !== tip) { u.tidyTip = tip; u.tidy.setAttr("aria-label", tip); u.tidy.setAttr("title", tip); } },
+  async osTidyMemory() {
+    if (this.osTidying) return; const m = this.osMemInfo(), u = this.osUI; if (!m) { new Notice("No project memory file found."); return; }
+    const exe = this.plugin.hq ? this.plugin.hq.exe() : path.join(os.homedir(), ".local", "bin", "claude.exe"); if (!fs.existsSync(exe)) { new Notice("Claude Code not found at " + exe); return; }
+    const d = new Date(), st = d.getFullYear() + "-" + osMono(d.getMonth() + 1) + "-" + osMono(d.getDate()) + "-" + osMono(d.getHours()) + osMono(d.getMinutes()), bak = m.abs.replace(/\.md$/i, "") + ".backup-" + st + ".md";
+    try { fs.writeFileSync(bak, m.text); } catch (e) { new Notice("Could not back up memory: " + e.message); return; }
+    this.osTidying = true; this.osTidyLabel(); if (u) u.cmdMsg.setText("Tidying project memory (" + m.lines + " lines)…");
+    const prompt = HQ_TIDY_PROMPT + "\n\n<memory>\n" + m.text + "\n</memory>";
+    const done = (msg, bad) => { this.osTidying = false; this.osTidyLabel(); if (u) { u.cmdMsg.setText(msg); u.cmdMsg.toggleClass("bad", !!bad); } };
+    try {
+      const out = await new Promise((res, rej) => { const p = require("child_process").spawn(exe, ["-p", "--model", "sonnet", "--output-format", "text"], { cwd: os.tmpdir(), windowsHide: true, stdio: ["pipe", "pipe", "pipe"], env: Object.assign({}, process.env) });
+        let o = "", er = ""; const to = setTimeout(() => { try { p.kill(); } catch (e) {} rej(new Error("timed out after 4 minutes")); }, 240000);
+        p.stdout.on("data", (b) => (o += b)); p.stderr.on("data", (b) => (er += b)); p.on("error", (e) => { clearTimeout(to); rej(e); });
+        p.on("close", (c) => { clearTimeout(to); c === 0 ? res(o) : rej(new Error((er || o || "exit " + c).slice(0, 200))); }); p.stdin.end(prompt); });
+      let t = String(out).trim().replace(/^```(?:markdown|md)?\s*\n/, "").replace(/\n```\s*$/, "").trim();
+      const nl = t.split("\n").length;
+      if (!t || t.length < m.text.length * 0.15 || nl < 10) throw new Error("result looked too short; memory left unchanged");
+      if (fs.readFileSync(m.abs, "utf8") !== m.text) throw new Error("memory changed while tidying; left it alone (backup kept)");
+      fs.writeFileSync(m.abs, t + "\n");
+      done("Memory tidied: " + m.lines + " → " + nl + " lines. Backup: " + path.basename(bak));
+    } catch (e) { done("Tidy memory failed: " + redact(e && e.message || String(e)), true); }
   },
   // Claudian permission mode (applies to all Claudian chats): ASK -> EDITS -> YOLO
   osPermLabel() { const u = this.osUI, cp = this.claudian(); if (!u || !u.perm) return; const m = (cp && cp.settings && cp.settings.permissionMode) || "normal", L = { normal: ["ASK", "Ask before edits and commands"], acceptEdits: ["EDITS", "Auto-accept file edits, ask for commands"], yolo: ["YOLO", "Accept all permissions without asking"] }[m] || [String(m).toUpperCase(), ""];
@@ -2491,6 +2520,7 @@ Object.assign(HQView.prototype, {
     t.style.height = "auto"; const sh = t.scrollHeight, h = Math.min(Math.max(sh, min), cap); t.style.height = h + "px"; t.style.overflowY = sh > h + 1 ? "auto" : "hidden"; if (u.go) u.go.style.height = t.offsetHeight + "px";
   },
 });
+const HQ_TIDY_PROMPT = "You are tidying a project's shared memory file. Several AI chat sessions read it at the start of every chat, so shorter is cheaper, but losing a fact that matters is worse than keeping a few extra lines.\n\nRewrite the file inside <memory> and output ONLY the new file content as Markdown (no preamble, no code fence).\n\nRules:\n- Keep the same overall section structure and headings (for example goal, requirements, decisions, State, Dead ends, open questions). Keep any frontmatter as is.\n- Keep every explicit requirement, standing preference, constraint, credential location note (never values), account/handle names, URLs, file paths, and acceptance criteria.\n- Keep active decisions with their reasons. For decisions marked superseded, keep a one-line note only if the reason still matters; otherwise drop them.\n- State: keep what is live now, what remains, blockers, and anything waiting on the user. Collapse long histories of finished work into a short \"done\" summary with dates; drop old commit hashes except the latest per repo.\n- Keep every Dead end (failed approach and why), merged and shortened.\n- Merge duplicate or overlapping lines. Remove lines that are fully obsolete or contradicted by newer lines (newest wins).\n- Do not invent anything. Do not add commentary about what you changed.\n- Aim for roughly half the length or less, as long as no rule above is broken.";
 // Extra filler scenes on the same 64x30 pixel canvas. draw(ctx, t, A, B, st, rgb): t = tick, A/B = theme rgb, st = per-scene state.
 const hqHash = (n) => { n = (n ^ 61) ^ (n >>> 16); n = Math.imul(n, 9); n ^= n >>> 4; n = Math.imul(n, 0x27d4eb2d); n ^= n >>> 15; return (n >>> 0) / 4294967296; };
 const hqSprite = (ctx, x, y, rows, k) => { ctx.fillStyle = k; rows.forEach((r, j) => { for (let i = 0; i < r.length; i++) if (r[i] === "#") ctx.fillRect(x + i, y + j, 1, 1); }); };
