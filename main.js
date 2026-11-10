@@ -1038,6 +1038,7 @@ class HQView extends ItemView {
     const rv = (f) => { if (f.path.startsWith(REVIEW + "/") || f.path === REVIEW) this.loadReview(); };
     ["create", "delete", "rename", "modify"].forEach((e) => this.registerEvent(this.app.vault.on(e, rv)));
     this.registerInterval(window.setInterval(() => this.loadUsage(), 5 * 60 * 1000));
+    this.registerInterval(window.setInterval(() => this.staleSweep(true), 5 * 60 * 1000));
     this.registerInterval(window.setInterval(() => this.loadCommits(), 10 * 60 * 1000));
     // Agents show up instantly: watch the Claude projects folder (recursive; Windows and macOS) and rescan as soon as any
     // subagent file appears or changes. The interval stays as a fallback (5 s on Home, 3 s on the Agents page).
@@ -1234,7 +1235,17 @@ class HQView extends ItemView {
     this.commits = await fetchCommits(GIT); this.cAt = Date.now();
     if (this.page === "home") this.renderPage();
   }
-  refreshAll() { this.cAt = 0; this.runMetrics(true); this.loadFiles(); this.loadCommits(true); this.loadUsage(); }
+  async staleSweep(quiet) { // mark long-silent "Working" rows Idle; the lead row is kept while any Claudian chat is running
+    try {
+      if (!ACT) return; const af = this.app.vault.getAbstractFileByPath(ACT); if (!af) return;
+      let lead = false; try { const cp = this.claudian(); lead = !!(cp && cp.chatHost.getConversationList().some((c) => this.claudBusy(c.id))); } catch (e) {}
+      let n = 0; const thr = Math.max(1, +this.plugin.settings.staleMin || 30);
+      await this.app.vault.process(af, (s) => { const r = hqStaleSweep(s, new Date(), thr, lead); n = r.n; return r.n ? r.text : s; });
+      if (n) new Notice(n + " stale agent" + (n > 1 ? "s" : "") + " marked idle");
+      else if (!quiet) new Notice("No stale agents");
+    } catch (e) { console.error("HQ stale sweep", e); }
+  }
+  refreshAll() { this.staleSweep(false); this.cAt = 0; this.runMetrics(true); this.loadFiles(); this.loadCommits(true); this.loadUsage(); }
   async tick(line, text, on) {
     const f = this.app.vault.getAbstractFileByPath(TODO); if (!(f instanceof TFile)) return;
     await this.app.vault.process(f, (d) => {
@@ -2916,7 +2927,22 @@ function hqDuel(host, key = "hq-fill-scene", def = 0, side = "l") {
 }
 function hqChatIsActive(view, c) { const hq = view.hq(); return !!hq && hq.activeId === c.id; }
 
-const DEFAULTS = { mods: {}, theme: { id: "cyan", custom: null, saved: {} }, projects: [], last: "", claudeDir: "", excludeRe: "personal", person: "", chatView: "claudian-view", filesBesideHQ: true, textScale: 125, claudePath: "" };
+// HQ_STALE_BEGIN: reconcile the agent status board (rows left "Working" by dead agents become Idle)
+function hqStaleSweep(text, nowD, thrMin, skipLead) {
+  const lines = String(text).split("\n"); let n = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(/^\|\s*([^|]+?)\s*\|\s*(🟢 Working)\s*\|\s*([^|]*?)\s*\|\s*([^|]*?)\s*\|\s*(\d{1,2}):(\d{2})\s*(AM|PM)?\s*\|\s*$/i);
+    if (!m || (skipLead && m[1] === "claude (lead)")) continue;
+    let h = +m[5] % 24; if (m[7]) { h = +m[5] % 12 + (m[7].toUpperCase() === "PM" ? 12 : 0); }
+    const t = new Date(nowD); t.setHours(h, +m[6], 0, 0); if (t > nowD) t.setDate(t.getDate() - 1); // times after "now" are yesterday (midnight crossing)
+    if ((nowD - t) / 60000 < thrMin) continue;
+    const old = m[3].replace(/\|/g, "/").trim(); const cr = lines[i].endsWith("\r") ? "\r" : "";
+    lines[i] = "| " + m[1] + " | ⚪ Idle | — | " + (old && old !== "—" ? "Stale: " + old : "Stale") + " | " + m[5] + ":" + m[6] + (m[7] ? " " + m[7] : "") + " |" + cr; n++;
+  }
+  return { text: lines.join("\n"), n };
+}
+// HQ_STALE_END
+const DEFAULTS = { staleMin: 30, mods: {}, theme: { id: "cyan", custom: null, saved: {} }, projects: [], last: "", claudeDir: "", excludeRe: "personal", person: "", chatView: "claudian-view", filesBesideHQ: true, textScale: 125, claudePath: "" };
 const PFIELDS = [
   ["todo", "To-Do note path", "Vault path to a note with a numbered list under the Next heading, and checkboxes under Waiting on.", "Notes/To-Do.md"],
   ["nextHead", "Next heading", "Heading text (prefix match) of the numbered plan list. Default: Next", "Next"],
@@ -2940,6 +2966,7 @@ class ProjectHQSettings extends PluginSettingTab {
   display() {
     const el = this.containerEl, p = this.plugin, st = p.settings; el.empty();
     el.createEl("h2", { text: "HQ OS" });
+    new Setting(el).setName("Stale agent minutes").setDesc("Agent-board rows still Working after this many minutes are marked Idle on Refresh.").addText((t) => t.setValue(String(st.staleMin || 30)).onChange(async (v) => { st.staleMin = Math.max(1, parseInt(v, 10) || 30); await p.saveSettings(); }));
     el.createEl("h3", { text: "Projects" });
     el.createEl("p", { cls: "setting-item-description", text: "Projects are discovered from the folders of Claude'sWorkspace/. Leave a path blank to auto-detect it from <Project>/Notes (shown as the placeholder); type a path to override it." });
     new Setting(el).addButton((b) => b.setButtonText("Rescan folders").onClick(async () => { if (p.syncProjects()) await p.saveSettings(); p.changed(true); this.display(); }));
