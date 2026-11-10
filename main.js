@@ -1983,7 +1983,7 @@ Object.assign(HQView.prototype, {
   osCQRender() {
     const u = this.osUI; if (!u || !u.queue) return; const id = u.target.value, q = ((this.osQ && this.osQ[id]) || []).filter((x) => !x.sent || x.failed);
     if (id === "hq") return; u.queue.empty(); u.queue.toggleClass("os-hide", !q.length); if (!q.length) return;
-    u.queue.createDiv({ cls: "os-q-h", text: "QUEUED (" + q.length + ") \u00B7 queued, sends when Claude finishes this reply" });
+    u.queue.createDiv({ cls: "os-q-h", text: "QUEUED (" + q.length + ") \u00B7 WAITING: sends when this chat is idle (no reply or background work), then verified" });
     q.forEach((m, i) => { const r = u.queue.createDiv({ cls: "os-q-i" }); r.createSpan({ cls: "os-q-n", text: String(i + 1) }); r.createSpan({ cls: "os-q-t", text: m.text.replace(/\s+/g, " ").slice(0, 200), attr: { title: m.text } });
       const del = () => { const L = this.osQ[id], k = L.indexOf(m); if (k >= 0) L.splice(k, 1); this.osCQRender(); };
       if (m.failed) { r.createSpan({ cls: "os-q-sent", text: "NOT DELIVERED" }); const rs = r.createEl("button", { cls: "os-chb os-qnow", text: "RESEND" }); rs.onclick = () => { m.failed = false; m.sent = 0; m.tries = 0; m.idleAt = 0; this.osCQRender(); this.osCQPump(); }; const xx = r.createEl("button", { cls: "os-chb", text: "×", attr: { "aria-label": "Remove message" } }); xx.onclick = del; return; }
@@ -1994,17 +1994,27 @@ Object.assign(HQView.prototype, {
   },
   // HQ's own send queue: never the Claudian mailbox. One message per turn, in order; each goes out via osDirectSend the moment the chat can start a turn.
   // A sent message is confirmed only when it shows in the transcript; if not within 15 s of the chat being idle it is re-sent once, then marked NOT DELIVERED.
+  // Worker mailbox: drop Notes/Mailbox/<sessionId>/*.md under the project; HQ queues each file's text for that chat, then deletes the file.
+  osMailboxRoot() { return path.join(BASE, "Claude'sWorkspace", "Lumen", "Notes", "Mailbox"); },
+  osMailboxScan() { try { const fs = require("fs"), path = require("path"), root = this.osMailboxRoot && this.osMailboxRoot(); if (!root || !fs.existsSync(root)) return;
+    for (const sid of fs.readdirSync(root)) { const d = path.join(root, sid); if (!fs.statSync(d).isDirectory()) continue;
+      for (const f of fs.readdirSync(d).filter((x) => x.endsWith(".md")).sort()) { const p = path.join(d, f), t = fs.readFileSync(p, "utf8").trim(); fs.unlinkSync(p); if (!t) continue; (this.osQ[sid] = this.osQ[sid] || []).push({ text: t, t: Date.now() }); } } } catch (e) { console.warn("HQ mailbox", e); } },
   async osCQPump() {
     // Hayden 2026-11-10: send through Claudian's own API (the same path its message tool uses). It delivers now, joins the running turn,
     // or queues behind it, and reports which. Direct inputController sends were refused ("Message was not sent") for some chats.
+    // 2026-11-10: gate on Claudian status (idle only, so its mailbox never discards and pops "undelivered"), keep the message
+    // queued (WAITING) while the chat is busy or has background work, and confirm delivery in the transcript; else re-send.
     if (this.osCQBusy || !this.osQ) return; const cp = this.claudian(); if (!cp || !cp.api) return; this.osCQBusy = true;
-    try { for (const id of Object.keys(this.osQ)) { const q = this.osQ[id]; if (!q.length) continue; let ch = false;
-      const h = q[0]; if (h.failed || (h.at && Date.now() - h.at < 3000)) continue; h.at = Date.now();
-      try { const r = await cp.api.send(id, { text: h.text }); const st = r && r.status;
-        q.shift(); ch = true; this.osPendAdd(id, h.text);
-        this.osUI && this.osUI.cmdMsg.setText(st === "queued" ? "Queued in Claude: it starts as soon as the current reply ends." : st === "steered" ? "Added to Claude's current reply." : st === "uncertain" ? "Sent (Claude was busy; it may join the current reply)." : "");
-      } catch (e) { h.tries = (h.tries || 0) + 1; if (h.tries >= 2) { h.failed = true; ch = true; } console.warn("HQ send", e); }
-      if (ch) { this.osCQRender(); setTimeout(() => this.osClaudRender(true), 800); } } } catch (e) { console.error("HQ queue pump", e); }
+    try { this.osMailboxScan(); for (const id of Object.keys(this.osQ)) { const q = this.osQ[id]; if (!q.length) continue; let ch = false;
+      const h = q[0]; if (h.at && Date.now() - h.at < 3000) continue; h.at = Date.now();
+      let st0 = ""; try { st0 = cp.sessionMessaging.status(id); } catch (e) {}
+      if (h.sentAt) { // verify delivery
+        if (await this.osSeenIn(id, h.text)) { q.shift(); ch = true; this.osPendAdd(id, h.text); }
+        else if (st0 === "idle" && Date.now() - h.sentAt > 20000) { h.sentAt = 0; h.resends = (h.resends || 0) + 1; }
+        if (ch) { this.osCQRender(); setTimeout(() => this.osClaudRender(true), 800); } continue; }
+      if (st0 && st0 !== "idle") continue; // busy / background work / awaiting user: stay queued
+      try { await cp.api.send(id, { text: h.text }); h.sentAt = Date.now(); }
+      catch (e) { console.warn("HQ send (kept queued)", e); } } } catch (e) { console.error("HQ queue pump", e); }
     this.osCQBusy = false;
   },
   claudProjId() { const cp = this.claudian(), nm = String(this.project ? this.project.name : "").toLowerCase(); try { const p = cp.chatHost.domains.projects.list().find((x) => !x.isArchived && String(x.name).toLowerCase() === nm); return p ? p.id : ""; } catch (e) { return ""; } },

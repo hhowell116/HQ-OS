@@ -73,3 +73,7 @@ updated: "2026-11-05T22:10:00.000Z"
 - Live agents are read from `~/.claude/projects/*/<session>/subagents/agent-*.meta.json` (+ `.jsonl`), last 24 hours only.
 
 MIT licensed.
+
+## Worker mailbox
+
+Drop a `.md` file into `Claude'sWorkspace/Lumen/Notes/Mailbox/<sessionId>/`. HQ queues its text for that Claudian chat and deletes the file. Messages wait (shown WAITING) while the chat is busy or has background work, send once it is idle, and are re-sent if they don't show in the transcript within 20 s. This avoids Claudian's "undelivered" popup, which comes from its own mailbox discarding a message sent to a busy chat.
