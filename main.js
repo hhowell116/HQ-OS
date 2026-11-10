@@ -1991,8 +1991,9 @@ Object.assign(HQView.prototype, {
         if (await this.osSeenIn(id, m.text)) { q.splice(i, 1); ch = true; continue; }
         if (m.tries < 2 && st === "ready") { m.tries++; if (await this.osDirectSend(id, m.text)) { m.sent = Date.now(); m.idleAt = 0; } } else if (m.tries >= 2) { m.failed = true; ch = true; } }
       const h = q.find((x) => !x.sent); if (h && !q.some((x) => x.sent && !x.failed)) {
-        if (st === "ready") { if (await this.osDirectSend(id, h.text)) { h.sent = Date.now(); h.tries = 1; this.osPendAdd(id, h.text); ch = true; } }
-        else if (st === "none" && Date.now() - h.t > 5000) { try { await cp.api.send(id, { text: h.text }); h.sent = Date.now(); h.tries = 1; this.osPendAdd(id, h.text); ch = true; } catch (e) {} } } // no loaded input controller: the mailbox is the only path
+        // direct send once; if Claudian refuses it (shows "Message was not sent"), never retry it every tick: fall straight back to the Claudian API send (Hayden 2026-11-10: toast spam)
+        if (st === "ready" && !h.dFail) { if (await this.osDirectSend(id, h.text)) { h.sent = Date.now(); h.tries = 1; this.osPendAdd(id, h.text); ch = true; } else { h.dFail = Date.now(); } }
+        else if ((st === "none" && Date.now() - h.t > 5000) || (h.dFail && st !== "busy" && Date.now() - h.dFail > 1500)) { try { await cp.api.send(id, { text: h.text }); h.sent = Date.now(); h.tries = 1; this.osPendAdd(id, h.text); ch = true; } catch (e) {} } } // no loaded input controller: the mailbox is the only path
       if (ch) { this.osCQRender(); setTimeout(() => this.osClaudRender(true), 800); } } } catch (e) { console.error("HQ queue pump", e); }
     this.osCQBusy = false;
   },
