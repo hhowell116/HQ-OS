@@ -1984,16 +1984,15 @@ Object.assign(HQView.prototype, {
   // HQ's own send queue: never the Claudian mailbox. One message per turn, in order; each goes out via osDirectSend the moment the chat can start a turn.
   // A sent message is confirmed only when it shows in the transcript; if not within 15 s of the chat being idle it is re-sent once, then marked NOT DELIVERED.
   async osCQPump() {
+    // Hayden 2026-11-10: send through Claudian's own API (the same path its message tool uses). It delivers now, joins the running turn,
+    // or queues behind it, and reports which. Direct inputController sends were refused ("Message was not sent") for some chats.
     if (this.osCQBusy || !this.osQ) return; const cp = this.claudian(); if (!cp || !cp.api) return; this.osCQBusy = true;
-    try { for (const id of Object.keys(this.osQ)) { const q = this.osQ[id]; if (!q.length) continue; const st = this.osDirectState(id), now = Date.now(); let ch = false;
-      for (let i = q.length - 1; i >= 0; i--) { const m = q[i]; if (!m.sent || m.failed) continue;
-        if (st === "busy") { m.idleAt = 0; continue; } if (!m.idleAt) m.idleAt = now; if (now - Math.max(m.sent, m.idleAt) < 15000 || now - (m.chk || 0) < 4000) continue; m.chk = now;
-        if (await this.osSeenIn(id, m.text)) { q.splice(i, 1); ch = true; continue; }
-        if (m.tries < 2 && st === "ready") { m.tries++; if (await this.osDirectSend(id, m.text)) { m.sent = Date.now(); m.idleAt = 0; } } else if (m.tries >= 2) { m.failed = true; ch = true; } }
-      const h = q.find((x) => !x.sent); if (h && !q.some((x) => x.sent && !x.failed)) {
-        // direct send once; if Claudian refuses it (shows "Message was not sent"), never retry it every tick: fall straight back to the Claudian API send (Hayden 2026-11-10: toast spam)
-        if (st === "ready" && !h.dFail) { if (await this.osDirectSend(id, h.text)) { h.sent = Date.now(); h.tries = 1; this.osPendAdd(id, h.text); ch = true; } else { h.dFail = Date.now(); } }
-        else if ((st === "none" && Date.now() - h.t > 5000) || (h.dFail && st !== "busy" && Date.now() - h.dFail > 1500)) { try { await cp.api.send(id, { text: h.text }); h.sent = Date.now(); h.tries = 1; this.osPendAdd(id, h.text); ch = true; } catch (e) {} } } // no loaded input controller: the mailbox is the only path
+    try { for (const id of Object.keys(this.osQ)) { const q = this.osQ[id]; if (!q.length) continue; let ch = false;
+      const h = q[0]; if (h.failed || (h.at && Date.now() - h.at < 3000)) continue; h.at = Date.now();
+      try { const r = await cp.api.send(id, { text: h.text }); const st = r && r.status;
+        q.shift(); ch = true; this.osPendAdd(id, h.text);
+        this.osUI && this.osUI.cmdMsg.setText(st === "queued" ? "Queued in Claude: it starts as soon as the current reply ends." : st === "steered" ? "Added to Claude's current reply." : st === "uncertain" ? "Sent (Claude was busy; it may join the current reply)." : "");
+      } catch (e) { h.tries = (h.tries || 0) + 1; if (h.tries >= 2) { h.failed = true; ch = true; } console.warn("HQ send", e); }
       if (ch) { this.osCQRender(); setTimeout(() => this.osClaudRender(true), 800); } } } catch (e) { console.error("HQ queue pump", e); }
     this.osCQBusy = false;
   },
