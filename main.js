@@ -1981,7 +1981,7 @@ Object.assign(HQView.prototype, {
   async osClaudStop(id) { const cp = this.claudian(); try { await cp.api.send(id, { mode: "interrupt" }); } catch (e) { new Notice("Could not stop: " + (e && e.message || e)); } },
   // queued messages for the picked Claudian chat: SEND NOW interrupts Claude and sends it immediately
   osCQRender() {
-    const u = this.osUI; if (!u || !u.queue) return; const id = u.target.value, q = ((this.osQ && this.osQ[id]) || []).filter((x) => !x.sent || x.failed);
+    const u = this.osUI; if (!u || !u.queue) return; const id = u.target.value, q = ((this.osQ && this.osQ[id]) || []).filter((x) => x.failed || (!x.sent && !x.sentAt));
     if (id === "hq") return; u.queue.empty(); u.queue.toggleClass("os-hide", !q.length); if (!q.length) return;
     u.queue.createDiv({ cls: "os-q-h", text: "QUEUED (" + q.length + ") \u00B7 WAITING: sends when this chat is idle (no reply or background work), then verified" });
     q.forEach((m, i) => { const r = u.queue.createDiv({ cls: "os-q-i" }); r.createSpan({ cls: "os-q-n", text: String(i + 1) }); r.createSpan({ cls: "os-q-t", text: m.text.replace(/\s+/g, " ").slice(0, 200), attr: { title: m.text } });
@@ -2009,12 +2009,15 @@ Object.assign(HQView.prototype, {
       const h = q[0]; if (h.at && Date.now() - h.at < 3000) continue; h.at = Date.now();
       let st0 = ""; try { st0 = cp.sessionMessaging.status(id); } catch (e) {}
       if (h.sentAt) { // verify delivery
-        if (await this.osSeenIn(id, h.text)) { q.shift(); ch = true; this.osPendAdd(id, h.text); }
+        if (await this.osSeenIn(id, h.text)) { q.shift(); ch = true; }
         else if (st0 === "idle" && Date.now() - h.sentAt > 20000) { h.sentAt = 0; h.resends = (h.resends || 0) + 1; }
         if (ch) { this.osCQRender(); setTimeout(() => this.osClaudRender(true), 800); } continue; }
-      if (st0 && st0 !== "idle") continue; // busy / background work / awaiting user: stay queued
-      try { await cp.api.send(id, { text: h.text }); h.sentAt = Date.now(); }
-      catch (e) { console.warn("HQ send (kept queued)", e); } } } catch (e) { console.error("HQ queue pump", e); }
+      // Hayden 2026-11-10: send straight away and show it in the chat at once. Idle: Claudian API. Running with no reply
+      // streaming (background agents only): direct send, like Claudian's own chat box. Only a streaming reply keeps it queued.
+      let ok = false;
+      if (st0 && st0 !== "idle") { if (this.osDirectState(id) === "ready" && await this.osDirectSend(id, h.text)) ok = true; else continue; }
+      else { try { await cp.api.send(id, { text: h.text }); ok = true; } catch (e) { console.warn("HQ send (kept queued)", e); } }
+      if (ok) { h.sentAt = Date.now(); this.osPendAdd(id, h.text); this.osCQRender(); setTimeout(() => this.osClaudRender(true), 300); } } } catch (e) { console.error("HQ queue pump", e); }
     this.osCQBusy = false;
   },
   claudProjId() { const cp = this.claudian(), nm = String(this.project ? this.project.name : "").toLowerCase(); try { const p = cp.chatHost.domains.projects.list().find((x) => !x.isArchived && String(x.name).toLowerCase() === nm); return p ? p.id : ""; } catch (e) { return ""; } },
