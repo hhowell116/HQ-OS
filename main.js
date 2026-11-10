@@ -1774,6 +1774,8 @@ Object.assign(HQView.prototype, {
       if (all.length > 40) b.createDiv({ cls: "os-muted os-chint", text: "Showing the last 40 messages. Open it in Claudian for the full chat." });
       msgs.forEach((m) => this.osChatMsg(b, m, false));
       const P = this.osPend || {}, seen = msgs.filter((m) => m.r === "user").slice(-8).map((m) => m.text); P[id] = (P[id] || []).filter((p) => Date.now() - p.t < 900000 && !seen.some((x) => x.includes(p.text.slice(0, 60)))); P[id].forEach((p) => this.osChatMsg(b, { r: "user", text: p.text }, false));
+      // a send that never landed (the chat was mid-turn and the message got dropped): once the chat is idle for 20 s and it still isn't in the transcript, send it again directly, once (Hayden 2026-11-10)
+      P[id].forEach((p) => { if (!p.retried && Date.now() - p.t > 20000 && !this.claudBusy(id)) { p.retried = true; this.osDirectSend(id, p.text).then((ok) => { if (!ok) p.retried = false; }); } });
       { const Q = this.osQ && this.osQ[id]; if (Q) for (let i = Q.length - 1; i >= 0; i--) if (Q[i].sent && (Date.now() - Q[i].sent > 900000 || seen.some((x) => x.includes(Q[i].text.slice(0, 60))))) Q.splice(i, 1); }
       if (P[id].length && !(st === "running" && this.claudBusy(id))) {
         // Claudian holds queued messages while the chat is "running" even if Claude is only waiting on background agents (no reply streaming).
