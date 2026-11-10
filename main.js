@@ -1510,7 +1510,7 @@ Object.assign(HQView.prototype, {
     ui.go = box.createEl("button", { cls: "os-go", text: "SEND", attr: { "aria-label": "Send message" } }); ui.cmdMsg = M.createDiv({ cls: "os-cmdmsg" });
     const t = ui.cmdIn, zoom = () => (this.plugin.settings.textScale || 125) / 100;
     const go = () => { if (ui.target.value === "hq" && /^\/\S/.test(t.value.trim()) && !ui.imgs.length) return this.osChatSend(t.value); const c = this.hq().get(this.hq().activeId); if (ui.target.value === "hq" && c && c.busy) return (t.value.trim() || ui.imgs.length) ? this.osChatQueue(t.value) : this.hq().stop(c); if (ui.target.value === "hq") return this.osChatSend(t.value); this.osSend(t.value, ui.target.value); };
-    ui.go.onclick = go; ui.target.onchange = () => this.osChatLayout();
+    ui.go.onclick = go; ui.target.onchange = () => { this.osChatLayout(); this.osSaveTarget(); };
     t.addEventListener("input", () => { if (t.value !== ui.histVal) ui.hi = -1; this.osAutoGrow(); this.osGoLabel(); this.osSlashMenu(); });
     t.addEventListener("blur", () => setTimeout(() => { if (ui.slash) ui.slash.addClass("os-hide"); }, 150));
     const setVal = (v) => { t.value = v; ui.histVal = v; this.osAutoGrow(); t.setSelectionRange(v.length, v.length); };
@@ -1774,8 +1774,6 @@ Object.assign(HQView.prototype, {
       if (all.length > 40) b.createDiv({ cls: "os-muted os-chint", text: "Showing the last 40 messages. Open it in Claudian for the full chat." });
       msgs.forEach((m) => this.osChatMsg(b, m, false));
       const P = this.osPend || {}, seen = msgs.filter((m) => m.r === "user").slice(-8).map((m) => m.text); P[id] = (P[id] || []).filter((p) => Date.now() - p.t < 900000 && !seen.some((x) => x.includes(p.text.slice(0, 60)))); P[id].forEach((p) => this.osChatMsg(b, { r: "user", text: p.text }, false));
-      // a send that never landed (the chat was mid-turn and the message got dropped): once the chat is idle for 20 s and it still isn't in the transcript, send it again directly, once (Hayden 2026-11-10)
-      P[id].forEach((p) => { if (!p.retried && Date.now() - p.t > 20000 && !this.claudBusy(id)) { p.retried = true; this.osDirectSend(id, p.text).then((ok) => { if (!ok) p.retried = false; }); } });
       { const Q = this.osQ && this.osQ[id]; if (Q) for (let i = Q.length - 1; i >= 0; i--) if (Q[i].sent && (Date.now() - Q[i].sent > 900000 || seen.some((x) => x.includes(Q[i].text.slice(0, 60))))) Q.splice(i, 1); }
       if (P[id].length && !(st === "running" && this.claudBusy(id))) {
         // Claudian holds queued messages while the chat is "running" even if Claude is only waiting on background agents (no reply streaming).
@@ -1964,24 +1962,39 @@ Object.assign(HQView.prototype, {
     let unsent = false; ic.sendSessionMessage({ text }, { onUnsent: () => { unsent = true; }, onDelivery: () => {}, onStarted: () => {} }).catch((e) => console.error("HQ direct send", e));
     await new Promise((r) => setTimeout(r, 150)); return !unsent;
   } catch (e) { console.error("HQ direct send", e); return false; } },
+  // "ready" = a reply is not streaming and Claudian can start a turn now; "busy" = mid-turn; "none" = chat has no loaded input controller
+  osDirectState(id) { try { const cp = this.claudian(), rt = [...cp.chatHost.sessionRuntimes.getAll()].find((r) => r.conversationId === id), m = rt && (rt.peekModel || rt.currentModel), ic = m && m.inputController;
+    if (!ic || typeof ic.sendSessionMessage !== "function") return "none"; return ic.canStartSessionMessage ? "ready" : "busy"; } catch (e) { return "none"; } },
+  async osSeenIn(id, text) { try { const cp = this.claudian(), t = await cp.sessionMessaging.loadTranscript(id), all = (t && t.conversation && t.conversation.messages) || [], k = text.slice(0, 60); return this.osParseMsgs(all.slice(-40)).some((m) => m.r === "user" && m.text.includes(k)); } catch (e) { return false; } },
   osBgOnly(id) { const cp = this.claudian(); try { return cp.sessionMessaging.status(id) === "running" && !this.claudBusy(id); } catch (e) { return false; } },
   async osClaudStop(id) { const cp = this.claudian(); try { await cp.api.send(id, { mode: "interrupt" }); } catch (e) { new Notice("Could not stop: " + (e && e.message || e)); } },
   // queued messages for the picked Claudian chat: SEND NOW interrupts Claude and sends it immediately
   osCQRender() {
-    const u = this.osUI; if (!u || !u.queue) return; const id = u.target.value, q = (this.osQ && this.osQ[id]) || [];
+    const u = this.osUI; if (!u || !u.queue) return; const id = u.target.value, q = ((this.osQ && this.osQ[id]) || []).filter((x) => !x.sent || x.failed);
     if (id === "hq") return; u.queue.empty(); u.queue.toggleClass("os-hide", !q.length); if (!q.length) return;
-    u.queue.createDiv({ cls: "os-q-h", text: "QUEUED (" + q.length + ") \u00B7 sends when Claude finishes" });
+    u.queue.createDiv({ cls: "os-q-h", text: "QUEUED (" + q.length + ") \u00B7 queued, sends when Claude finishes this reply" });
     q.forEach((m, i) => { const r = u.queue.createDiv({ cls: "os-q-i" }); r.createSpan({ cls: "os-q-n", text: String(i + 1) }); r.createSpan({ cls: "os-q-t", text: m.text.replace(/\s+/g, " ").slice(0, 200), attr: { title: m.text } });
-      if (m.sent) { r.createSpan({ cls: "os-q-sent", text: "NEXT UP", attr: { title: "Handed to Claude. It shows in the chat once Claude picks it up." } }); return; }
+      const del = () => { const L = this.osQ[id], k = L.indexOf(m); if (k >= 0) L.splice(k, 1); this.osCQRender(); };
+      if (m.failed) { r.createSpan({ cls: "os-q-sent", text: "NOT DELIVERED" }); const rs = r.createEl("button", { cls: "os-chb os-qnow", text: "RESEND" }); rs.onclick = () => { m.failed = false; m.sent = 0; m.tries = 0; m.idleAt = 0; this.osCQRender(); this.osCQPump(); }; const xx = r.createEl("button", { cls: "os-chb", text: "×", attr: { "aria-label": "Remove message" } }); xx.onclick = del; return; }
       const now = r.createEl("button", { cls: "os-chb os-qnow", text: "SEND NOW", attr: { title: "Stop what Claude is doing and send this right away" } });
-      now.onclick = async () => { q.splice(i, 1); this.osCQRender(); const cp = this.claudian(); try { await cp.api.send(id, { text: m.text, mode: "interrupt" }); this.osPendAdd(id, m.text); this.osUI.cmdMsg.setText("Interrupted and sent."); } catch (e) { new Notice("Could not send: " + (e && e.message || e)); } setTimeout(() => this.osClaudRender(true), 800); };
-      const ed = r.createEl("button", { cls: "os-chb", text: "EDIT" }); ed.onclick = () => { q.splice(i, 1); u.cmdIn.value = m.text; this.osAutoGrow(); this.osGoLabel(); this.osCQRender(); u.cmdIn.focus(); };
-      const x = r.createEl("button", { cls: "os-chb", text: "\u00D7", attr: { "aria-label": "Remove queued message" } }); x.onclick = () => { q.splice(i, 1); this.osCQRender(); }; });
+      now.onclick = async () => { del(); const cp = this.claudian(); try { await cp.api.send(id, { text: m.text, mode: "interrupt" }); this.osPendAdd(id, m.text); this.osUI.cmdMsg.setText("Interrupted and sent."); } catch (e) { new Notice("Could not send: " + (e && e.message || e)); } setTimeout(() => this.osClaudRender(true), 800); };
+      const ed = r.createEl("button", { cls: "os-chb", text: "EDIT" }); ed.onclick = () => { del(); u.cmdIn.value = m.text; this.osAutoGrow(); this.osGoLabel(); this.osCQRender(); u.cmdIn.focus(); };
+      const x = r.createEl("button", { cls: "os-chb", text: "\u00D7", attr: { "aria-label": "Remove queued message" } }); x.onclick = del; });
   },
-  async osCQPump() { // send the next queued message once a chat goes idle
-    if (this.osCQBusy || !this.osQ) return; const cp = this.claudian(); if (!cp || !cp.api) return;
-    for (const id of Object.keys(this.osQ)) { const q = this.osQ[id], m = q.find((x) => !x.sent); if (!m || q.some((x) => x.sent) || this.claudBusy(id)) continue;
-      this.osCQBusy = true; try { if (!(await this.osDirectSend(id, m.text))) await cp.api.send(id, { text: m.text }); m.sent = Date.now(); } catch (e) {} this.osCQBusy = false; this.osCQRender(); setTimeout(() => this.osClaudRender(true), 800); break; }
+  // HQ's own send queue: never the Claudian mailbox. One message per turn, in order; each goes out via osDirectSend the moment the chat can start a turn.
+  // A sent message is confirmed only when it shows in the transcript; if not within 15 s of the chat being idle it is re-sent once, then marked NOT DELIVERED.
+  async osCQPump() {
+    if (this.osCQBusy || !this.osQ) return; const cp = this.claudian(); if (!cp || !cp.api) return; this.osCQBusy = true;
+    try { for (const id of Object.keys(this.osQ)) { const q = this.osQ[id]; if (!q.length) continue; const st = this.osDirectState(id), now = Date.now(); let ch = false;
+      for (let i = q.length - 1; i >= 0; i--) { const m = q[i]; if (!m.sent || m.failed) continue;
+        if (st === "busy") { m.idleAt = 0; continue; } if (!m.idleAt) m.idleAt = now; if (now - Math.max(m.sent, m.idleAt) < 15000 || now - (m.chk || 0) < 4000) continue; m.chk = now;
+        if (await this.osSeenIn(id, m.text)) { q.splice(i, 1); ch = true; continue; }
+        if (m.tries < 2 && st === "ready") { m.tries++; if (await this.osDirectSend(id, m.text)) { m.sent = Date.now(); m.idleAt = 0; } } else if (m.tries >= 2) { m.failed = true; ch = true; } }
+      const h = q.find((x) => !x.sent); if (h && !q.some((x) => x.sent && !x.failed)) {
+        if (st === "ready") { if (await this.osDirectSend(id, h.text)) { h.sent = Date.now(); h.tries = 1; this.osPendAdd(id, h.text); ch = true; } }
+        else if (st === "none" && Date.now() - h.t > 5000) { try { await cp.api.send(id, { text: h.text }); h.sent = Date.now(); h.tries = 1; this.osPendAdd(id, h.text); ch = true; } catch (e) {} } } // no loaded input controller: the mailbox is the only path
+      if (ch) { this.osCQRender(); setTimeout(() => this.osClaudRender(true), 800); } } } catch (e) { console.error("HQ queue pump", e); }
+    this.osCQBusy = false;
   },
   claudProjId() { const cp = this.claudian(), nm = String(this.project ? this.project.name : "").toLowerCase(); try { const p = cp.chatHost.domains.projects.list().find((x) => !x.isArchived && String(x.name).toLowerCase() === nm); return p ? p.id : ""; } catch (e) { return ""; } },
   async claudEnsureProject() { // the Claudian project for this HQ project, created on first use
@@ -2006,7 +2019,7 @@ Object.assign(HQView.prototype, {
     new Notice("Project " + nm + " created"); return p.id;
   },
   osTargetLabel() { const u = this.osUI; if (!u || !u.tbtn) return; const o = u.target.options[u.target.selectedIndex]; u.tbtn.setText((o ? o.text : "HQ CHAT") + "  \u25BE"); },
-  osTargetPick(v) { const u = this.osUI; u.target.value = v; this.osChatLayout(); this.osTargetLabel(); this.osTargetClose(); u.cmdIn.focus(); },
+  osTargetPick(v) { const u = this.osUI; u.target.value = v; this.osChatLayout(); this.osSaveTarget(); this.osTargetLabel(); this.osTargetClose(); u.cmdIn.focus(); },
   osTargetClose() { const u = this.osUI; if (!u || !u.tpop) return; u.tpop.addClass("os-hide"); if (u.tpopOff) { document.removeEventListener("pointerdown", u.tpopOff, true); document.removeEventListener("keydown", u.tpopKey, true); u.tpopOff = null; } },
   // chat picker: pick where messages go; rename or delete any Claudian chat right here (delete asks once more)
   osTargetMenu(keep) {
@@ -2035,8 +2048,9 @@ Object.assign(HQView.prototype, {
     try { const p = cp && cp.chatHost && cp.chatHost.switchConversation ? cp.chatHost.switchConversation(id) : null; if (p && p.catch) p.catch((e) => console.error("Project HQ switch session", e)); } catch (e) { console.error("Project HQ switch session", e); }
     const leaf = ws.getLeavesOfType(type)[0]; if (leaf) ws.revealLeaf(leaf);
   },
+  osSaveTarget() { const u = this.osUI, pid = this.project && this.project.id, v = u && u.target.value; if (!pid || !v || v === "new") return; const S = this.plugin.settings; S.lastTarget = S.lastTarget || {}; if (S.lastTarget[pid] !== v) { S.lastTarget[pid] = v; this.plugin.saveSoon(); } },
   osFillTarget() {
-    const u = this.osUI; if (!u || !u.target) return; const prev = u.target.value || "hq", convs = this.osConvs || [], sig = JSON.stringify(convs); if (u.tsig === sig) return; u.tsig = sig; u.target.empty();
+    const u = this.osUI; if (!u || !u.target) return; let prev = u.target.value || "hq"; const convs = this.osConvs || [], sig = JSON.stringify(convs); if (u.tsig === sig) return; u.tsig = sig; u.target.empty(); if (!u.restored && convs.length) { u.restored = true; const pid = this.project && this.project.id, sv = pid && ((this.plugin.settings.lastTarget || {})[pid]); prev = sv && (sv === "hq" || convs.some((c) => c[0] === sv)) ? sv : (convs.find((c) => c[2]) || convs[0])[0]; }
     const hqOn = MODS.chat.on; if (!convs.length && !hqOn) u.target.createEl("option", { value: "new", text: "NEW CHAT" }); if (hqOn) u.target.createEl("option", { value: "hq", text: "HQ CHAT" }); convs.forEach(([id, t, act]) => u.target.createEl("option", { value: id, text: (MODS.chat.on ? "CLAUDIAN: " : "") + t.slice(0, 40) }));
     const act = (convs.find((c) => c[2]) || convs[0] || [])[0];
     const pend = u.pendTarget && convs.some((c) => c[0] === u.pendTarget) ? u.pendTarget : ""; if (pend) u.pendTarget = "";
@@ -2051,12 +2065,7 @@ Object.assign(HQView.prototype, {
     if (!text) return;
     if (target === "new") { u.cmdIn.value = ""; this.osAutoGrow(); try { u.cmdMsg.setText("Starting a new chat in " + (this.project ? this.project.name : "this project") + "\u2026"); await this.osNewClaudChat(text); this.osRemember(text); u.cmdMsg.setText("Sent."); } catch (e) { u.cmdIn.value = text; u.cmdMsg.setText("Could not start a chat: " + (e && e.message || e)); } return; }
     this.osQ = this.osQ || {}; const q = this.osQ[target] = this.osQ[target] || [];
-    if (this.claudBusy(target) || q.length) { q.push({ text }); this.osRemember(text); u.cmdIn.value = ""; this.osAutoGrow(); this.osGoLabel(); this.osCQRender(); return; } const say = (m, bad) => { u.cmdMsg.setText(m); u.cmdMsg.toggleClass("bad", !!bad); };
-    const cp = this.claudian(); if (!(cp && cp.api && cp.api.send)) { say("Claudian is not available.", true); return; }
-    u.cmdIn.disabled = true; say("Sending…");
-    try { const title = ((this.osConvs || []).find((c) => c[0] === target) || [])[1] || "session"; if (!(await this.osDirectSend(target, text))) await cp.api.send(target, { text }); this.osPendAdd(target, text); this.osRemember(text); u.cmdIn.value = ""; this.osAutoGrow(); say(""); this.osSessData(true); setTimeout(() => this.osClaudRender(true), 800); }
-    catch (e) { console.error("Project HQ command", e); say("Could not send: " + redact(e && e.message || e), true); }
-    finally { u.cmdIn.disabled = false; u.cmdIn.focus(); }
+    q.push({ text, t: Date.now() }); this.osRemember(text); u.cmdIn.value = ""; u.cmdMsg.setText(""); this.osAutoGrow(); this.osGoLabel(); this.osCQRender(); this.osCQPump(); // idle chat: goes out within a moment; mid-turn: waits in HQ's queue
   },
   // ---- project progress rings ----
   // ---- next posting slot ----
@@ -2679,7 +2688,7 @@ Object.assign(HQView.prototype, {
   },
   osGoLabel() {
     const u = this.osUI, hq = this.hq(); if (!u || !u.go) return;
-    if (u.target.value !== "hq") { const busy = this.claudBusy(u.target.value), has = !!u.cmdIn.value.trim(), q = busy && has; u.go.setText(q ? "QUEUE" : "SEND"); u.go.toggleClass("stop", false); u.go.toggleClass("queue", q); u.go.setAttr("aria-label", q ? "Queue this message (SEND NOW in the queue interrupts Claude)" : "Send message"); return; } const c = hq && hq.get(hq.activeId), busy = !!(c && c.busy && u.target.value === "hq"), has = !!(u.cmdIn.value.trim() || u.imgs.length), q = busy && has;
+    if (u.target.value !== "hq") { const busy = this.osDirectState(u.target.value) === "busy", has = !!u.cmdIn.value.trim(), q = busy && has; u.go.setText(q ? "QUEUE" : "SEND"); u.go.toggleClass("stop", false); u.go.toggleClass("queue", q); u.go.setAttr("aria-label", q ? "Queue this message (SEND NOW in the queue interrupts Claude)" : "Send message"); return; } const c = hq && hq.get(hq.activeId), busy = !!(c && c.busy && u.target.value === "hq"), has = !!(u.cmdIn.value.trim() || u.imgs.length), q = busy && has;
     u.go.setText(q ? "QUEUE" : busy ? "STOP" : "SEND"); u.go.toggleClass("stop", busy && !q); u.go.toggleClass("queue", q); u.go.setAttr("aria-label", q ? "Queue this message (sends when Claude finishes)" : busy ? "Stop Claude" : "Send message");
   },
   osChatQueue(text) {
