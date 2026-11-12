@@ -843,3 +843,8 @@
 .hqos .os-duelgif{display:block;width:100%;height:100%;object-fit:contain;image-rendering:auto}
 .hqos .os-fillgl{position:absolute;top:4px;left:30px;z-index:2;font-family:var(--os-mono);font-size:9px;line-height:1.5;letter-spacing:.1em;color:rgba(var(--os-acrgb),.8);opacity:.7;pointer-events:none;text-shadow:0 0 3px rgba(0,0,0,.8)}
 .hqos .os-fillgl.r{left:auto;right:30px}
+.hqos .os-swpop{position:fixed;z-index:50;min-width:150px;max-width:260px;overflow-y:auto;padding:3px;background:rgba(var(--os-bgrgb,10,12,16),.96);border:1px solid rgba(var(--os-acrgb),.6);border-radius:3px;font-family:var(--os-mono);font-size:11px;line-height:1.4}
+.hqos .os-swh{padding:3px 6px 1px;font-size:9px;letter-spacing:.2em;color:rgba(var(--os-acrgb),.6)}
+.hqos .os-swi{display:block;width:100%;text-align:left;height:auto;padding:2px 6px;background:none;border:0;border-radius:2px;box-shadow:none;color:rgba(var(--os-acrgb),.9);cursor:pointer}
+.hqos .os-swi:hover,.hqos .os-swi:focus-visible{background:rgba(var(--os-acrgb),.18)}
+.hqos .os-swi.cur{color:#fff;background:rgba(var(--os-acrgb),.28)}

@@ -2884,11 +2884,23 @@ function hqDuel(host, key = "hq-fill-scene", def = 0, side = "l") {
   const swb = wr.createEl("button", { cls: "os-fillsw" + (side === "r" ? " r" : ""), text: "⇄" }); let CW = W;
   const lbl = () => { const n = gif ? gif.name : HQ_SCENES[scene].name; swb.setAttr("aria-label", "Swap animation or GIF (now: " + n.toLowerCase() + ")"); gl.setText(n.toLowerCase()); };
   lbl();
-  const next = () => { try {
-    const all = HQ_SCENES.map((s, i) => ({ p: i })).concat(hqGifs().filter((g) => !bad.has(g.file)).map((g) => ({ g }))); const at = all.findIndex((x) => gif ? x.g && x.g.file === gif.file : x.p === scene), nx = all[(at + 1) % all.length];
+  const entries = () => HQ_SCENES.map((s, i) => ({ p: i, name: s.name })).concat(hqGifs().filter((g) => !bad.has(g.file)).map((g) => ({ g, name: g.name })));
+  const isCur = (x) => gif ? !!x.g && x.g.file === gif.file : x.p === scene;
+  const next = (nx0) => { try {
+    const all = entries(), at = all.findIndex(isCur), nx = nx0 || all[(at + 1) % all.length];
     if (nx.g) { gif = nx.g; localStorage.setItem(key, "g:" + gif.file); } else { gif = null; scene = nx.p; localStorage.setItem(key, String(scene)); host.style.height = ""; }
     st = {}; tick = 0; round = 0; lbl(); draw(); } catch (er) { gif = null; scene = 0; } };
-  swb.addEventListener("click", (e) => { e.stopPropagation(); next(); });
+  let pop = null; const closePop = () => { if (pop) { pop.remove(); pop = null; document.removeEventListener("mousedown", outside, true); document.removeEventListener("keydown", esc, true); } };
+  const outside = (e) => { if (pop && !pop.contains(e.target) && e.target !== swb) closePop(); }, esc = (e) => { if (e.key === "Escape") { e.stopPropagation(); closePop(); } };
+  const openPop = () => { try {
+    const hq = host.closest(".hqos") || document.body, all = entries(); pop = hq.createDiv({ cls: "os-swpop", attr: { role: "menu" } });
+    const grp = (t, f) => { const l = all.filter(f); if (!l.length) return; pop.createDiv({ cls: "os-swh", text: t }); l.forEach((x) => { const b = pop.createEl("button", { cls: "os-swi" + (isCur(x) ? " cur" : ""), text: (isCur(x) ? "▸ " : "") + x.name, attr: { role: "menuitem" } }); b.onclick = (e) => { e.stopPropagation(); closePop(); next(x); }; }); };
+    grp("ANIMATIONS", (x) => !x.g); grp("GIFS & VIDEOS", (x) => !!x.g);
+    const br = swb.getBoundingClientRect(), z = host.offsetHeight && host.getBoundingClientRect().height ? host.getBoundingClientRect().height / host.offsetHeight : 1; pop.style.left = Math.round(br.left / z) + "px"; pop.style.top = Math.round(br.bottom / z + 2) + "px"; pop.style.maxHeight = Math.max(80, Math.round((window.innerHeight - br.bottom) / z - 12)) + "px";
+    const cur = pop.querySelector(".cur"); if (cur) cur.scrollIntoView({ block: "nearest" });
+    document.addEventListener("mousedown", outside, true); document.addEventListener("keydown", esc, true); } catch (er) { closePop(); } };
+  swb.addEventListener("click", (e) => { e.stopPropagation(); if (e.shiftKey) { closePop(); next(); } else if (pop) closePop(); else openPop(); });
+  swb.addEventListener("contextmenu", (e) => { e.preventDefault(); e.stopPropagation(); closePop(); next(); });
   const showGif = (on) => { const v = on && hqIsVid(gif.file); im.style.display = on && !v ? "block" : "none"; vd.style.display = v ? "block" : "none"; cv.style.display = on ? "none" : ""; if (!on) { try { vd.pause(); } catch (e) {} wr.style.height = ""; imFile = ""; } };
   const onErr = () => { if (gif) bad.add(gif.file); imFile = ""; next(); }; im.addEventListener("error", onErr); vd.addEventListener("error", onErr);
   const rgb = (v, a) => "rgba(" + (v || "25,227,208") + "," + a + ")";
