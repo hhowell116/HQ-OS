@@ -77,3 +77,7 @@ MIT licensed.
 ## Worker mailbox
 
 Drop a `.md` file into `Claude'sWorkspace/Lumen/Notes/Mailbox/<sessionId>/`. HQ queues its text for that Claudian chat and deletes the file. Messages wait (shown WAITING) while the chat is busy or has background work, send once it is idle, and are re-sent if they don't show in the transcript within 20 s. This avoids Claudian's "undelivered" popup, which comes from its own mailbox discarding a message sent to a busy chat.
+
+## GIFs and videos
+
+The left-column animation box's ⇄ button cycles one shared list: the pixel scenes plus every `.gif`, `.mp4` and `.webm` in `gifs/` (inside the plugin folder). Names come from `gifs/index.json` (`{"file.gif": "Name"}`; a missing entry falls back to the file name). The list is rescanned on each swap, so dropping a file in is enough. The current name shows beside the arrows. Media fills the box width and its height follows the aspect ratio, capped at a third of the column, with the panels above giving way. Videos play muted and looped. Minimal mode hides GIFs and pauses videos. A file that fails to load is skipped. `gifs/add-pin.ps1 <pin url> "<Name>"` downloads a Pinterest pin (GIF, or its 720p mp4 if it is a video) and registers it.

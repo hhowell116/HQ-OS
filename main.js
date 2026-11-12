@@ -2868,13 +2868,29 @@ const HQ_SCENES = [
   } },
 ];
 // Pixel animations for the spare space in the left column (swordfight + HQ_SCENES). Drawn in code (no assets), theme coloured, ~10 fps, idle when hidden.
+// Media library: GIF/MP4/WebM files in <plugin>/gifs/, names in gifs/index.json {"file.gif":"Name"}; rescanned on every swap, so dropping a file in is enough
+let GIF_APP = null, GIF_DIR = "";
+const hqIsVid = (f) => /\.(mp4|webm)$/i.test(f);
+function hqGifs() { try { if (!GIF_DIR || !fs.existsSync(GIF_DIR)) return []; let idx = {}; try { idx = JSON.parse(fs.readFileSync(path.join(GIF_DIR, "index.json"), "utf8")) || {}; } catch (e) { idx = {}; }
+  return fs.readdirSync(GIF_DIR).filter((f) => /\.(gif|mp4|webm)$/i.test(f)).sort().map((f) => ({ file: f, name: String(idx[f] || f.replace(/\.(gif|mp4|webm)$/i, "").replace(/[-_]+/g, " ")) })); } catch (e) { return []; } }
+function hqGifSrc(file) { try { const d = GIF_DIR.replace(/\\/g, "/"), b = (GIF_APP.vault.adapter.basePath || "").replace(/\\/g, "/"); const rel = d.startsWith(b) ? d.slice(b.length).replace(/^\//, "") : ""; return GIF_APP.vault.adapter.getResourcePath((rel ? rel + "/" : "") + file); } catch (e) { return ""; } }
 function hqDuel(host, key = "hq-fill-scene", def = 0, side = "l") {
   const wr = host.createDiv({ cls: "os-duelw" }), cv = wr.createEl("canvas", { cls: "os-duel", attr: { "aria-hidden": "true" } }), ctx = cv.getContext("2d"), W = 64, H = 30;
-  let tick = 0, round = 0, st = {}, scene = Math.min(HQ_SCENES.length - 1, Math.max(0, parseInt(localStorage.getItem(key) ?? String(def), 10) || 0));
+  let tick = 0, round = 0, st = {}, gif = null, scene = 0; const sv = localStorage.getItem(key) ?? String(def);
+  if (sv.startsWith("g:")) gif = hqGifs().find((g) => g.file === sv.slice(2)) || null; if (!gif) scene = Math.min(HQ_SCENES.length - 1, Math.max(0, parseInt(sv, 10) || 0));
+  const im = wr.createEl("img", { cls: "os-duelgif", attr: { alt: "", "aria-hidden": "true" } }), vd = wr.createEl("video", { cls: "os-duelgif", attr: { "aria-hidden": "true" } });
+  vd.muted = true; vd.loop = true; vd.autoplay = true; vd.playsInline = true; im.style.display = vd.style.display = "none"; let imFile = ""; const bad = new Set();
+  const gl = wr.createSpan({ cls: "os-fillgl" + (side === "r" ? " r" : "") });
   const swb = wr.createEl("button", { cls: "os-fillsw" + (side === "r" ? " r" : ""), text: "⇄" }); let CW = W;
-  const lbl = () => swb.setAttr("aria-label", "Swap animation (" + HQ_SCENES[scene].name.toLowerCase() + ")");
+  const lbl = () => { const n = gif ? gif.name : HQ_SCENES[scene].name; swb.setAttr("aria-label", "Swap animation or GIF (now: " + n.toLowerCase() + ")"); gl.setText(n.toLowerCase()); };
   lbl();
-  swb.addEventListener("click", (e) => { e.stopPropagation(); scene = (scene + 1) % HQ_SCENES.length; localStorage.setItem(key, String(scene)); st = {}; tick = 0; round = 0; lbl(); draw(); });
+  const next = () => { try {
+    const all = HQ_SCENES.map((s, i) => ({ p: i })).concat(hqGifs().filter((g) => !bad.has(g.file)).map((g) => ({ g }))); const at = all.findIndex((x) => gif ? x.g && x.g.file === gif.file : x.p === scene), nx = all[(at + 1) % all.length];
+    if (nx.g) { gif = nx.g; localStorage.setItem(key, "g:" + gif.file); } else { gif = null; scene = nx.p; localStorage.setItem(key, String(scene)); host.style.height = ""; }
+    st = {}; tick = 0; round = 0; lbl(); draw(); } catch (er) { gif = null; scene = 0; } };
+  swb.addEventListener("click", (e) => { e.stopPropagation(); next(); });
+  const showGif = (on) => { const v = on && hqIsVid(gif.file); im.style.display = on && !v ? "block" : "none"; vd.style.display = v ? "block" : "none"; cv.style.display = on ? "none" : ""; if (!on) { try { vd.pause(); } catch (e) {} wr.style.height = ""; imFile = ""; } };
+  const onErr = () => { if (gif) bad.add(gif.file); imFile = ""; next(); }; im.addEventListener("error", onErr); vd.addEventListener("error", onErr);
   const rgb = (v, a) => "rgba(" + (v || "25,227,208") + "," + a + ")";
   // one fighter: x = feet centre, f = facing (1 right, -1 left), pose, flash = hit flash, col = "r,g,b"
   const fighter = (x, f, pose, col, flash, bob) => {
@@ -2917,6 +2933,14 @@ function hqDuel(host, key = "hq-fill-scene", def = 0, side = "l") {
     // full box width: the scale is fixed by the width, the scene gets as many columns as fit
     const sc = Math.max(1, Math.min(3, Math.floor(host.clientWidth / W))), nw = Math.max(W, Math.floor(host.clientWidth / sc));
     if (nw !== CW) { CW = nw; st = {}; }
+    if (gif) { // media scene: box height follows the aspect ratio, capped at a third of the column; the panels above give way
+      const col0 = host.parentElement, pl = GIF_APP && GIF_APP.plugins && GIF_APP.plugins.plugins && GIF_APP.plugins.plugins["project-hq"], mn = !!(pl && pl.settings && pl.settings.minimal), vv = hqIsVid(gif.file), el = vv ? vd : im;
+      showGif(true); if (imFile !== gif.file) { imFile = gif.file; const u = hqGifSrc(gif.file); if (!u) { bad.add(gif.file); imFile = ""; next(); return; } el.src = u; }
+      im.style.visibility = mn ? "hidden" : ""; if (vv) { if (mn) { if (!vd.paused) vd.pause(); } else if (vd.paused) vd.play().catch(() => {}); }
+      const nW = vv ? vd.videoWidth : im.naturalWidth, nH = vv ? vd.videoHeight : im.naturalHeight; if (!nW) return;
+      const cap = col0 ? col0.clientHeight / 3 : 200, hh = Math.max(40, Math.round(Math.min(host.clientWidth * nH / nW, cap)));
+      if (wr.style.height !== hh + "px") wr.style.height = hh + "px"; if (host.style.height !== hh + "px") host.style.height = hh + "px"; if (swb.style.top !== "3px") swb.style.top = "3px"; return;
+    } else if (im.style.display !== "none" || vd.style.display !== "none") showGif(false);
     { // box height = space below the chat panel, so the panels above end exactly level with the chat's bottom edge
       const z = host.offsetHeight ? r.height / host.offsetHeight : 1, col = host.parentElement, hq = host.closest(".hqos"), ch = hq && hq.querySelector(".os-mid .os-chat");
       let v = ""; if (ch && ch.offsetParent && col) { const gap = parseFloat(getComputedStyle(col).rowGap) || 0, want = Math.round((col.getBoundingClientRect().bottom - ch.getBoundingClientRect().bottom) / z - gap); if (want > 40) v = want + "px"; }
@@ -2935,7 +2959,7 @@ function hqDuel(host, key = "hq-fill-scene", def = 0, side = "l") {
     if (s.sp) spark(s.sp[0], s.sp[1], s.sp[2]);
     tick++; if (tick % 64 === 0) round++;
   };
-  let fr = 0; const iv = setInterval(() => { if (!host.isConnected) { clearInterval(iv); return; } if (HQ_SCENES[scene].smooth || fr++ % 3 === 0) draw(); }, 36);
+  let fr = 0; const iv = setInterval(() => { if (!host.isConnected) { clearInterval(iv); return; } if (gif || HQ_SCENES[scene].smooth || fr++ % 3 === 0) draw(); }, 36);
   return cv;
 }
 function hqChatIsActive(view, c) { const hq = view.hq(); return !!hq && hq.activeId === c.id; }
@@ -3016,7 +3040,7 @@ class ProjectHQSettings extends PluginSettingTab {
 module.exports = class ProjectHQ extends Plugin {
   async onload() {
     const d = (await this.loadData()) || {}; this.settings = Object.assign({}, DEFAULTS, d); if (!Array.isArray(this.settings.projects)) this.settings.projects = [];
-    { const th = this.settings.theme = Object.assign({ id: "cyan", custom: null, saved: {} }, this.settings.theme || {}); if (!th.saved || typeof th.saved !== "object") th.saved = {}; if (typeof th.id !== "string") th.id = "cyan"; if (!this.settings.mods || typeof this.settings.mods !== "object") this.settings.mods = {}; MODS = buildMods(this.settings.mods); BASE = this.app.vault.adapter.basePath || ""; guardVerify(); }
+    { const th = this.settings.theme = Object.assign({ id: "cyan", custom: null, saved: {} }, this.settings.theme || {}); if (!th.saved || typeof th.saved !== "object") th.saved = {}; if (typeof th.id !== "string") th.id = "cyan"; if (!this.settings.mods || typeof this.settings.mods !== "object") this.settings.mods = {}; MODS = buildMods(this.settings.mods); BASE = this.app.vault.adapter.basePath || ""; guardVerify(); GIF_APP = this.app; try { GIF_DIR = path.join(this.app.vault.adapter.getBasePath(), this.manifest.dir || ".obsidian/plugins/project-hq", "gifs"); } catch (e) { GIF_DIR = ""; } }
     if (this.syncProjects()) await this.saveData(this.settings);
     try { this.hq = new HQChats(this); } catch (e) { console.error("Project HQ chat engine", e); this.hq = null; }
     this.registerView(VIEW, (leaf) => new HQView(leaf, this));
