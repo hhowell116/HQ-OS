@@ -2890,13 +2890,21 @@ function hqDuel(host, key = "hq-fill-scene", def = 0, side = "l") {
     const all = entries(), at = all.findIndex(isCur), nx = nx0 || all[(at + 1) % all.length];
     if (nx.g) { gif = nx.g; localStorage.setItem(key, "g:" + gif.file); } else { gif = null; scene = nx.p; localStorage.setItem(key, String(scene)); host.style.height = ""; }
     st = {}; tick = 0; round = 0; lbl(); draw(); } catch (er) { gif = null; scene = 0; } };
-  let pop = null; const closePop = () => { if (pop) { pop.remove(); pop = null; document.removeEventListener("mousedown", outside, true); document.removeEventListener("keydown", esc, true); } };
+  let pop = null; const closePop = () => { if (pop) { pop.remove(); pop = null; document.removeEventListener("mousedown", outside, true); document.removeEventListener("keydown", esc, true); document.removeEventListener("scroll", scr, true); } };
+  const scr = (e) => { if (pop && !pop.contains(e.target)) closePop(); };
   const outside = (e) => { if (pop && !pop.contains(e.target) && e.target !== swb) closePop(); }, esc = (e) => { if (e.key === "Escape") { e.stopPropagation(); closePop(); } };
   const openPop = () => { try {
     const hq = host.closest(".hqos") || document.body, all = entries(); pop = hq.createDiv({ cls: "os-swpop", attr: { role: "menu" } });
     const grp = (t, f) => { const l = all.filter(f); if (!l.length) return; pop.createDiv({ cls: "os-swh", text: t }); l.forEach((x) => { const b = pop.createEl("button", { cls: "os-swi" + (isCur(x) ? " cur" : ""), text: (isCur(x) ? "▸ " : "") + x.name, attr: { role: "menuitem" } }); b.onclick = (e) => { e.stopPropagation(); closePop(); next(x); }; }); };
     grp("ANIMATIONS", (x) => !x.g); grp("GIFS & VIDEOS", (x) => !!x.g);
-    const br = swb.getBoundingClientRect(), z = host.offsetHeight && host.getBoundingClientRect().height ? host.getBoundingClientRect().height / host.offsetHeight : 1; pop.style.left = Math.round(br.left / z) + "px"; pop.style.top = Math.round(br.bottom / z + 2) + "px"; pop.style.maxHeight = Math.max(80, Math.round((window.innerHeight - br.bottom) / z - 12)) + "px";
+    const br = swb.getBoundingClientRect(), hr = host.getBoundingClientRect(), z = host.offsetHeight && hr.height ? hr.height / host.offsetHeight : 1, vw = window.innerWidth, vh = window.innerHeight, M = 8;
+    // all numbers below are viewport px; pop is fixed (CSS px inside HQ's zoom), so we place it, measure where it really landed, and correct the difference
+    pop.style.maxHeight = "none"; pop.style.left = "0px"; pop.style.top = "0px"; const nat = pop.getBoundingClientRect().height || 200, below = vh - br.bottom - M, above = br.top - M, up = below < Math.min(nat, 220) && above > below, room = Math.max(80, up ? above : below);
+    pop.style.maxHeight = Math.round(room / z) + "px"; const pr = pop.getBoundingClientRect(), pw = pr.width || 180, ph = Math.min(nat, room);
+    let wantL = side === "r" ? br.right - pw : br.left; wantL = Math.max(M, Math.min(wantL, vw - pw - M)); const wantT = Math.max(M, up ? br.top - ph - 2 : br.bottom + 2);
+    pop.style.left = Math.round(wantL / z) + "px"; pop.style.top = Math.round(wantT / z) + "px"; const ar = pop.getBoundingClientRect();
+    pop.style.left = Math.round((wantL - ar.left) / z + wantL / z) + "px"; pop.style.top = Math.round((wantT - ar.top) / z + wantT / z) + "px"; pop.style.zIndex = "9999";
+    window.addEventListener("resize", closePop, { once: true }); document.addEventListener("scroll", scr, true);
     const cur = pop.querySelector(".cur"); if (cur) cur.scrollIntoView({ block: "nearest" });
     document.addEventListener("mousedown", outside, true); document.addEventListener("keydown", esc, true); } catch (er) { closePop(); } };
   swb.addEventListener("click", (e) => { e.stopPropagation(); if (e.shiftKey) { closePop(); next(); } else if (pop) closePop(); else openPop(); });
