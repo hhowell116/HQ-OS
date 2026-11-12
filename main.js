@@ -2890,7 +2890,7 @@ function hqDuel(host, key = "hq-fill-scene", def = 0, side = "l") {
     const all = entries(), at = all.findIndex(isCur), nx = nx0 || all[(at + 1) % all.length];
     if (nx.g) { gif = nx.g; localStorage.setItem(key, "g:" + gif.file); } else { gif = null; scene = nx.p; localStorage.setItem(key, String(scene)); host.style.height = ""; }
     st = {}; tick = 0; round = 0; lbl(); draw(); } catch (er) { gif = null; scene = 0; } };
-  let pop = null; const closePop = () => { if (pop) { pop.remove(); pop = null; document.removeEventListener("mousedown", outside, true); document.removeEventListener("keydown", esc, true); document.removeEventListener("scroll", scr, true); } };
+  let pop = null; const closePop = () => { if (pop) { pop.remove(); pop = null; document.removeEventListener("mousedown", outside, true); document.removeEventListener("keydown", esc, true); document.removeEventListener("scroll", scr, true); gl.removeClass("on"); } };
   const scr = (e) => { if (pop && !pop.contains(e.target)) closePop(); };
   const outside = (e) => { if (pop && !pop.contains(e.target) && e.target !== swb) closePop(); }, esc = (e) => { if (e.key === "Escape") { e.stopPropagation(); closePop(); } };
   const openPop = () => { try {
@@ -2907,7 +2907,8 @@ function hqDuel(host, key = "hq-fill-scene", def = 0, side = "l") {
     window.addEventListener("resize", closePop, { once: true }); document.addEventListener("scroll", scr, true);
     const cur = pop.querySelector(".cur"); if (cur) cur.scrollIntoView({ block: "nearest" });
     document.addEventListener("mousedown", outside, true); document.addEventListener("keydown", esc, true); } catch (er) { closePop(); } };
-  swb.addEventListener("click", (e) => { e.stopPropagation(); if (e.shiftKey) { closePop(); next(); } else if (pop) closePop(); else openPop(); });
+  const glOn = (on) => gl.toggleClass("on", on || !!pop); swb.addEventListener("mouseenter", () => glOn(true)); swb.addEventListener("mouseleave", () => glOn(false)); swb.addEventListener("focus", () => glOn(true)); swb.addEventListener("blur", () => glOn(false));
+  swb.addEventListener("click", (e) => { e.stopPropagation(); setTimeout(() => glOn(false), 0); if (e.shiftKey) { closePop(); next(); } else if (pop) closePop(); else openPop(); });
   swb.addEventListener("contextmenu", (e) => { e.preventDefault(); e.stopPropagation(); closePop(); next(); });
   const showGif = (on) => { const v = on && hqIsVid(gif.file); im.style.display = on && !v ? "block" : "none"; vd.style.display = v ? "block" : "none"; cv.style.display = on ? "none" : ""; if (!on) { try { vd.pause(); } catch (e) {} wr.style.height = ""; imFile = ""; } };
   const onErr = () => { if (gif) bad.add(gif.file); imFile = ""; next(); }; im.addEventListener("error", onErr); vd.addEventListener("error", onErr);
