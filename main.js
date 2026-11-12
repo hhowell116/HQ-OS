@@ -1464,7 +1464,7 @@ Object.assign(HQView.prototype, {
     const grid = ui.grid = wrap.createDiv({ cls: "os-grid" }), modsEl = ui.modsEl = wrap.createDiv({ cls: "os-mods os-hide" }), L = grid.createDiv({ cls: "os-col os-left" }), M = grid.createDiv({ cls: "os-col os-mid" }), Rt = grid.createDiv({ cls: "os-col os-right" });
     ui.vit = osPanel(L, "SYSTEM VITALS", "os-vit"); ui.sess = osPanel(L, "AGENTS & CHATS", "os-sess"); ui.next = osPanel(L, "NEXT UP", "os-next"); ui.files = osPanel(L, "FILES IN PLAY", "os-files");
     ui.tasks = osPanel(Rt, "TOP TASKS", "os-tasks"); ui.rev = osPanel(Rt, "REVIEW QUEUE", "os-rev"); ui.rev.p.after(ui.next.p);
-    { const f = L.createDiv({ cls: "os-fill" }); hqDuel(f); const g = Rt.createDiv({ cls: "os-fill" }); hqDuel(g, "hq-fill-scene-r", 5, "r"); }
+    { const f = L.createDiv({ cls: "os-fill" }); try { hqDuel(f); } catch (e) { console.error("HQ OS swap box (left) failed", e); } const g = Rt.createDiv({ cls: "os-fill" }); try { hqDuel(g, "hq-fill-scene-r", 5, "r"); } catch (e) { console.error("HQ OS swap box (right) failed", e); } }
     this.osColl = this.osColl || new Set(MODS.files.collapsed ? ["files"] : []);
     const orbw = M.createDiv({ cls: "os-orbw" }); ui.cv = orbw.createEl("canvas", { cls: "os-cv", attr: { "aria-hidden": "true" } });
     orbw.insertAdjacentHTML("beforeend", '<svg class="os-ring" viewBox="0 0 200 200" aria-hidden="true"><circle cx="100" cy="100" r="96" class="r1"/><circle cx="100" cy="100" r="88" class="r2"/><path class="r3" d="M100 2v10M100 188v10M2 100h10M188 100h10"/></svg>');
@@ -2882,7 +2882,7 @@ function hqDuel(host, key = "hq-fill-scene", def = 0, side = "l") {
   vd.muted = true; vd.loop = true; vd.autoplay = true; vd.playsInline = true; im.style.display = vd.style.display = "none"; let imFile = ""; const bad = new Set();
   const gl = wr.createSpan({ cls: "os-fillgl" + (side === "r" ? " r" : "") });
   const swb = wr.createEl("button", { cls: "os-fillsw" + (side === "r" ? " r" : ""), text: "⇄" }); let CW = W;
-  const lbl = () => { const n = gif ? gif.name : HQ_SCENES[scene].name; swb.setAttr("aria-label", "Swap animation or GIF (now: " + n.toLowerCase() + ")"); gl.setText(n.toLowerCase()); };
+  const lbl = () => { const n = gif ? gif.name : HQ_SCENES[scene].name; const nm = hqGifs().length; swb.setAttr("aria-label", "Pick animation or GIF (v2 · " + nm + " media; now: " + n.toLowerCase() + ")"); swb.setAttr("title", "v2 · " + nm + " media · click = list, shift/right-click = next" + (nm ? "" : " · scanned: " + (GIF_DIR || "no dir"))); gl.setText(n.toLowerCase()); };
   lbl();
   const entries = () => HQ_SCENES.map((s, i) => ({ p: i, name: s.name })).concat(hqGifs().filter((g) => !bad.has(g.file)).map((g) => ({ g, name: g.name })));
   const isCur = (x) => gif ? !!x.g && x.g.file === gif.file : x.p === scene;
@@ -2940,7 +2940,7 @@ function hqDuel(host, key = "hq-fill-scene", def = 0, side = "l") {
   };
   const draw = () => {
     if (!host.isConnected) { clearInterval(iv); return; }
-    const r = host.getBoundingClientRect(); if (r.height < 10 || document.hidden || !host.offsetParent) return;
+    const r = host.getBoundingClientRect(); if ((r.height < 10 && !gif) || document.hidden || !host.offsetParent) return;
     // fixed size: the box shrinks to fit the animation and the panels above take the spare room (width in CSS px, HQ may be zoomed)
     // full box width: the scale is fixed by the width, the scene gets as many columns as fit
     const sc = Math.max(1, Math.min(3, Math.floor(host.clientWidth / W))), nw = Math.max(W, Math.floor(host.clientWidth / sc));
@@ -2949,8 +2949,8 @@ function hqDuel(host, key = "hq-fill-scene", def = 0, side = "l") {
       const col0 = host.parentElement, pl = GIF_APP && GIF_APP.plugins && GIF_APP.plugins.plugins && GIF_APP.plugins.plugins["project-hq"], mn = !!(pl && pl.settings && pl.settings.minimal), vv = hqIsVid(gif.file), el = vv ? vd : im;
       showGif(true); if (imFile !== gif.file) { imFile = gif.file; const u = hqGifSrc(gif.file); if (!u) { bad.add(gif.file); imFile = ""; next(); return; } el.src = u; }
       im.style.visibility = mn ? "hidden" : ""; if (vv) { if (mn) { if (!vd.paused) vd.pause(); } else if (vd.paused) vd.play().catch(() => {}); }
-      const nW = vv ? vd.videoWidth : im.naturalWidth, nH = vv ? vd.videoHeight : im.naturalHeight; if (!nW) return;
-      const cap = col0 ? col0.clientHeight / 3 : 200, hh = Math.max(40, Math.round(Math.min(host.clientWidth * nH / nW, cap)));
+      const nW = vv ? vd.videoWidth : im.naturalWidth, nH = vv ? vd.videoHeight : im.naturalHeight; const w1 = host.clientWidth;
+      const cap = col0 ? col0.clientHeight / 3 : 200, hh = Math.max(40, Math.round(Math.min(nW ? w1 * nH / nW : w1 * 9 / 16, cap)));
       if (wr.style.height !== hh + "px") wr.style.height = hh + "px"; if (host.style.height !== hh + "px") host.style.height = hh + "px"; if (swb.style.top !== "3px") swb.style.top = "3px"; return;
     } else if (im.style.display !== "none" || vd.style.display !== "none") showGif(false);
     { // box height = space below the chat panel, so the panels above end exactly level with the chat's bottom edge
@@ -3052,7 +3052,7 @@ class ProjectHQSettings extends PluginSettingTab {
 module.exports = class ProjectHQ extends Plugin {
   async onload() {
     const d = (await this.loadData()) || {}; this.settings = Object.assign({}, DEFAULTS, d); if (!Array.isArray(this.settings.projects)) this.settings.projects = [];
-    { const th = this.settings.theme = Object.assign({ id: "cyan", custom: null, saved: {} }, this.settings.theme || {}); if (!th.saved || typeof th.saved !== "object") th.saved = {}; if (typeof th.id !== "string") th.id = "cyan"; if (!this.settings.mods || typeof this.settings.mods !== "object") this.settings.mods = {}; MODS = buildMods(this.settings.mods); BASE = this.app.vault.adapter.basePath || ""; guardVerify(); GIF_APP = this.app; try { GIF_DIR = path.join(this.app.vault.adapter.getBasePath(), this.manifest.dir || ".obsidian/plugins/project-hq", "gifs"); } catch (e) { GIF_DIR = ""; } }
+    { const th = this.settings.theme = Object.assign({ id: "cyan", custom: null, saved: {} }, this.settings.theme || {}); if (!th.saved || typeof th.saved !== "object") th.saved = {}; if (typeof th.id !== "string") th.id = "cyan"; if (!this.settings.mods || typeof this.settings.mods !== "object") this.settings.mods = {}; MODS = buildMods(this.settings.mods); BASE = this.app.vault.adapter.basePath || ""; guardVerify(); GIF_APP = this.app; try { GIF_DIR = path.join(this.app.vault.adapter.getBasePath(), this.manifest.dir || ".obsidian/plugins/project-hq", "gifs"); } catch (e) { GIF_DIR = ""; } try { console.log("HQ OS gifs v2:", GIF_DIR, hqGifs().length + " media"); } catch (e) {} }
     if (this.syncProjects()) await this.saveData(this.settings);
     try { this.hq = new HQChats(this); } catch (e) { console.error("Project HQ chat engine", e); this.hq = null; }
     this.registerView(VIEW, (leaf) => new HQView(leaf, this));
