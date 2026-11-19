@@ -81,3 +81,7 @@ Drop a `.md` file into `Claude'sWorkspace/Lumen/Notes/Mailbox/<sessionId>/`. HQ 
 ## GIFs and videos
 
 The left-column animation box's ⇄ button opens a list (ANIMATIONS, GIFS & VIDEOS; shift-click or right-click ⇄ jumps to the next one) of: the pixel scenes plus every `.gif`, `.mp4` and `.webm` in `gifs/` (inside the plugin folder). Names come from `gifs/index.json` (`{"file.gif": "Name"}`; a missing entry falls back to the file name). The list is rescanned on each swap, so dropping a file in is enough. The current name shows beside the arrows. Media fills the box width and its height follows the aspect ratio, capped at a third of the column, with the panels above giving way. Videos play muted and looped. Minimal mode hides GIFs and pauses videos. A file that fails to load is skipped. `gifs/add-pin.ps1 <pin url> "<Name>"` downloads a Pinterest pin (GIF, or its 720p mp4 if it is a video) and registers it.
+
+## Music box
+
+Pick **Music** in the ⇄ list: shows the cover of whatever Windows is playing (Spotify, YouTube in a browser, etc.), a live visualizer bar (desktop audio when allowed, otherwise a gentle simulation), title and artist, and working prev / play-pause / next buttons (`nowcontrol.ps1`). While it is active the HQ accent colour follows the album cover (not saved; it resets when you leave Music). Covers are cached in `%TEMP%\hq-cover`.

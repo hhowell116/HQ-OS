@@ -1330,7 +1330,9 @@ const HQAudio = window.__hqAudio = {
   },
 };
 const HQNow = {
-  proc: null, data: null, subs: new Set(), failAt: 0,
+  proc: null, data: null, subs: new Set(), failAt: 0, want: 0,
+  ctl(cmd, dir) { try { const f = path.join(dir, "nowcontrol.ps1"); if (fs.existsSync(f)) require("child_process").execFile("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", f, cmd], { windowsHide: true }, () => {}); } catch (e) {} },
+  any(d) { const ss = (d && d.sessions) || []; return this.pick(d) || ss.find((x) => x.title && x.app === d.current) || ss.find((x) => x.title) || null; },
   start(script) {
     if (this.proc || Date.now() - this.failAt < 60000 || !fs.existsSync(script)) return;
     try {
@@ -1579,7 +1581,7 @@ Object.assign(HQView.prototype, {
   osRemember(text) { const H = (this.osHist || []).filter((x) => x !== text); H.push(text); this.osHist = H.slice(-30); try { localStorage.setItem("hqos-hist", JSON.stringify(this.osHist)); } catch (e) {} if (this.osUI) this.osUI.hi = -1; },
   osGate() { const ui = this.osUI; if (!ui || !this.orb) return; const min = !!this.plugin.settings.minimal, minHide = min && !!(ui.mid && ui.mid.hasClass("chatting")); this.contentEl.toggleClass("os-min", min); ui.cv.toggleClass("os-hide", !MODS.orb.on || minHide); const go = MODS.orb.on && !minHide && !document.hidden && ui.inView && !(this.osPage === "mods") && (!this.contentEl.isShown || this.contentEl.isShown()); this.orb.run(go);
     if (go && MODS.orb.audio) HQAudio.start(); else HQAudio.stop();
-    if (go && MODS.orb.nowPlaying) HQNow.start(path.join(this.plugin.hq.dir, "nowplaying.ps1")); else HQNow.stop(); },
+    if ((go && MODS.orb.nowPlaying) || HQNow.want > 0) HQNow.start(path.join(this.plugin.hq.dir, "nowplaying.ps1")); else HQNow.stop(); },
   // ---- render everything (cheap; each region redraws only when its signature changed) ----
   osRender(force) {
     if (!this.osUI) this.osBuild();
@@ -2874,21 +2876,37 @@ const hqIsVid = (f) => /\.(mp4|webm)$/i.test(f);
 function hqGifs() { try { if (!GIF_DIR || !fs.existsSync(GIF_DIR)) return []; let idx = {}; try { idx = JSON.parse(fs.readFileSync(path.join(GIF_DIR, "index.json"), "utf8")) || {}; } catch (e) { idx = {}; }
   return fs.readdirSync(GIF_DIR).filter((f) => /\.(gif|mp4|webm)$/i.test(f)).sort().map((f) => ({ file: f, name: String(idx[f] || f.replace(/\.(gif|mp4|webm)$/i, "").replace(/[-_]+/g, " ")) })); } catch (e) { return []; } }
 function hqGifSrc(file) { try { const d = GIF_DIR.replace(/\\/g, "/"), b = (GIF_APP.vault.adapter.basePath || "").replace(/\\/g, "/"); const rel = d.startsWith(b) ? d.slice(b.length).replace(/^\//, "") : ""; return GIF_APP.vault.adapter.getResourcePath((rel ? rel + "/" : "") + file); } catch (e) { return ""; } }
+// Album-cover colour: most saturated hue bucket of a 32x32 sample, lifted to a readable accent
+function hqCoverColor(img) { try { const c = document.createElement("canvas"); c.width = c.height = 32; const x = c.getContext("2d", { willReadFrequently: true }); x.drawImage(img, 0, 0, 32, 32); const d = x.getImageData(0, 0, 32, 32).data, B = Array.from({ length: 12 }, () => ({ w: 0, r: 0, g: 0, b: 0 }));
+  for (let i = 0; i < d.length; i += 4) { const r = d[i] / 255, g = d[i + 1] / 255, b = d[i + 2] / 255, mx = Math.max(r, g, b), mn = Math.min(r, g, b), sat = mx ? (mx - mn) / mx : 0; if (mx < 0.2 || sat < 0.25) continue; let h = mx === r ? ((g - b) / (mx - mn)) % 6 : mx === g ? (b - r) / (mx - mn) + 2 : (r - g) / (mx - mn) + 4; h = (h * 60 + 360) % 360; const k = B[Math.floor(h / 30) % 12], w = sat * mx; k.w += w; k.r += d[i] * w; k.g += d[i + 1] * w; k.b += d[i + 2] * w; }
+  const t = B.reduce((a, k) => (k.w > a.w ? k : a), B[0]); if (t.w < 1) return "#b0bec5";
+  const r = t.r / t.w / 255, g = t.g / t.w / 255, b = t.b / t.w / 255, mx = Math.max(r, g, b), mn = Math.min(r, g, b); let l = (mx + mn) / 2, sa = mx === mn ? 0 : (mx - mn) / (1 - Math.abs(2 * l - 1)), h = 0;
+  if (mx !== mn) { h = mx === r ? ((g - b) / (mx - mn)) % 6 : mx === g ? (b - r) / (mx - mn) + 2 : (r - g) / (mx - mn) + 4; h = (h * 60 + 360) % 360; }
+  sa = Math.max(0.6, sa); l = Math.min(0.66, Math.max(0.52, l)); const f = (n) => { const k = (n + h / 30) % 12, a = sa * Math.min(l, 1 - l); return Math.round(255 * (l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)))); };
+  return "#" + [f(0), f(8), f(4)].map((v) => v.toString(16).padStart(2, "0")).join(""); } catch (e) { return ""; } }
+const HQ_COVERS = new Map();
+function hqCoverUri(p) { try { if (!p) return ""; let u = HQ_COVERS.get(p); if (u) return u; const b = fs.readFileSync(p); u = "data:image/" + (b[0] === 0x89 ? "png" : "jpeg") + ";base64," + b.toString("base64"); if (HQ_COVERS.size > 20) HQ_COVERS.clear(); HQ_COVERS.set(p, u); return u; } catch (e) { return ""; } }
 function hqDuel(host, key = "hq-fill-scene", def = 0, side = "l") {
   const wr = host.createDiv({ cls: "os-duelw" }), cv = wr.createEl("canvas", { cls: "os-duel", attr: { "aria-hidden": "true" } }), ctx = cv.getContext("2d"), W = 64, H = 30;
-  let tick = 0, round = 0, st = {}, gif = null, scene = 0; const sv = localStorage.getItem(key) ?? String(def);
-  if (sv.startsWith("g:")) gif = hqGifs().find((g) => g.file === sv.slice(2)) || null; if (!gif) scene = Math.min(HQ_SCENES.length - 1, Math.max(0, parseInt(sv, 10) || 0));
+  let tick = 0, round = 0, st = {}, gif = null, scene = 0, mus = false; const sv = localStorage.getItem(key) ?? String(def);
+  if (sv === "music") mus = true; else if (sv.startsWith("g:")) gif = hqGifs().find((g) => g.file === sv.slice(2)) || null; if (!gif) scene = Math.min(HQ_SCENES.length - 1, Math.max(0, parseInt(sv, 10) || 0));
   const im = wr.createEl("img", { cls: "os-duelgif", attr: { alt: "", "aria-hidden": "true" } }), vd = wr.createEl("video", { cls: "os-duelgif", attr: { "aria-hidden": "true" } });
   vd.muted = true; vd.loop = true; vd.autoplay = true; vd.playsInline = true; im.style.display = vd.style.display = "none"; let imFile = ""; const bad = new Set();
+  const mw = wr.createDiv({ cls: "os-mus" }), mCov = mw.createEl("img", { cls: "os-mus-c", attr: { alt: "Album cover" } }), mViz = mw.createEl("canvas", { cls: "os-mus-v", attr: { "aria-hidden": "true" } }), mT = mw.createDiv({ cls: "os-mus-t" }), mA = mw.createDiv({ cls: "os-mus-a" }), mB = mw.createDiv({ cls: "os-mus-b" });
+  mw.style.display = "none"; let mKey = "", mFr = 0, mWant = false; const mDir = () => path.join(GIF_DIR, ".."), mPl = () => GIF_APP && GIF_APP.plugins && GIF_APP.plugins.plugins && GIF_APP.plugins.plugins["project-hq"];
+  const mBtn = (txt, label, cmd) => { const b = mB.createEl("button", { cls: "os-mus-k", text: txt, attr: { "aria-label": label, title: label } }); b.addEventListener("click", (e) => { e.stopPropagation(); HQNow.ctl(cmd, mDir()); }); return b; };
+  mBtn("\u23EE", "Previous track", "prev"); mBtn("\u23EF", "Play / pause", "toggle"); mBtn("\u23ED", "Next track", "next");
+  const setMus = (on) => { if (on === mWant) return; mWant = on; const p = mPl(); if (on) { HQNow.want++; try { HQNow.start(path.join(mDir(), "nowplaying.ps1")); HQAudio.start(); } catch (e) {} } else { HQNow.want = Math.max(0, HQNow.want - 1); mKey = ""; if (p && p.setMusicColor) p.setMusicColor(""); if (!HQNow.want && p) { const v = p.views && p.views()[0]; if (v && v.osGate) v.osGate(); } } };
   const gl = wr.createSpan({ cls: "os-fillgl" + (side === "r" ? " r" : "") });
   const swb = wr.createEl("button", { cls: "os-fillsw" + (side === "r" ? " r" : ""), text: "⇄" }); let CW = W;
-  const lbl = () => { const n = gif ? gif.name : HQ_SCENES[scene].name; const nm = hqGifs().length; swb.setAttr("aria-label", "Pick animation or GIF (v2 · " + nm + " media; now: " + n.toLowerCase() + ")"); swb.setAttr("title", "v2 · " + nm + " media · click = list, shift/right-click = next" + (nm ? "" : " · scanned: " + (GIF_DIR || "no dir"))); gl.setText(n.toLowerCase()); };
+  const lbl = () => { const n = mus ? "Music" : gif ? gif.name : HQ_SCENES[scene].name; const nm = hqGifs().length; swb.setAttr("aria-label", "Pick animation or GIF (v2 · " + nm + " media; now: " + n.toLowerCase() + ")"); swb.setAttr("title", "v2 · " + nm + " media · click = list, shift/right-click = next" + (nm ? "" : " · scanned: " + (GIF_DIR || "no dir"))); gl.setText(n.toLowerCase()); };
   lbl();
-  const entries = () => HQ_SCENES.map((s, i) => ({ p: i, name: s.name })).concat(hqGifs().filter((g) => !bad.has(g.file)).map((g) => ({ g, name: g.name })));
-  const isCur = (x) => gif ? !!x.g && x.g.file === gif.file : x.p === scene;
+  const entries = () => HQ_SCENES.map((s, i) => ({ p: i, name: s.name })).concat([{ m: true, name: "Music" }]).concat(hqGifs().filter((g) => !bad.has(g.file)).map((g) => ({ g, name: g.name })));
+  const isCur = (x) => mus ? !!x.m : gif ? !!x.g && x.g.file === gif.file : !x.m && !x.g && x.p === scene;
   const next = (nx0) => { try {
     const all = entries(), at = all.findIndex(isCur), nx = nx0 || all[(at + 1) % all.length];
-    if (nx.g) { gif = nx.g; localStorage.setItem(key, "g:" + gif.file); } else { gif = null; scene = nx.p; localStorage.setItem(key, String(scene)); host.style.height = ""; }
+    setMus(!!nx.m);
+    if (nx.m) { mus = true; gif = null; localStorage.setItem(key, "music"); } else if (nx.g) { mus = false; gif = nx.g; localStorage.setItem(key, "g:" + gif.file); } else { mus = false; gif = null; scene = nx.p; localStorage.setItem(key, String(scene)); host.style.height = ""; }
     st = {}; tick = 0; round = 0; lbl(); draw(); } catch (er) { gif = null; scene = 0; } };
   let pop = null; const closePop = () => { if (pop) { pop.remove(); pop = null; document.removeEventListener("mousedown", outside, true); document.removeEventListener("keydown", esc, true); document.removeEventListener("scroll", scr, true); gl.removeClass("on"); } };
   const scr = (e) => { if (pop && !pop.contains(e.target)) closePop(); };
@@ -2910,7 +2928,7 @@ function hqDuel(host, key = "hq-fill-scene", def = 0, side = "l") {
   const glOn = (on) => gl.toggleClass("on", on || !!pop); swb.addEventListener("mouseenter", () => glOn(true)); swb.addEventListener("mouseleave", () => glOn(false)); swb.addEventListener("focus", () => glOn(true)); swb.addEventListener("blur", () => glOn(false));
   swb.addEventListener("click", (e) => { e.stopPropagation(); setTimeout(() => glOn(false), 0); if (e.shiftKey) { closePop(); next(); } else if (pop) closePop(); else openPop(); });
   swb.addEventListener("contextmenu", (e) => { e.preventDefault(); e.stopPropagation(); closePop(); next(); });
-  const showGif = (on) => { const v = on && hqIsVid(gif.file); im.style.display = on && !v ? "block" : "none"; vd.style.display = v ? "block" : "none"; cv.style.display = on ? "none" : ""; if (!on) { try { vd.pause(); } catch (e) {} wr.style.height = ""; imFile = ""; } };
+  const showGif = (on) => { mw.style.display = "none"; const v = on && hqIsVid(gif.file); im.style.display = on && !v ? "block" : "none"; vd.style.display = v ? "block" : "none"; cv.style.display = on ? "none" : ""; if (!on) { try { vd.pause(); } catch (e) {} wr.style.height = ""; imFile = ""; } };
   const onErr = () => { if (gif) bad.add(gif.file); imFile = ""; next(); }; im.addEventListener("error", onErr); vd.addEventListener("error", onErr);
   const rgb = (v, a) => "rgba(" + (v || "25,227,208") + "," + a + ")";
   // one fighter: x = feet centre, f = facing (1 right, -1 left), pose, flash = hit flash, col = "r,g,b"
@@ -2949,11 +2967,26 @@ function hqDuel(host, key = "hq-fill-scene", def = 0, side = "l") {
   };
   const draw = () => {
     if (!host.isConnected) { clearInterval(iv); return; }
-    const r = host.getBoundingClientRect(); if ((r.height < 10 && !gif) || document.hidden || !host.offsetParent) return;
+    const r = host.getBoundingClientRect(); if ((r.height < 10 && !gif && !mus) || document.hidden || !host.offsetParent) return;
     // fixed size: the box shrinks to fit the animation and the panels above take the spare room (width in CSS px, HQ may be zoomed)
     // full box width: the scale is fixed by the width, the scene gets as many columns as fit
     const sc = Math.max(1, Math.min(3, Math.floor(host.clientWidth / W))), nw = Math.max(W, Math.floor(host.clientWidth / sc));
     if (nw !== CW) { CW = nw; st = {}; }
+    if (mus) { // Music box: album cover, visualizer, title/artist, transport buttons; theme follows the cover
+      im.style.display = vd.style.display = cv.style.display = "none"; mw.style.display = "flex"; setMus(true);
+      const col1 = host.parentElement, hh = Math.max(130, Math.round(Math.min(host.clientWidth + 78, col1 ? col1.clientHeight / 3 : 240)));
+      if (wr.style.height !== hh + "px") wr.style.height = hh + "px"; if (host.style.height !== hh + "px") host.style.height = hh + "px"; if (swb.style.top !== "3px") swb.style.top = "3px";
+      const pl = mPl(), mn = !!(pl && pl.settings && pl.settings.minimal), x = HQNow.any(HQNow.data), playing = !!x && x.status === "Playing";
+      if (mFr++ % 6 === 0) { const k = x ? (x.cover || "") + "|" + x.title + "|" + x.artist : "";
+        if (k !== mKey) { mKey = k; mT.setText(x ? String(x.title).slice(0, 80) : "Nothing playing"); mA.setText(x ? String(x.artist || HQNow.appName(x.app)).slice(0, 80) : "Start a song (Spotify, YouTube, ...)");
+          const u = x && x.cover ? hqCoverUri(x.cover) : ""; if (u) { mCov.onload = () => { if (pl && pl.setMusicColor) { const c = hqCoverColor(mCov); if (c) pl.setMusicColor(c); } }; mCov.src = u; mCov.style.visibility = ""; } else { mCov.removeAttribute("src"); mCov.style.visibility = "hidden"; if (pl && pl.setMusicColor) pl.setMusicColor(""); } } }
+      const vw = Math.max(40, mViz.clientWidth || host.clientWidth); if (mViz.width !== vw) mViz.width = vw; if (mViz.height !== 16) mViz.height = 16;
+      const g = mViz.getContext("2d"), N = 24, bw = vw / N, AC = getComputedStyle(host).getPropertyValue("--os-acrgb").trim() || "25,227,208"; g.clearRect(0, 0, vw, 16);
+      if (HQAudio.on) HQAudio.read(); tick++;
+      for (let i = 0; i < N; i++) { let v = 0; if (playing && !mn) v = HQAudio.on && HQAudio.level > 0.01 ? HQAudio.bands[i] : 0.25 + 0.2 * Math.sin(tick * 0.35 + i * 0.7) * Math.sin(tick * 0.13 + i); const h = Math.max(1, Math.round(Math.min(1, v) * 16)); g.fillStyle = "rgba(" + AC + "," + (0.35 + 0.6 * Math.min(1, v)) + ")"; g.fillRect(Math.floor(i * bw) + 1, 16 - h, Math.max(1, Math.floor(bw) - 2), h); }
+      return;
+    }
+    if (mWant) setMus(false);
     if (gif) { // media scene: box height follows the aspect ratio, capped at a third of the column; the panels above give way
       const col0 = host.parentElement, pl = GIF_APP && GIF_APP.plugins && GIF_APP.plugins.plugins && GIF_APP.plugins.plugins["project-hq"], mn = !!(pl && pl.settings && pl.settings.minimal), vv = hqIsVid(gif.file), el = vv ? vd : im;
       showGif(true); if (imFile !== gif.file) { imFile = gif.file; const u = hqGifSrc(gif.file); if (!u) { bad.add(gif.file); imFile = ""; next(); return; } el.src = u; }
@@ -2980,7 +3013,7 @@ function hqDuel(host, key = "hq-fill-scene", def = 0, side = "l") {
     if (s.sp) spark(s.sp[0], s.sp[1], s.sp[2]);
     tick++; if (tick % 64 === 0) round++;
   };
-  let fr = 0; const iv = setInterval(() => { if (!host.isConnected) { clearInterval(iv); return; } if (gif || HQ_SCENES[scene].smooth || fr++ % 3 === 0) draw(); }, 36);
+  let fr = 0; const iv = setInterval(() => { if (!host.isConnected) { clearInterval(iv); return; } if (mus || gif || HQ_SCENES[scene].smooth || fr++ % 3 === 0) draw(); }, 36);
   return cv;
 }
 function hqChatIsActive(view, c) { const hq = view.hq(); return !!hq && hq.activeId === c.id; }
@@ -3129,6 +3162,7 @@ module.exports = class ProjectHQ extends Plugin {
     const t = this.baseTheme(), ov = this.settings.theme.accent;
     // Accent changer keeps the theme's MAIN colour (borders, titles, text) and recolours the sphere + secondary highlights.
     if (hexOk(ov)) { t.accent2 = ov.toLowerCase(); t.orb = ov.toLowerCase(); }
+    if (hexOk(this.musicColor)) { t.accent = t.accent2 = t.orb = this.musicColor; } // album-cover theme from the Music box (not saved)
     t.warn = hexOk(this.settings.theme.highlight) ? this.settings.theme.highlight.toLowerCase() : (t.orb || t.accent); // highlight picker (your messages, HANDOFF, YOLO, warnings); AUTO = the accent colour (Hayden 2026-11-09)
     return t;
   }
@@ -3138,6 +3172,7 @@ module.exports = class ProjectHQ extends Plugin {
     if (id === "custom") return Object.assign(cleanTheme(th.custom), { id, name: "Custom" });
     return Object.assign({}, HQ_PRESETS.find((x) => x.id === id) || HQ_PRESETS[0]);
   }
+  setMusicColor(hex) { const c = hexOk(hex) ? hex.toLowerCase() : ""; if (c === (this.musicColor || "")) return; this.musicColor = c; this.themeApplyAll(); }
   setHighlight(hex) { this.settings.theme.highlight = hexOk(hex) ? hex.toLowerCase() : ""; this.themeApplyAll(); }
   setAccent(hex) { this.settings.theme.accent = hexOk(hex) ? hex.toLowerCase() : ""; this.themeApplyAll(); }
   themeApplyAll() { this.views().forEach((v) => { if (!v.applyTheme) return; v.applyTheme(); if (v.osUI) { v.osUI.sig.top = ""; v.osTopRender(); } }); this.saveSoon(); }

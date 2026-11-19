@@ -849,3 +849,13 @@
 .hqos .os-swi:hover,.hqos .os-swi:focus-visible{background:rgba(var(--os-acrgb),.18)}
 .hqos .os-swi.cur{color:#fff;background:rgba(var(--os-acrgb),.28)}
 .hqos .os-fillgl.on{display:block}
+/* Music box */
+.hqos .os-mus{position:absolute;inset:0;display:flex;flex-direction:column;gap:3px;padding:3px;box-sizing:border-box;line-height:1.3}
+.hqos .os-mus-c{flex:1 1 auto;min-height:0;width:100%;object-fit:contain;border:1px solid rgba(var(--os-acrgb),.4);border-radius:2px;background:rgba(0,0,0,.25)}
+.hqos .os-mus-v{flex:0 0 16px;width:100%;height:16px;display:block}
+.hqos .os-mus-t{flex:0 0 auto;font-family:var(--os-mono);font-size:11px;color:rgba(var(--os-acrgb),1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center}
+.hqos .os-mus-a{flex:0 0 auto;font-family:var(--os-mono);font-size:9px;letter-spacing:.08em;color:rgba(var(--os-acrgb),.65);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center}
+.hqos .os-mus-b{flex:0 0 auto;display:flex;justify-content:center;gap:10px}
+.hqos .os-mus-k{height:auto;padding:0 8px;font-size:12px;line-height:1.5;background:rgba(var(--os-bgrgb,0,0,0),.4);border:1px solid rgba(var(--os-acrgb),.5);border-radius:2px;color:rgba(var(--os-acrgb),1);box-shadow:none;cursor:pointer}
+.hqos .os-mus-k:hover{background:rgba(var(--os-acrgb),.2)}
+.hqos.os-min .os-mus-v{opacity:.3}
